@@ -29,13 +29,13 @@
 # is unusually slow on the host.
 #
 # Failure handling: a run that does not emit a boot-to-end line within the
-# timeout is counted as a failure. If fewer than 50 % of runs produced a
-# valid sample, the harness exits non-zero — that threshold is treated as
-# environmental (kernel image missing, QEMU not in PATH, host under heavy
-# load). If 50-100 % of runs are valid, statistics are computed over the
-# valid samples only and the failure count is reported alongside.
+# timeout is counted as a failure. If fewer than ⌈n/2⌉ of the n runs produced
+# a valid sample (i.e. fewer than half, rounding up), the harness exits
+# non-zero — that threshold is treated as environmental (kernel image missing,
+# QEMU not in PATH, host under heavy load). Otherwise statistics are computed
+# over the valid samples only and the failure count is reported alongside.
 #
-# Exits 0 on success (>= 50 % valid runs), 1 on environmental failure,
+# Exits 0 on success (>= ⌈n/2⌉ valid runs), 1 on environmental failure,
 # 2 on argument errors.
 
 set -euo pipefail
@@ -316,9 +316,12 @@ if [[ "$VALID_COUNT" -eq 0 ]]; then
     exit 1
 fi
 
-# 50 % failure-rate threshold: below it, we treat the run as environmental
-# rather than a measurement worth aggregating. The brief explicitly asked
-# for a clear error in this case.
+# Half-of-iterations threshold: the run must produce at least ⌈n/2⌉ valid
+# samples (i.e. half, rounding UP) or we treat it as environmental rather
+# than a measurement worth aggregating. The brief explicitly asked for a
+# clear error in this case. Note for odd n the round-up means slightly more
+# than 50 % is required (e.g. n=5 ⇒ HALF=3 ⇒ needs 3/5 = 60 %); this matches
+# the "at least ⌈n/2⌉ valid runs" wording in docs/standards/infrastructure.md.
 HALF=$(( (ITERATIONS + 1) / 2 ))
 if [[ "$VALID_COUNT" -lt "$HALF" ]]; then
     echo "error: only $VALID_COUNT/$ITERATIONS iterations produced a boot-to-end sample" >&2
@@ -468,6 +471,18 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
 
     if [[ ! -d "$REPORT_DIR" ]]; then
         echo "error: report directory does not exist: $REPORT_DIR" >&2
+        exit 1
+    fi
+
+    # Baseline reports are append-only artefacts (see
+    # docs/standards/infrastructure.md §"Reporting discipline"): re-baselines
+    # land as fresh reports with a new context slug, never by overwriting an
+    # existing one. Refuse to clobber so the discipline is enforced rather than
+    # merely conventional. (The stats are already on stdout above, so nothing
+    # is lost — only the file write is skipped.)
+    if [[ -e "$REPORT_PATH" ]]; then
+        echo "error: refusing to overwrite existing report: ${REPORT_PATH#${REPO_ROOT}/}" >&2
+        echo "hint: baseline reports are append-only; pick a fresh --report=CONTEXT slug" >&2
         exit 1
     fi
 

@@ -99,10 +99,17 @@ Coverage is measured with `cargo llvm-cov` on host-runnable tests. Hardware-only
 
 ## CI gates
 
-- `cargo test --workspace` — must pass.
-- `cargo clippy --workspace --all-targets -- -D warnings` — must pass.
+Enforced in CI today (block merge):
+
+- `cargo test` (host crates, `default-members`) — must pass.
+- Clippy with `-D warnings` — must pass (run as the `host-clippy` + `kernel-clippy` aliases, which together cover the workspace; see [infrastructure.md](infrastructure.md) §"Required gates").
 - `cargo fmt --all -- --check` — must pass.
-- QEMU smoke tests — must pass on the primary target.
+- Host crates on stable Rust (`host-stable-check`) — must build/lint/test clean.
+- Miri (Stacked Borrows) over the host-test suite — must pass.
+
+Not yet enforced in CI:
+
+- QEMU smoke tests — run by the maintainer before merge on the primary target; there is **no QEMU-smoke CI job yet** (tracked as a B2-or-later follow-up per [infrastructure.md](infrastructure.md) §"Planned gates"). A failing smoke test does not currently turn CI red — it is caught at maintainer review.
 - Hardware smoke tests — run periodically, not per-PR.
 
 A red CI is never ignored. Flaky tests are bugs, not facts of life.

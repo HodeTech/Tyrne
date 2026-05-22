@@ -2,14 +2,26 @@
 #
 # Goal: every hygiene check that a contributor is expected to pass
 # locally before opening a PR is also enforced here. A red CI blocks
-# merge. The Miri and coverage jobs are slower and run conditionally
-# to keep median PR feedback tight; they are still required for merge
-# into `main`.
+# merge.
+#
+# What actually gates merge (configured in GitHub branch protection):
+#   - lint-and-host-test, kernel-build, host-stable-check  (fast lane)
+#   - miri                                                 (required, slow)
+# The `miri` job runs the host-test suite under Stacked Borrows; it is
+# slower (~10–15 min) but a Miri regression is a hard stop. The
+# `coverage` job is INFORMATIONAL only (it sets `continue-on-error: true`)
+# and must NOT be added to the required-checks list until the post-T-011
+# flip removes that flag — see docs/guides/ci.md §"Branch protection".
+#
+# Toolchain note: the kernel needs nightly (inline asm / lang items),
+# so the lint-and-host-test, kernel-build, and miri jobs all run the
+# pinned nightly ($NIGHTLY_PIN) — the same toolchain rust-toolchain.toml
+# selects for in-repo `cargo` invocations. A separate host-stable-check
+# job gives a genuine "host crates build clean on stable" signal.
 #
 # When this pipeline was born (2026-04-23, R6 retrospective work) the
-# local host-test count was 111; the kernel-build target was
-# aarch64-unknown-none. Any time a new crate or target lands, update
-# the job matrix below.
+# kernel-build target was aarch64-unknown-none. Any time a new crate or
+# target lands, update the job matrix below.
 
 name: CI
 
@@ -25,10 +37,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege for the auto-provisioned GITHUB_TOKEN. This pipeline
+# only reads the repository and runs builds; it never writes refs,
+# publishes artifacts, or touches issues/PRs. Override per-job only if a
+# future job genuinely needs more — none do today.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
-  # Pinned nightly for miri + coverage jobs. Rolling nightly means a
+  # NOTE: `-D warnings` is intentionally NOT set as a global RUSTFLAGS env
+  # var. A process-wide RUSTFLAGS REPLACES (does not merge) the per-target
+  # `[target.aarch64-unknown-none] rustflags` in .cargo/config.toml, which
+  # would silently drop `panic=abort` + `force-frame-pointers=yes` from the
+  # kernel build — CI would then compile a different ELF than a local build.
+  # Deny-warnings is enforced instead by the `-- -D warnings` already passed
+  # in the host-clippy / kernel-clippy aliases (.cargo/config.toml).
+  # Pinned nightly for the kernel + miri + coverage jobs. Rolling nightly means a
   # miri/llvm-tools regression on the public channel breaks master
   # without any commit of ours being the cause. Update this pin
   # intentionally (open an issue citing the pin bump), not silently.
@@ -37,67 +62,106 @@ env:
   NIGHTLY_PIN: nightly-2026-01-15
 
 jobs:
-  # ─── Fast lane: lint + host tests on stable ─────────────────────────────
+  # ─── Fast lane: fmt + clippy + host tests (pinned nightly) ──────────────
   # Expected wall time: ~2 min. Every PR must pass this before anything
-  # else runs.
+  # else runs. Runs on the pinned nightly — `rust-toolchain.toml` overrides
+  # `rustup default` for in-repo cargo anyway, so we select the pin
+  # explicitly (matching the miri/coverage jobs) instead of pretending to
+  # run on stable. A genuine stable signal lives in `host-stable-check`.
   lint-and-host-test:
-    name: fmt + clippy + host tests
+    name: fmt + clippy + host tests (nightly)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable with rustfmt + clippy
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install pinned nightly with rustfmt + clippy
         run: |
-          rustup update stable --no-self-update
-          rustup default stable
-          rustup component add rustfmt clippy
+          rustup toolchain install $NIGHTLY_PIN --component rustfmt --component clippy --no-self-update
+          rustup override set $NIGHTLY_PIN
       - name: Cache cargo registry and build
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-${{ env.NIGHTLY_PIN }}-
       - name: cargo fmt --check
-        run: cargo fmt --all -- --check
+        run: cargo +$NIGHTLY_PIN fmt --all -- --check
       - name: cargo host-clippy
-        run: cargo host-clippy
+        run: cargo +$NIGHTLY_PIN host-clippy
       - name: cargo host-test
-        run: cargo host-test
+        run: cargo +$NIGHTLY_PIN host-test
 
   # ─── Kernel build: aarch64-unknown-none ─────────────────────────────────
   # The bare-metal BSP cannot be built as part of the default workspace
   # test target (no_std + no_main). Build it explicitly here so the
   # kernel ELF and its dependencies stay compilable.
   kernel-build:
-    name: aarch64-unknown-none kernel build
+    name: aarch64-unknown-none kernel build (nightly)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable + aarch64 target
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install pinned nightly + aarch64 target
         run: |
-          rustup update stable --no-self-update
-          rustup default stable
-          rustup target add aarch64-unknown-none
-          rustup component add clippy
+          rustup toolchain install $NIGHTLY_PIN --component clippy --no-self-update
+          rustup override set $NIGHTLY_PIN
+          rustup target add aarch64-unknown-none --toolchain $NIGHTLY_PIN
       - name: Cache cargo registry and build
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-aarch64-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-aarch64-
+            ${{ runner.os }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-
       - name: cargo kernel-build
-        run: cargo kernel-build
+        run: cargo +$NIGHTLY_PIN kernel-build
       - name: cargo kernel-clippy
-        run: cargo kernel-clippy
+        run: cargo +$NIGHTLY_PIN kernel-clippy
+
+  # ─── Host stable check: host crates build clean on stable ───────────────
+  # A genuine "the host-buildable crates compile, lint, and test on stable
+  # Rust" gate. The kernel image itself needs nightly (inline asm / lang
+  # items) so the bare-metal BSP is NOT built here — this job runs only the
+  # workspace default-members (kernel, hal, test-hal), which carry no
+  # nightly-only features today. If a host crate ever grows a `#![feature]`,
+  # this job is the one that will (correctly) go red on stable.
+  host-stable-check:
+    name: host crates on stable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Rust stable with rustfmt + clippy
+        run: |
+          rustup toolchain install stable --component rustfmt --component clippy --no-self-update
+      - name: Cache cargo registry and build
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-stable-
+      # Explicit `+stable` bypasses the rust-toolchain.toml override so this
+      # job exercises stable for real. Aliases operate on default-members
+      # (host-buildable crates only); the bare-metal BSP is never built here.
+      - name: cargo +stable fmt --check
+        run: cargo +stable fmt --all -- --check
+      - name: cargo +stable host-clippy
+        run: cargo +stable host-clippy
+      - name: cargo +stable build (host crates)
+        run: cargo +stable build
+      - name: cargo +stable host-test
+        run: cargo +stable host-test
 
   # ─── Miri: aliasing validation ──────────────────────────────────────────
   # Runs the full host-test suite under Miri's Stacked Borrows checker
@@ -108,13 +172,13 @@ jobs:
     name: miri (Stacked Borrows)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install pinned nightly with miri
         run: |
           rustup toolchain install $NIGHTLY_PIN --component miri --no-self-update
           rustup override set $NIGHTLY_PIN
       - name: Cache cargo registry and miri target
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ~/.cargo/bin
@@ -139,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install pinned nightly with llvm-tools
         run: |
           rustup toolchain install $NIGHTLY_PIN --component llvm-tools-preview --no-self-update
@@ -155,12 +219,15 @@ jobs:
         # The cargo-llvm-cov version pin is independent of NIGHTLY_PIN —
         # the two can be bumped together or independently per
         # docs/guides/ci.md "Nightly pinning".
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@e0eafa9a0d485c37f97c0f7beb930a58a2facbac # v2.79.4
         with:
           tool: cargo-llvm-cov@0.6.16
       - name: Cache cargo registry and llvm-cov target
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
+          # ~/.cargo/bin is intentionally omitted here (unlike the sibling
+          # jobs): cargo-llvm-cov is installed by taiki-e/install-action, not
+          # `cargo install`, so nothing useful lands in ~/.cargo/bin to cache.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
