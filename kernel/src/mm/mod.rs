@@ -49,6 +49,18 @@ pub struct PhysFrameRange {
 
 impl PhysFrameRange {
     /// Construct a range from raw bounds.
+    ///
+    /// Performs **no** alignment or ordering validation: the soft
+    /// `start <= end` invariant and page-alignment are the caller's
+    /// responsibility (canonically [`Pmm::new`], which validates both
+    /// before trusting [`frame_count`][Self::frame_count] /
+    /// [`len_bytes`][Self::len_bytes]). [`frame_count`][Self::frame_count]
+    /// and [`len_bytes`][Self::len_bytes] are only meaningful for
+    /// page-aligned, non-inverted bounds — an inverted range reads as
+    /// zero-length and an unaligned range yields a truncating frame
+    /// count (C2-010).
+    ///
+    /// [`Pmm::new`]: pmm::Pmm::new
     #[must_use]
     pub const fn new(start: PhysAddr, end: PhysAddr) -> Self {
         Self { start, end }

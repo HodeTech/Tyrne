@@ -7,13 +7,24 @@
 //!
 //! See [ADR-0035] for the design (bitmap vs. free-list trade-offs,
 //! reservation tracking, forward-portability to high-half kernel) and
-//! [T-017] for the implementation arc this file lands across four
+//! [T-017] for the implementation arc this file landed across four
 //! bisectable commits.
 //!
-//! Commit 1 (this file, initial landing): `Pmm` struct + bitmap
-//! arithmetic + `Pmm::new` constructor + four host tests pinning
-//! `Pmm::new`'s contract. No `unsafe`. The next commit adds
-//! `alloc_frame` / `free_frame` / `stats`.
+//! Responsibilities (steady state): track the managed physical extent
+//! via a one-bit-per-frame bitmap; reserve init-time ranges (kernel
+//! image / `.boot_pt` / boot stack) so they are never handed out;
+//! implement [`tyrne_hal::FrameProvider`] (`alloc_frame`) for runtime
+//! [`Mmu::map`] callers; account frame state via cached counters
+//! cross-checked against the bitmap; and zero-fill every allocated
+//! frame before return under [UNSAFE-2026-0026] (the sole `unsafe`
+//! site in this file — the [`core::ptr::write_bytes`] call in
+//! [`Pmm::alloc_frame`]). [`Pmm::free_frame`] returns a frame to the
+//! free pool, and [`Pmm::could_yield_pa_overlapping`] answers the
+//! "could `alloc_frame` ever return a PA aliasing this range" query
+//! the task loader uses to discharge [UNSAFE-2026-0027].
+//!
+//! [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [UNSAFE-2026-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
 //!
 //! [ADR-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md
 //! [T-017]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-017-physical-memory-manager.md
@@ -152,11 +163,16 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
     ///    small an `N` for its extent).
     /// 3. `reserved.len() <= R` — returns [`PmmError::TooManyReservedRanges`]
     ///    otherwise.
-    /// 4. Each reserved range is page-aligned, fits inside
+    /// 4. Each reserved range is page-aligned (returns
+    ///    [`PmmError::MisalignedAddress`] otherwise), fits inside
     ///    `[extent.start, extent.end)`, and is non-inverted
-    ///    (`range.end >= range.start`) — returns
-    ///    [`PmmError::MisalignedAddress`] or [`PmmError::OutOfRange`]
-    ///    otherwise.
+    ///    (`range.end >= range.start`) — out-of-bounds **or inverted**
+    ///    ranges return [`PmmError::OutOfRange`]. The inversion check is
+    ///    defence-in-depth: [`PhysFrameRange::frame_count`] already
+    ///    treats an inverted range as zero-length (saturating
+    ///    arithmetic), so even without the guard an inverted range would
+    ///    cover zero frames — but rejecting malformed input outright is
+    ///    the more honest fail-fast stance.
     /// 5. No two reserved ranges overlap (pairwise half-open check) —
     ///    returns [`PmmError::OverlappingReservedRanges`] otherwise.
     ///    Touching boundaries (`[a, b)` + `[b, c)`) are accepted.
@@ -353,6 +369,17 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
         // scaffolding for SMP per-core-caches, which v1 doesn't
         // need but we leave the wrap in place to keep the
         // future-extension path one-line clean.
+        //
+        // Complexity (X2-002): the forward pass is O(total_frames -
+        // hint) and the wrap pass is O(hint), so the combined scan is
+        // O(total_frames) worst-case (max 32 768 frames per ADR-0035
+        // §Simulation §Step 1). The wrap pass is dead in v1's
+        // single-core cooperative model — `free_frame`'s `hint =
+        // min(hint, idx)` rewind keeps `hint <= lowest-free-index`, so
+        // a free frame is always found on the forward pass — and is
+        // preserved only for future SMP free-then-alloc interleaving;
+        // do not remove it as a "simplification" without restoring an
+        // equivalent fallback.
         let mut idx_opt: Option<usize> =
             (self.hint..total_frames).find(|&idx| !read_bit(&self.bitmap, idx));
         if idx_opt.is_none() && self.hint > 0 {
@@ -362,20 +389,28 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
         }
         let idx = idx_opt?;
 
-        // Mark allocated.
+        // Compute the frame's PA and mint the PhysFrame *before* any
+        // state mutation (C2-002). `from_aligned` is the only fallible
+        // step; computing it first and bailing via `?` on `None` makes
+        // the "bit set, no handle handed out → permanent leak" window
+        // structurally impossible rather than merely currently
+        // unreachable. Validation (i) on `extent` at `Pmm::new` time
+        // guarantees `extent.start` is page-aligned and `idx *
+        // PAGE_SIZE` preserves alignment, so `from_aligned` is
+        // provably-`Some` today; the `?` is the fail-safe a future
+        // maintainer inherits if that proof is ever weakened.
+        let pa_off = idx.saturating_mul(PAGE_SIZE);
+        let pa_usize = self.extent.start.0.saturating_add(pa_off);
+        let frame = PhysFrame::from_aligned(PhysAddr(pa_usize))?;
+        let pa_ptr = pa_usize as *mut u8;
+
+        // Mark allocated. Reached only after the fallible `from_aligned`
+        // above succeeded, so the counters/bitmap and the handed-out
+        // handle move together — no leak window.
         set_bit(&mut self.bitmap, idx);
         self.hint = idx.saturating_add(1);
         self.free_count = self.free_count.saturating_sub(1);
         self.allocated_count = self.allocated_count.saturating_add(1);
-
-        // Compute the frame's PA. Validation (i) on `extent` at
-        // `Pmm::new` time guarantees `extent.start` is page-aligned;
-        // `idx * PAGE_SIZE` preserves alignment. The
-        // `from_aligned` unwrap_or(unreachable!) pair is therefore
-        // structurally provable.
-        let pa_off = idx.saturating_mul(PAGE_SIZE);
-        let pa_usize = self.extent.start.0.saturating_add(pa_off);
-        let pa_ptr = pa_usize as *mut u8;
 
         // SAFETY:
         // **Why unsafe is needed.** The FrameProvider contract
@@ -437,27 +472,12 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
             core::ptr::write_bytes(pa_ptr, 0u8, PAGE_SIZE);
         }
 
-        // Return the page-aligned PhysFrame. `from_aligned` is
-        // provably-Some here: validation (i) on Pmm::new guarantees
-        // `extent.start` is page-aligned, and `idx * PAGE_SIZE`
-        // preserves that alignment. Returning the Option directly
-        // (rather than unwrap / expect) keeps `clippy::unwrap_used`
-        // happy without adding a panic path.
-        //
-        // **Unreachable-leak caveat.** Mutation of the bitmap, hint,
-        // and counters above happens BEFORE this call. If a future
-        // change ever weakens the alignment proof (e.g., a BSP whose
-        // extent.start is not page-aligned and the validation is
-        // bypassed), `from_aligned` could return `None` and this
-        // function would return `None` to the caller while the
-        // bitmap state has already moved — the frame would be
-        // permanently leaked (bit set, no PhysFrame handed out). The
-        // path is structurally unreachable in v1; a future
-        // maintainer who alters Pmm::new's validation set must
-        // either preserve the alignment proof or move the mutation
-        // block below this call to keep the leak structurally
-        // impossible.
-        PhysFrame::from_aligned(PhysAddr(pa_usize))
+        // Return the page-aligned PhysFrame minted above. The frame was
+        // computed via the fallible `from_aligned` *before* any bitmap /
+        // counter mutation (see C2-002 reorder), so there is no
+        // mutate-then-fail leak window: a `None` from `from_aligned`
+        // bails via `?` while the PMM state is still byte-stable.
+        Some(frame)
     }
 
     /// Free a previously-allocated frame.
@@ -564,19 +584,36 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
     ///
     /// # Algorithm
     ///
-    /// Clip `pa_range` to `extent`, then walk the covered frame
-    /// indices linearly; return `true` on the first frame whose PA is
-    /// not inside any populated `Some(_)` slot of `reserved_ranges`.
-    /// Worst-case `O((pa_range.len() / PAGE_SIZE) × populated_reserved)`;
-    /// for the loader's v1 placeholder (8-byte image, 1 frame of
-    /// coverage) this is a single iteration over at most `R` slots
-    /// (`R = 8` for `bsp-qemu-virt`).
+    /// Pure interval arithmetic over **frame-index space** — no
+    /// per-frame enumeration. Clip `pa_range` to `extent` to obtain a
+    /// half-open frame-index window `[start_idx, end_idx)`, then walk
+    /// that window with a cursor: at each step, look for a populated
+    /// reserved range that *covers* the current cursor frame; if one
+    /// exists, jump the cursor past it; if none does, the cursor frame
+    /// is itself non-reserved (a residue) and the query overlaps a
+    /// yieldable frame → return `true`. If the cursor reaches `end_idx`
+    /// the window was fully covered by reserved ranges → return
+    /// `false`.
+    ///
+    /// Each cursor jump lands strictly past the *end* of some reserved
+    /// range, and the reserved ranges are pairwise non-overlapping
+    /// (`Pmm::new` validation (iv)), so the cursor advances through at
+    /// most `R` distinct reserved intervals before either finding a
+    /// residue or exhausting the window. Cost is therefore
+    /// `O(populated_reserved²)` worst-case (each step scans the ≤ `R`
+    /// slots) and — critically — **independent of `pa_range`'s length**
+    /// (`R = 8` for `bsp-qemu-virt`, so ≤ 64 comparisons regardless of
+    /// whether the caller passes a 1-frame span or the full 128 MiB
+    /// extent). This replaces the former
+    /// `O((pa_range.len() / PAGE_SIZE) × populated_reserved)` per-frame
+    /// walk; the `could_yield_pa_overlapping_interval_equals_perframe`
+    /// host test pins that the two formulations agree on every input.
     ///
     /// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
     /// [unsafe-27]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
     #[must_use]
     pub fn could_yield_pa_overlapping(&self, pa_range: core::ops::Range<usize>) -> bool {
-        // Empty range cannot overlap anything.
+        // Empty (or inverted) range cannot overlap anything.
         if pa_range.start >= pa_range.end {
             return false;
         }
@@ -597,10 +634,12 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
         } else {
             extent_end
         };
-        // Frame-index bounds: any frame whose PA range
-        // `[f, f + PAGE_SIZE)` overlaps `[clipped_start, clipped_end)`.
-        // Equivalently: start_idx is the frame containing `clipped_start`;
-        // end_idx is one past the frame containing `clipped_end - 1`.
+        // Frame-index window `[start_idx, end_idx)`: every frame whose
+        // PA range `[f, f + PAGE_SIZE)` overlaps `[clipped_start,
+        // clipped_end)`. `start_idx` is the frame containing
+        // `clipped_start`; `end_idx` is one past the frame containing
+        // `clipped_end - 1`. Identical to the former per-frame loop's
+        // bounds — see the equivalence test.
         let start_idx = clipped_start
             .saturating_sub(extent_start)
             .wrapping_div(PAGE_SIZE);
@@ -609,19 +648,50 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
             .saturating_add(PAGE_SIZE)
             .saturating_sub(1)
             .wrapping_div(PAGE_SIZE);
-        // Walk frame PAs; return true on first non-reserved frame.
-        for idx in start_idx..end_idx {
-            let frame_pa = extent_start.saturating_add(idx.saturating_mul(PAGE_SIZE));
-            let frame_addr = PhysAddr(frame_pa);
-            let in_reserved = self
-                .reserved_ranges
-                .iter()
-                .flatten()
-                .any(|r| r.contains(frame_addr));
-            if !in_reserved {
-                return true;
+
+        // Interval-coverage walk in frame-index space. `cursor` is the
+        // first frame index in the window not yet proven reserved.
+        let mut cursor = start_idx;
+        while cursor < end_idx {
+            // Find a populated reserved range whose frame-index span
+            // `[r_start_idx, r_end_idx)` covers `cursor`. A frame is
+            // reserved iff its base PA falls inside the range — the same
+            // `contains(frame_base)` test the old per-frame loop used,
+            // lifted to index space (reserved ranges are page-aligned and
+            // fit inside the extent per `Pmm::new` validation, so each
+            // range maps cleanly onto a frame-index interval).
+            let mut covering_end: Option<usize> = None;
+            for range in self.reserved_ranges.iter().flatten() {
+                // Frame indices covered by this reserved range, clamped
+                // into the extent (defensive: `Pmm::new` already proved
+                // `range.start >= extent_start`, so the saturating_sub
+                // never truncates a well-formed range).
+                let r_start_idx = range
+                    .start
+                    .0
+                    .saturating_sub(extent_start)
+                    .wrapping_div(PAGE_SIZE);
+                let r_end_idx = range
+                    .end
+                    .0
+                    .saturating_sub(extent_start)
+                    .wrapping_div(PAGE_SIZE);
+                if r_start_idx <= cursor && cursor < r_end_idx {
+                    covering_end = Some(r_end_idx);
+                    break;
+                }
+            }
+            match covering_end {
+                // `cursor` is inside a reserved range; jump past it and
+                // keep scanning. The jump always strictly advances
+                // (`r_end_idx > cursor`), guaranteeing termination.
+                Some(r_end_idx) => cursor = r_end_idx,
+                // `cursor` is a non-reserved frame within the window — a
+                // residue. The query overlaps a yieldable frame.
+                None => return true,
             }
         }
+        // The whole window was covered by reserved ranges.
         false
     }
 }
@@ -656,11 +726,21 @@ impl<const N: usize, const R: usize> FrameProvider for Pmm<N, R> {
 
 // ── Bitmap helpers (private) ──────────────────────────────────────────────────
 
+// Each helper indexes `bitmap[idx / 8]`, which panics on out-of-bounds.
+// The kernel crate denies `clippy::panic`, so the bound is a contract:
+// every caller stays within `idx < bitmap.len() * 8` via the
+// `total_frames <= N * 8` invariant `Pmm::new` enforces (C2-005). The
+// `debug_assert!` in each helper documents that contract and catches a
+// future mis-call in debug / Miri builds without any release cost
+// (C2-008) — mirroring the BSP MMU walker's `debug_assert!(idx <
+// ENTRIES_PER_TABLE)` discipline under UNSAFE-2026-0025.
+
 /// Set bit `idx` in `bitmap`. Caller's responsibility to ensure
 /// `idx < bitmap.len() * 8`.
 fn set_bit(bitmap: &mut [u8], idx: usize) {
     let byte = idx / 8;
     let bit = idx % 8;
+    debug_assert!(byte < bitmap.len(), "set_bit: bitmap index out of range");
     bitmap[byte] |= 1 << bit;
 }
 
@@ -669,6 +749,7 @@ fn set_bit(bitmap: &mut [u8], idx: usize) {
 fn read_bit(bitmap: &[u8], idx: usize) -> bool {
     let byte = idx / 8;
     let bit = idx % 8;
+    debug_assert!(byte < bitmap.len(), "read_bit: bitmap index out of range");
     (bitmap[byte] >> bit) & 1 == 1
 }
 
@@ -677,11 +758,20 @@ fn read_bit(bitmap: &[u8], idx: usize) -> bool {
 fn clear_bit(bitmap: &mut [u8], idx: usize) {
     let byte = idx / 8;
     let bit = idx % 8;
+    debug_assert!(byte < bitmap.len(), "clear_bit: bitmap index out of range");
     bitmap[byte] &= !(1u8 << bit);
 }
 
 /// Return the first `0` bit in `bitmap` over the range
 /// `[0, frame_count)`, or `None` if every bit is `1`.
+///
+/// Used by [`Pmm::new`] to compute the initial allocation hint (the
+/// first frame not covered by a reserved range). It scans from index 0
+/// and is **hint-unaware** by design — `alloc_frame`'s steady-state
+/// path deliberately does *not* call it, scanning inline from `hint`
+/// instead so it stays amortised-O(1) (X2-004). Keep it for the
+/// constructor's one-shot scan; a future caller wanting a hint-aware
+/// scan must add the start index, not reuse this helper.
 fn first_zero_bit(bitmap: &[u8], frame_count: usize) -> Option<usize> {
     (0..frame_count).find(|&idx| !read_bit(bitmap, idx))
 }
@@ -1191,5 +1281,149 @@ mod tests {
         let stats = pmm.stats();
         assert_eq!(stats.allocated_frames, 0);
         assert_eq!(stats.free_frames, 16);
+    }
+
+    // ── MR-010: interval-arithmetic refactor is behaviour-preserving ──────────
+
+    /// Reference implementation of the *former* per-frame
+    /// `could_yield_pa_overlapping` algorithm (the one MR-010 replaced).
+    /// Clips `pa_range` to the extent and walks every covered frame
+    /// index, returning `true` on the first frame whose base PA is not
+    /// inside any populated reserved range. The equivalence test below
+    /// asserts the production interval-arithmetic implementation agrees
+    /// with this byte-for-byte across a spread of inputs.
+    fn could_yield_pa_overlapping_per_frame<const N: usize, const R: usize>(
+        pmm: &Pmm<N, R>,
+        pa_range: core::ops::Range<usize>,
+    ) -> bool {
+        const PAGE: usize = 4096;
+        if pa_range.start >= pa_range.end {
+            return false;
+        }
+        let extent_start = pmm.extent.start.0;
+        let extent_end = pmm.extent.end.0;
+        if pa_range.end <= extent_start || pa_range.start >= extent_end {
+            return false;
+        }
+        let clipped_start = pa_range.start.max(extent_start);
+        let clipped_end = pa_range.end.min(extent_end);
+        let start_idx = (clipped_start - extent_start) / PAGE;
+        let end_idx = (clipped_end - extent_start).div_ceil(PAGE);
+        for idx in start_idx..end_idx {
+            let frame_pa = extent_start + idx * PAGE;
+            let frame_addr = PhysAddr(frame_pa);
+            let in_reserved = pmm
+                .reserved_ranges
+                .iter()
+                .flatten()
+                .any(|r| r.contains(frame_addr));
+            if !in_reserved {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn could_yield_pa_overlapping_interval_equals_perframe() {
+        // MR-010 (master review 2026-05-22): the per-frame loop was
+        // replaced with O(R) interval arithmetic. This pins that the
+        // new implementation is *behaviour-preserving* — it must return
+        // the identical answer as the old per-frame walk for every
+        // query, so the security-relevant non-overlap guarantee
+        // task_loader rides (UNSAFE-2026-0027) is unchanged.
+        let (_buf, ptr) = aligned_backing(16);
+        let base = ptr as usize;
+        let page = 4096usize;
+
+        // A spread of reserved-range layouts to exercise every branch:
+        // none reserved; head reserved; tail reserved; an interior
+        // island; two disjoint islands; and the whole extent reserved.
+        let layouts: &[&[(usize, usize)]] = &[
+            &[],
+            &[(0, 1)],
+            &[(15, 16)],
+            &[(4, 6)],
+            &[(2, 4), (8, 12)],
+            &[(0, 16)],
+        ];
+
+        for layout in layouts {
+            let pmm = pmm_over_backing(ptr, 16, layout);
+
+            // A spread of query ranges, expressed as byte offsets from
+            // `base` so the cases are layout-independent: empty,
+            // single frame, sub-page, page-straddling, full extent,
+            // a range entirely below / above the extent, a range
+            // straddling the lower / upper extent boundary, an inverted
+            // range, and unaligned endpoints.
+            let queries: &[core::ops::Range<usize>] = &[
+                // Empty range (start == end).
+                base..base,
+                // Inverted range (start > end).
+                (base + page)..base,
+                // Single first frame.
+                base..(base + page),
+                // Single last frame.
+                (base + 15 * page)..(base + 16 * page),
+                // Interior single frame.
+                (base + 5 * page)..(base + 6 * page),
+                // Sub-page span inside frame 5.
+                (base + 5 * page + 8)..(base + 5 * page + 16),
+                // Two-frame span straddling a page boundary.
+                (base + 3 * page + 100)..(base + 5 * page - 100),
+                // The whole extent.
+                base..(base + 16 * page),
+                // Wholly below the extent.
+                (base - 8 * page)..(base - 4 * page),
+                // Wholly above the extent.
+                (base + 20 * page)..(base + 24 * page),
+                // Straddling the lower extent boundary.
+                (base - 2 * page)..(base + 2 * page),
+                // Straddling the upper extent boundary.
+                (base + 14 * page)..(base + 18 * page),
+                // Unaligned endpoints inside the extent.
+                (base + page + 1)..(base + 7 * page - 1),
+            ];
+
+            for q in queries {
+                let interval = pmm.could_yield_pa_overlapping(q.clone());
+                let per_frame = could_yield_pa_overlapping_per_frame(&pmm, q.clone());
+                assert_eq!(
+                    interval, per_frame,
+                    "interval-arithmetic result must equal the per-frame \
+                     reference for layout {layout:?} query {q:?}"
+                );
+            }
+        }
+    }
+
+    // ── C2-005: Pmm::new bitmap-size invariant ────────────────────────────────
+
+    #[test]
+    fn new_rejects_extent_larger_than_bitmap() {
+        // The `total_frames <= N * 8` guard is the single invariant that
+        // keeps `set_bit`/`read_bit`/`clear_bit` from indexing
+        // `bitmap[byte]` out of bounds. `Pmm<1, _>` holds 1 byte = 8
+        // bits; a 16-frame extent needs 16 bits → must be rejected with
+        // OutOfRange (an init-time "BSP picked too small an N" error).
+        let extent = PhysFrameRange::new(PhysAddr(0x4000_0000), PhysAddr(0x4001_0000));
+        assert_eq!(extent.frame_count(), 16);
+        let result: Result<Pmm<1, 4>, _> = Pmm::new(extent, &[]);
+        assert_eq!(
+            result.err(),
+            Some(PmmError::OutOfRange),
+            "an extent larger than N*8 bits must be rejected"
+        );
+
+        // Exact-fit boundary: an 8-frame extent fills `Pmm<1, _>`'s 8
+        // bits exactly and must succeed.
+        let exact = PhysFrameRange::new(PhysAddr(0x4000_0000), PhysAddr(0x4000_8000));
+        assert_eq!(exact.frame_count(), 8);
+        let ok: Result<Pmm<1, 4>, _> = Pmm::new(exact, &[]);
+        assert!(
+            ok.is_ok(),
+            "an extent of exactly N*8 frames must fit the bitmap"
+        );
     }
 }

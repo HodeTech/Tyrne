@@ -18,8 +18,10 @@
 //! ## Status (T-001 + T-002)
 //!
 //! - [`Capability`] is move-only (not `Copy`, not `Clone`).
-//! - [`CapRights`] carries four v1 rights (`DUPLICATE`, `DERIVE`, `REVOKE`,
-//!   `TRANSFER`); more rights land with their subsystems.
+//! - [`CapRights`] carries the table-management rights (`DUPLICATE`,
+//!   `DERIVE`, `REVOKE`, `TRANSFER`) plus the IPC rights that landed
+//!   with their subsystems (`SEND`, `RECV`, `NOTIFY`); reserved bits are
+//!   masked away by [`CapRights::from_raw`] at the future ABI boundary.
 //! - [`CapObject`] is a typed enum that names a kernel object by its
 //!   typed handle — [`super::obj::TaskHandle`] / [`super::obj::EndpointHandle`]
 //!   / [`super::obj::NotificationHandle`] / [`super::mm::AddressSpaceHandle`]
