@@ -1,0 +1,220 @@
+//! Deterministic fake [`tyrne_hal::ContextSwitch`] for host-side tests.
+//!
+//! A real context switch saves/restores CPU registers and swaps stacks,
+//! which a host process cannot perform meaningfully. `FakeContextSwitch`
+//! instead **records** that a switch (or an `init_context`) happened, so
+//! scheduler unit tests can assert the scheduler invoked the switch the
+//! expected number of times and seeded each new task's context exactly
+//! once — without actually changing the host's control flow.
+//!
+//! Pair with [`crate::FakeCpu`] when a test needs both the [`Cpu`] surface
+//! (IRQ-mask save/restore with DAIF polarity) and the [`ContextSwitch`]
+//! surface (e.g. asserting that interrupts are masked across a switch):
+//! a single test type can hold one of each, or a test can construct both
+//! and drive them in concert.
+//!
+//! [`Cpu`]: tyrne_hal::Cpu
+//! [`ContextSwitch`]: tyrne_hal::ContextSwitch
+
+use std::sync::Mutex;
+use tyrne_hal::ContextSwitch;
+
+/// Saved register state for one cooperative task, as modelled by
+/// [`FakeContextSwitch`].
+///
+/// Carries no real registers. `switched` flips to `true` the first time
+/// this context is passed as the `current` argument of
+/// [`ContextSwitch::context_switch`] (i.e. its owning task was suspended);
+/// `initialized` flips to `true` when [`ContextSwitch::init_context`]
+/// seeds it. Tests can assert on both. The `entry_addr` / `stack_top`
+/// fields record the last `init_context` arguments so a test can confirm
+/// the scheduler seeded the intended entry point and stack.
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct FakeTaskContext {
+    /// Set when this context was saved as `current` by `context_switch`.
+    pub switched: bool,
+    /// Set when this context was seeded by `init_context`.
+    pub initialized: bool,
+    /// Entry-point address from the last `init_context` call (as `usize`).
+    pub entry_addr: usize,
+    /// Stack-top pointer from the last `init_context` call (as `usize`).
+    pub stack_top: usize,
+}
+
+/// A [`ContextSwitch`] that records switch / init call counts for test
+/// assertions instead of performing a real register save/restore.
+///
+/// # Example
+///
+/// ```
+/// use tyrne_test_hal::{FakeContextSwitch, FakeTaskContext};
+/// use tyrne_hal::ContextSwitch;
+///
+/// fn never_returns() -> ! {
+///     panic!("the fake never calls task entry points")
+/// }
+///
+/// let cs = FakeContextSwitch::new();
+/// let mut a = FakeTaskContext::default();
+/// let mut stack = [0u8; 512];
+/// let top = stack.as_mut_ptr().wrapping_add(stack.len());
+///
+/// // SAFETY: `top` is one-past a 512-byte live stack region; `never_returns`
+/// // diverges. The fake does not dereference either — it only records.
+/// unsafe { cs.init_context(&mut a, never_returns, top) };
+/// assert!(a.initialized);
+/// assert_eq!(cs.init_count(), 1);
+///
+/// let b = FakeTaskContext::default();
+/// // SAFETY: the fake performs no real switch; it only records.
+/// unsafe { cs.context_switch(&mut a, &b) };
+/// assert!(a.switched);
+/// assert_eq!(cs.switch_count(), 1);
+/// ```
+pub struct FakeContextSwitch {
+    state: Mutex<FakeContextSwitchState>,
+}
+
+#[derive(Default)]
+struct FakeContextSwitchState {
+    switch_count: u64,
+    init_count: u64,
+}
+
+impl FakeContextSwitch {
+    /// Construct a `FakeContextSwitch` with zeroed call counts.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            state: Mutex::new(FakeContextSwitchState::default()),
+        }
+    }
+
+    /// Return the number of [`ContextSwitch::context_switch`] calls so far.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex has been poisoned.
+    #[must_use]
+    pub fn switch_count(&self) -> u64 {
+        self.locked().switch_count
+    }
+
+    /// Return the number of [`ContextSwitch::init_context`] calls so far.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex has been poisoned.
+    #[must_use]
+    pub fn init_count(&self) -> u64 {
+        self.locked().init_count
+    }
+
+    fn locked(&self) -> std::sync::MutexGuard<'_, FakeContextSwitchState> {
+        self.state.lock().expect("FakeContextSwitch mutex poisoned")
+    }
+}
+
+impl Default for FakeContextSwitch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ContextSwitch for FakeContextSwitch {
+    type TaskContext = FakeTaskContext;
+
+    /// # Safety
+    ///
+    /// Inherits the [`ContextSwitch::context_switch`] trait contract, but
+    /// the fake performs **no** register save/restore and no stack swap —
+    /// it only marks `current.switched` and increments a counter. It
+    /// therefore never dereferences a real saved context and cannot
+    /// corrupt host state regardless of the caller's invariants. Callers
+    /// in tests still satisfy the contract (IRQs masked, valid contexts)
+    /// to mirror production call sequences.
+    unsafe fn context_switch(&self, current: &mut Self::TaskContext, _next: &Self::TaskContext) {
+        current.switched = true;
+        self.locked().switch_count += 1;
+    }
+
+    /// # Safety
+    ///
+    /// Inherits the [`ContextSwitch::init_context`] trait contract. The
+    /// fake records the requested `entry` / `stack_top` (as `usize`) and
+    /// marks the context initialised; it neither dereferences `stack_top`
+    /// nor calls `entry`, so no real stack or function pointer is touched.
+    unsafe fn init_context(
+        &self,
+        ctx: &mut Self::TaskContext,
+        entry: fn() -> !,
+        stack_top: *mut u8,
+    ) {
+        ctx.initialized = true;
+        ctx.entry_addr = entry as *const () as usize;
+        ctx.stack_top = stack_top as usize;
+        self.locked().init_count += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FakeContextSwitch, FakeTaskContext};
+    use tyrne_hal::ContextSwitch;
+
+    fn never_returns() -> ! {
+        panic!("FakeContextSwitch never calls task entry points")
+    }
+
+    #[test]
+    fn init_context_records_entry_stack_and_marks_initialized() {
+        let cs = FakeContextSwitch::new();
+        let mut ctx = FakeTaskContext::default();
+        let mut stack = [0u8; 512];
+        let top = stack.as_mut_ptr().wrapping_add(stack.len());
+
+        // SAFETY: `top` is one-past a 512-byte live stack; the fake only
+        // records the pointer value, it does not dereference it.
+        unsafe { cs.init_context(&mut ctx, never_returns, top) };
+
+        assert!(ctx.initialized);
+        // Under Miri a function pointer cast to an integer is given a
+        // synthetic, non-stable address: two separate `fn as usize`
+        // exposures of the same function need not be equal (they are on real
+        // hardware). Assert exact equality only off-Miri; under Miri confirm
+        // a non-zero value was recorded.
+        #[cfg(not(miri))]
+        assert_eq!(ctx.entry_addr, never_returns as *const () as usize);
+        #[cfg(miri)]
+        assert_ne!(ctx.entry_addr, 0);
+        assert_eq!(ctx.stack_top, top as usize);
+        assert_eq!(cs.init_count(), 1);
+        assert_eq!(cs.switch_count(), 0);
+    }
+
+    #[test]
+    fn context_switch_marks_current_and_counts() {
+        let cs = FakeContextSwitch::new();
+        let mut a = FakeTaskContext::default();
+        let b = FakeTaskContext::default();
+
+        // SAFETY: the fake performs no real switch; it only records.
+        unsafe { cs.context_switch(&mut a, &b) };
+        assert!(a.switched);
+        assert!(!b.switched);
+        assert_eq!(cs.switch_count(), 1);
+
+        // SAFETY: as above.
+        unsafe { cs.context_switch(&mut a, &b) };
+        assert_eq!(cs.switch_count(), 2);
+    }
+
+    #[test]
+    fn default_context_is_uninitialized_and_unswitched() {
+        let ctx = FakeTaskContext::default();
+        assert!(!ctx.initialized);
+        assert!(!ctx.switched);
+        assert_eq!(ctx.entry_addr, 0);
+        assert_eq!(ctx.stack_top, 0);
+    }
+}

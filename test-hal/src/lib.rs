@@ -15,18 +15,27 @@
 //!
 //! ## Status
 //!
-//! All five Phase 4b HAL traits now have fakes:
+//! All six accepted HAL traits now have fakes:
 //! [`FakeConsole`] (ADR-0007), [`FakeCpu`] (ADR-0008), [`FakeMmu`]
-//! (ADR-0009), [`FakeTimer`] (ADR-0010), [`FakeIrqController`] (ADR-0011).
+//! (ADR-0009), [`FakeTimer`] (ADR-0010), [`FakeIrqController`] (ADR-0011),
+//! and [`FakeContextSwitch`] (ADR-0020).
+//!
+//! Two failure-injecting [`tyrne_hal::Mmu`] decorators wrap [`FakeMmu`]
+//! so kernel rollback tests can exercise the two error variants the flat
+//! `FakeMmu` cannot itself produce: [`OutOfFramesMmu`]
+//! ([`tyrne_hal::MmuError::OutOfFrames`]) and [`BlockMappedMmu`]
+//! ([`tyrne_hal::MmuError::BlockMapped`]).
 
 mod console;
+mod context_switch;
 mod cpu;
 mod irq_controller;
 mod mmu;
 mod timer;
 
 pub use console::FakeConsole;
+pub use context_switch::{FakeContextSwitch, FakeTaskContext};
 pub use cpu::FakeCpu;
 pub use irq_controller::FakeIrqController;
-pub use mmu::{FakeAddressSpace, FakeMmu, VecFrameProvider};
+pub use mmu::{BlockMappedMmu, FakeAddressSpace, FakeMmu, OutOfFramesMmu, VecFrameProvider};
 pub use timer::FakeTimer;

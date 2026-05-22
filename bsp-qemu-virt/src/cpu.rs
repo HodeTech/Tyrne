@@ -8,13 +8,14 @@
 //! - [`tyrne_hal::Timer`] — monotonic time via the ARM Generic Timer's
 //!   **virtual** counter (`CNTVCT_EL0`) and frequency register
 //!   (`CNTFRQ_EL0`); see [ADR-0010]. The deadline-arming half
-//!   (`arm_deadline` / `cancel_deadline`) is intentionally
-//!   `unimplemented!()` until GIC + interrupt-vector-table wiring lands —
-//!   see T-009 task notes. Reading the virtual counter (rather than the
-//!   physical `CNTPCT_EL0`) keeps the read side aligned with the
-//!   deferred deadline-arming side, which programs `CNTV_CVAL_EL0` /
-//!   `CNTV_CTL_EL0` per ADR-0010's references and ADR-0022's first-
-//!   rider sub-rider.
+//!   (`arm_deadline` / `cancel_deadline`) is **implemented** (it programs
+//!   `CNTV_CVAL_EL0` / `CNTV_CTL_EL0` per ADR-0010's 2026-04-28 revision /
+//!   T-012); it stays runtime-unexercised in the v1 cooperative demo,
+//!   which arms no deadline, but the code path is complete. Reading the
+//!   virtual counter (rather than the physical `CNTPCT_EL0`) keeps the
+//!   read side aligned with the deadline-arming side, which programs
+//!   `CNTV_CVAL_EL0` / `CNTV_CTL_EL0` per ADR-0010's references and
+//!   ADR-0022's first-rider sub-rider.
 //!
 //! # Safety overview
 //!
@@ -271,6 +272,15 @@ impl Cpu for QemuVirtCpu {
         // SAFETY: `WFI` halts the core until an interrupt arrives. It does not
         // modify registers or memory; it only affects CPU power state.
         // Audit: UNSAFE-2026-0007.
+        //
+        // FORWARD HAZARD (C7-003): `nomem` is correct for v1 — `WFI` itself
+        // touches no memory, and v1's `irq_entry` is ack-and-ignore, so the
+        // idle loop observes nothing across the wake that `nomem` could
+        // reorder. When a scheduler-wake hook lands (an `irq_entry` that
+        // writes a flag idle's post-WFI code reads via a non-volatile
+        // path), `nomem` would permit that read to be hoisted *before* the
+        // `WFI`. At that point either drop `nomem` here or make the wake
+        // flag `Atomic`/volatile. Routed to the security pass.
         unsafe {
             asm!("wfi", options(nostack, nomem));
         }

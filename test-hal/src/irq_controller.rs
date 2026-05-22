@@ -4,6 +4,13 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::Mutex;
 use tyrne_hal::{IrqController, IrqNumber};
 
+/// Architectural maximum INTID; mirrors `QemuVirtGic`'s `GIC_MAX_IRQ`
+/// (= 1020). Any `enable` / `disable` call with `irq.0 >= FAKE_MAX_IRQ`
+/// panics, matching the real BSP, so kernel logic that miscomputes an
+/// out-of-range IRQ number fails on the host just as it would on hardware
+/// (where the register offset would escape the distributor MMIO window).
+const FAKE_MAX_IRQ: u32 = 1020;
+
 /// A [`IrqController`] whose enable set, pending queue, and EOI history
 /// are visible to tests.
 ///
@@ -92,10 +99,25 @@ impl Default for FakeIrqController {
 
 impl IrqController for FakeIrqController {
     fn enable(&self, irq: IrqNumber) {
+        // Mirror QemuVirtGic::enable's architectural range guard so a
+        // kernel bug that constructs an out-of-range IrqNumber fails on
+        // the host instead of giving false confidence (C8-004 / X4c-009).
+        assert!(
+            irq.0 < FAKE_MAX_IRQ,
+            "FakeIrqController::enable: irq.0 = {} exceeds architectural max {}",
+            irq.0,
+            FAKE_MAX_IRQ,
+        );
         self.locked().enabled.insert(irq);
     }
 
     fn disable(&self, irq: IrqNumber) {
+        assert!(
+            irq.0 < FAKE_MAX_IRQ,
+            "FakeIrqController::disable: irq.0 = {} exceeds architectural max {}",
+            irq.0,
+            FAKE_MAX_IRQ,
+        );
         self.locked().enabled.remove(&irq);
     }
 
@@ -174,6 +196,22 @@ mod tests {
 
         ic.end_of_interrupt(irq);
         assert_eq!(ic.eoi_history(), vec![IrqNumber(30)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds architectural max")]
+    fn enable_panics_on_out_of_range_irq() {
+        let ic = FakeIrqController::new();
+        // 1020 is the first out-of-range INTID (== FAKE_MAX_IRQ); the
+        // spurious sentinel 1023 is also above the bound.
+        ic.enable(IrqNumber(1020));
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds architectural max")]
+    fn disable_panics_on_out_of_range_irq() {
+        let ic = FakeIrqController::new();
+        ic.disable(IrqNumber(1023));
     }
 
     #[test]

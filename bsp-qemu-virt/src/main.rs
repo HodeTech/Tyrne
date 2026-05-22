@@ -907,17 +907,22 @@ pub extern "C" fn kernel_entry() -> ! {
     // `kernel/src/mm/address_space.rs::tests`.
     let bootstrap_root_pa = l0_root.as_usize();
     // SAFETY:
-    // - AS_ARENA was just written above; momentary &mut for the
-    //   create_address_space call drops at scope end. Audit:
-    //   UNSAFE-2026-0010 (StaticCell pattern) + UNSAFE-2026-0014
-    //   (momentary &mut to the just-initialised arena).
+    // - AS_ARENA was just written above; the momentary &mut to the
+    //   just-initialised arena (the `assume_init_mut()` line) drops at
+    //   scope end. Audit: UNSAFE-2026-0010 (StaticCell pattern) +
+    //   UNSAFE-2026-0014 (momentary &mut to the just-initialised arena).
+    //   These two entries cover ONLY the StaticCell/arena publish
+    //   mechanics, not the `from_existing_root` wrap below.
     // - `QemuVirtAddressSpace::from_existing_root(l0_root)` requires
     //   `l0_root` to be a currently-live VMSAv8 L0 translation table
     //   (see its `# Safety` doc). `mmu_bootstrap` populated this exact
     //   frame and wrote its PA into `TTBR0_EL1` before this block runs
     //   (we are post-`mmu_bootstrap` at this point); the kernel-half
     //   mappings are installed; the descriptors are correctly encoded
-    //   per the host-tested `tyrne_hal::mmu::vmsav8` encoders.
+    //   per the host-tested `tyrne_hal::mmu::vmsav8` encoders. The wrap
+    //   does NOT zero-fill the live root (which would unmap the running
+    //   kernel) — that is why it cannot route through the zero-fill
+    //   `create_address_space`. Audit: UNSAFE-2026-0028.
     let bootstrap_as_handle = unsafe {
         let arena = (*AS_ARENA.0.get()).assume_init_mut();
         let inner = mmu::QemuVirtAddressSpace::from_existing_root(l0_root);

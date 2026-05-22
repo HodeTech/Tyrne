@@ -66,6 +66,15 @@ pub struct TrapFrame {
     /// `ELR_EL1` (return address) and `SPSR_EL1` (saved PSTATE) at offset 0xA0.
     pub elr_spsr: [u64; 2],
     /// Padding — keeps the frame at 192 bytes total (16-byte SP-aligned).
+    ///
+    /// **Deliberately uninitialised.** The `vectors.s` trampoline does
+    /// `sub sp, sp, #192` and writes only offsets `0x00..0xB0`; this slot
+    /// (`[sp, #0xB0]`) is left holding whatever was previously on the
+    /// stack. `irq_entry` never reads it, so this is sound — but note that
+    /// a future handler `#[derive(Debug)]`-printing the whole `TrapFrame`
+    /// (the struct derives `Debug`) would emit garbage for this field
+    /// (C7-010). Zero it in the trampoline if clean debug output is ever
+    /// needed.
     pub _reserved: [u64; 2],
 }
 

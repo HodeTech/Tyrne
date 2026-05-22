@@ -86,6 +86,15 @@ pub const NANOS_PER_SECOND: u64 = 1_000_000_000;
 /// if a caller forgets, rather than degrading to an implicit
 /// divide-by-zero (which produces an unfriendly compile-time error in
 /// const context and an unfriendly runtime error otherwise).
+///
+/// **Caller contract.** This helper is on the `Timer::now_ns` hot path,
+/// where `error-handling.md` §4 forbids panics outside one-shot init.
+/// Callers must therefore pass a `frequency_hz` they validated as
+/// non-zero **at init** (the BSP `QemuVirtCpu::new` pattern: read +
+/// assert + cache `CNTFRQ_EL0`), so the assertion is provably
+/// unreachable on the hot path. Any caller that cannot guarantee a
+/// non-zero frequency at the call site must validate it before calling,
+/// not rely on this assert as runtime error-handling.
 #[allow(
     clippy::cast_possible_truncation,
     reason = "saturating cast handled explicitly by the if/else guard at the end of this function"
