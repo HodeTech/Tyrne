@@ -215,7 +215,7 @@ after the first yield.
 
 ### Enabling QEMU exception logging
 
-Add `--debug` to `tools/run-qemu.sh` or pass flags directly:
+Pass `--int-log` to `tools/run-qemu.sh` (it adds `-d int -D /tmp/qemu_int.log` to the QEMU invocation), or pass the flags directly:
 
 ```sh
 qemu-system-aarch64 ... -d int -D /tmp/qemu_int.log
