@@ -14,14 +14,14 @@ A new BSP crate that compiles for `aarch64-unknown-none` and provides a minimal 
 
 ### Sub-breakdown
 
-1. **ADR-0032 — Pi 4 boot flow.** Load address under Pi firmware (`kernel_address` in `config.txt`); Pi firmware's initial CPU mode; what `config.txt` settings Tyrne expects.
+1. **ADR-0042 — Pi 4 boot flow.** Load address under Pi firmware (`kernel_address` in `config.txt`); Pi firmware's initial CPU mode; what `config.txt` settings Tyrne expects.
 2. **New crate** `bsp-pi4/` with its own `Cargo.toml`, `build.rs`, `linker.ld`, `boot.s`, `main.rs`, `console.rs` — mirroring `bsp-qemu-virt` structure.
 3. **Pi firmware interaction** — `config.txt` documentation and the expected load / entry addresses.
 4. **Placeholder main** that just spins in `wfe`; no console yet (D3 adds that).
 
 ### Acceptance criteria
 
-- ADR-0032 Accepted.
+- ADR-0042 Accepted.
 - `cargo build --target aarch64-unknown-none -p tyrne-bsp-pi4` produces an ELF.
 - `config.txt` example committed alongside.
 
@@ -29,11 +29,11 @@ A new BSP crate that compiles for `aarch64-unknown-none` and provides a minimal 
 
 ## Milestone D2 — GIC-400 implementation
 
-Pi 4 uses GIC-400 (GICv2-ish, compatible subset). The `IrqController` impl differs from `bsp-qemu-virt`'s GICv3.
+Pi 4 uses GIC-400 (a GICv2 implementation). The `IrqController` impl differs from `bsp-qemu-virt`'s GICv2 only in base addresses and board specifics — QEMU virt is GICv2, Pi 4 is GIC-400 (also GICv2); no IOMMU in v1, per ADR-0036.
 
 ### Sub-breakdown
 
-1. **ADR-0033 — GIC-400 register layout.** Distributor / CPU-interface base addresses on BCM2711; register offsets used; which features are used vs. ignored.
+1. **ADR-0043 — GIC-400 register layout.** Distributor / CPU-interface base addresses on BCM2711; register offsets used; which features are used vs. ignored.
 2. **`IrqController` impl** in `bsp-pi4/src/irq.rs`.
 3. **Tests** — host-side register layout; the real verification is D8 on hardware.
 
@@ -50,14 +50,14 @@ Pi 4 has both a mini-UART and a PL011 (UART0). We use the PL011 for diagnostic o
 
 ### Sub-breakdown
 
-1. **ADR-0034 — Pi 4 console choice.** PL011 vs. mini-UART; which pins; what baud rate; whether GPIO pin-muxing is part of the BSP or out of scope.
+1. **ADR-0044 — Pi 4 console choice.** PL011 vs. mini-UART; which pins; what baud rate; whether GPIO pin-muxing is part of the BSP or out of scope.
 2. **PL011 init sequence** — baud-rate register programming (QEMU's PL011 is pre-initialized; Pi's is not).
 3. **`Console` impl** in `bsp-pi4/src/console.rs` using the same trait as `bsp-qemu-virt` with the Pi-specific init.
 4. **Tests** — host-side: none meaningful (hardware behaviour); D7 exercises it on real hardware.
 
 ### Acceptance criteria
 
-- ADR-0034 Accepted.
+- ADR-0044 Accepted.
 - `Console` impl compiles; the first real-hardware smoke will validate it.
 
 ---
@@ -84,14 +84,14 @@ MMU activation on Pi 4. Memory layout is different (RAM at `0x0000_0000` on Pi v
 
 ### Sub-breakdown
 
-1. **ADR-0035 — Pi 4 memory layout.** Kernel load address; peripheral window (`0xFE00_0000` class on BCM2711); identity vs. high-half choices here.
+1. **ADR-0045 — Pi 4 memory layout.** Kernel load address; peripheral window (`0xFE00_0000` class on BCM2711); identity vs. high-half choices here.
 2. **`Mmu` impl** — inherits VMSAv8 from QEMU's impl; differences in the linker script and the MMIO mapping tables.
 3. **Cache maintenance** — Pi 4 specifics (cache lines, I/D separation, which invalidate sequences are necessary).
 4. **Tests** — B2's test suite applied to Pi 4.
 
 ### Acceptance criteria
 
-- ADR-0035 Accepted.
+- ADR-0045 Accepted.
 - Kernel runs with the MMU on on Pi 4.
 
 ---
@@ -102,7 +102,7 @@ A userspace-agnostic library crate that parses a flattened device tree into a ty
 
 ### Sub-breakdown
 
-1. **ADR-0036 — DTB parsing scope.** Full FDT spec support vs. a minimal read-only subset; zero-copy vs. owned parsing; allocation strategy (probably `no_std + alloc` with an arena).
+1. **ADR-0046 — DTB parsing scope.** Full FDT spec support vs. a minimal read-only subset; zero-copy vs. owned parsing; allocation strategy (probably `no_std + alloc` with an arena).
 2. **New crate** `tyrne-dt/` — separate from `tyrne-hal` so BSPs opt in.
 3. **Parser API** — `DeviceTree::from_bytes(ptr) -> Result<DeviceTree, Error>`; iterators over nodes; property lookup.
 4. **Pi 4 integration** — `kernel_entry` parses the DTB passed in `x0` and emits a `BootInfo` struct.
@@ -110,7 +110,7 @@ A userspace-agnostic library crate that parses a flattened device tree into a ty
 
 ### Acceptance criteria
 
-- ADR-0036 Accepted.
+- ADR-0046 Accepted.
 - `tyrne-dt` parses a real DTB into typed records.
 - `bsp-pi4` uses it at boot; the kernel's `BootInfo` contains at least memory-map and UART-address entries read from the DTB.
 
@@ -157,13 +157,16 @@ Business review; the phase is the most significant in terms of validating that "
 
 ## ADR ledger for Phase D
 
-| ADR | Purpose | Expected state |
-|-----|---------|----------------|
-| ADR-0032 | Pi 4 boot flow | D1 |
-| ADR-0033 | GIC-400 register layout | D2 |
-| ADR-0034 | Pi 4 console choice (PL011 vs. mini-UART) | D3 |
-| ADR-0035 | Pi 4 memory layout | D5 |
-| ADR-0036 | DTB parsing scope | D6 |
+| ADR | Purpose | Expected state | Note |
+|-----|---------|----------------|------|
+| ADR-0042 | Pi 4 boot flow | D1 | renumbered 2026-05-22, was ADR-0032 (collided with the live Accepted ADR-0032 endpoint-rollback-and-cancel-recv; Phase D shifted above Phase C's new ceiling) |
+| ADR-0043 | GIC-400 register layout | D2 | renumbered 2026-05-22, was ADR-0033 (reserved by phase-b.md §B5 ledger for the kernel high-half migration) |
+| ADR-0044 | Pi 4 console choice (PL011 vs. mini-UART) | D3 | renumbered 2026-05-22, was ADR-0034 (reserved by phase-b.md §B5 ledger for kernel-image section permissions) |
+| _(none)_ | D4 — ARM generic timer on Pi 4 | D4 | implementation-only milestone; the generic-timer behaviour and the `Timer` trait are already settled by ADR-0010, so D4 requires no new ADR. The ledger jumps D3 → D5 for this reason. |
+| ADR-0045 | Pi 4 memory layout | D5 | renumbered 2026-05-22, was ADR-0035 (collided with the live Accepted ADR-0035 physical-memory-manager) |
+| ADR-0046 | DTB parsing scope | D6 | renumbered 2026-05-22, was ADR-0036 (avoids the ADR-0036 supersession slot reserved for the GICv2/no-IOMMU decision) |
+
+Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
 
 ## Open questions carried into Phase D
 

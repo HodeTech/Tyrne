@@ -14,14 +14,14 @@ Raspberry Pi 5 uses BCM2712 (Cortex-A76) with a new RP1 southbridge that handles
 
 ### Sub-breakdown
 
-1. **ADR-0052 — Pi 5 differences.** RP1 southbridge, peripheral topology, console routing, GIC changes.
+1. **ADR-0063 — Pi 5 differences.** RP1 southbridge, peripheral topology, console routing, GIC changes.
 2. **New BSP** `bsp-pi5/` — mirrors `bsp-pi4`'s shape with Pi 5 specifics.
 3. **QEMU parity** — Phase A / B features work on Pi 5.
 4. **Additive expectation**: the HAL trait surfaces do not change; any change is a signal for an ADR that reviews whether the HAL was wrong.
 
 ### Acceptance criteria
 
-- ADR-0052 Accepted.
+- ADR-0063 Accepted.
 - Pi 5 boots and runs the test suite from Phase D's parity list.
 
 ## Milestone H2 — `bsp-jetson` (CPU-only)
@@ -30,13 +30,13 @@ NVIDIA Jetson Orin Nano / Orin NX / AGX Orin as aarch64 boards. Per [ADR-0004](.
 
 ### Sub-breakdown
 
-1. **ADR-0053 — Jetson boot chain.** CBoot / U-Boot sequence, where Tyrne inserts itself.
+1. **ADR-0064 — Jetson boot chain.** CBoot / U-Boot sequence, where Tyrne inserts itself.
 2. **New BSP** `bsp-jetson/` with the specific Jetson model(s) supported.
 3. **`config` documentation** for users setting up Jetson hardware.
 
 ### Acceptance criteria
 
-- ADR-0053 Accepted.
+- ADR-0064 Accepted.
 - A Jetson board boots Tyrne to the Phase A / B exit bar.
 - Release notes are explicit: Jetson's GPU / NPU are inaccessible.
 
@@ -46,14 +46,14 @@ Candidate: an MMU-capable RISC-V board — e.g., a SiFive HiFive Unmatched / Unl
 
 ### Sub-breakdown
 
-1. **ADR-0054 — RISC-V target choice.** Specific board, specific ISA subset (RV32 vs. RV64, extensions).
+1. **ADR-0065 — RISC-V target choice.** Specific board, specific ISA subset (RV32 vs. RV64, extensions).
 2. **`Cpu` / `Mmu` / `IrqController` extensions or splits** if needed — e.g., RISC-V's PLIC differs from GIC enough that an adapter or sibling trait may be warranted. If so, an ADR captures the architectural separation.
 3. **New BSP** `bsp-<target>/`.
 4. **Parity tests** on real hardware for the Phase A / B subset.
 
 ### Acceptance criteria
 
-- ADR-0054 Accepted.
+- ADR-0065 Accepted.
 - RISC-V BSP boots Tyrne; the test suite runs within the architecture's capabilities.
 
 ### Phase H closure
@@ -62,11 +62,11 @@ Business review. The HAL abstraction has been tested by three architecturally di
 
 ## ADR ledger for Phase H
 
-| ADR | Purpose | Expected state |
-|-----|---------|----------------|
-| ADR-0052 | Pi 5 differences | H1 |
-| ADR-0053 | Jetson boot chain | H2 |
-| ADR-0054 | RISC-V target choice | H3 |
+| ADR | Purpose | Expected state | Notes |
+|-----|---------|----------------|-------|
+| ADR-0063 | Pi 5 differences | H1 | renumbered 2026-05-22, was ADR-0063 (cascade from the Phase C/D collision fix, MR-001) |
+| ADR-0064 | Jetson boot chain | H2 | renumbered 2026-05-22, was ADR-0064 (cascade) |
+| ADR-0065 | RISC-V target choice | H3 | renumbered 2026-05-22, was ADR-0065 (cascade) |
 
 ## Open questions carried into Phase H
 
