@@ -4,6 +4,8 @@
 - **Date:** 2026-04-20
 - **Deciders:** @cemililik
 
+> **Correction (2026-05-22).** This ADR's "`GICv3` distributor" label (§Decision drivers) is stale: QEMU virt is GICv2 / no IOMMU in v1; the `Iommu` trait is a stub reserved for a future SMMUv3 ADR. The address `0x0800_0000` is correct — only the version label is wrong. See [ADR-0036](0036-qemu-virt-gicv2-no-iommu-v1.md). The original body below is preserved unchanged for the historical record (append-only).
+
 ## Context
 
 Phase 4c needs the kernel to boot. Getting the CPU from QEMU's entry point into `kernel_main` requires decisions that bake into the build artifact for the lifetime of the BSP:
@@ -150,6 +152,26 @@ Each will be resolved by a future ADR or a paired update.
 - **Stack size policy.** 64 KiB is a placeholder; a real kernel will want per-task stacks with guard pages, which requires MMU + scheduler integration.
 - **Measured boot.** Hooks for a measurement register to record the boot code. Out of scope until Pi 4 hardware support and a TPM / secure-element substitute.
 - **`.init_array` / C++-style static init.** The kernel does not use these today; if a future dependency pulls them in, the linker script needs to call the init array from Rust.
+
+## Revision notes
+
+- **2026-05-22 — §Memory-layout diagram updated for the `.boot_pt` reservation (ADR-0027).** The §Memory-layout diagram above predates [ADR-0027](0027-kernel-virtual-memory-layout.md), which added four bootstrap page-table frames (16 KiB) inside `.bss`. The original diagram is preserved (append-only); the current layout is:
+
+  ```
+  0x40080000  _start (.text.boot)
+              .text
+              .rodata
+              .data
+              .bss          — zeroed in _start
+                ├─ .boot_pt — 4 × 4 KiB bootstrap page-table frames (16 KiB),
+                │             bracketed by __boot_pt_start / __boot_pt_end,
+                │             pre-zeroed by the BSS-zero loop (ADR-0027 / T-016)
+                └─ (other BSS)
+              (64 KiB)      — initial stack region
+              __stack_top
+  ```
+
+  The kernel image's load address stays at `0x4008_0000` and is identity-mapped (no mapped-vs-identity split in v1). See the §Open-questions "Boot-time MMU activation" rider above and [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) for the authoritative section ordering.
 
 ## References
 

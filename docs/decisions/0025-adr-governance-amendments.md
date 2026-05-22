@@ -133,7 +133,7 @@ For the two rules above to be fully in effect:
 
 - [ADR-0013 — Roadmap and planning process](0013-roadmap-and-planning.md) — the parent ADR these rules amend.
 - [`docs/standards/unsafe-policy.md §3`](../standards/unsafe-policy.md) — the audit-log append-only policy whose pattern the ADR rider rule mirrors.
-- [`.claude/skills/write-adr/SKILL.md`](../../.claude/skills/write-adr/SKILL.md) — updated in commit `56fd9eb` to encode the dependency-chain procedure; cool-down step removed in the follow-up.
+- [`.agents/skills/write-adr/SKILL.md`](../../.agents/skills/write-adr/SKILL.md) — updated in commit `56fd9eb` to encode the dependency-chain procedure; cool-down step removed in the follow-up.
 - [`docs/decisions/template.md`](template.md) — updated in commit `56fd9eb` to include the "Dependency chain" subsection.
 - [T-009 mini-retro](../analysis/reviews/business-reviews/2026-04-27-T-009-mini-retro.md) — the retrospective that produced the rules.
 - [ADR-0021](0021-raw-pointer-scheduler-ipc-bridge.md) and [ADR-0022](0022-idle-task-and-typed-scheduler-deadlock.md) — the four-rider data points that motivated all three drafts (including the withdrawn cool-down).

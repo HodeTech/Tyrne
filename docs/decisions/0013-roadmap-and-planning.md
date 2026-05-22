@@ -6,7 +6,7 @@
 
 ## Context
 
-Tyrne is a multi-year solo project with AI assistance. The ADR process ([ADR-0001](0001-microkernel-architecture.md) onward) answers *why* decisions are made; the [standards](../standards/) answer *how* work is done; the [skills](../../.claude/skills/) encode procedures for recurring tasks. What is missing is the **sequencing and tracking layer**: which phase of the project we are in, which milestone is active, which task is being worked on, and what reviews happen when a milestone lands or when a change affects security / performance.
+Tyrne is a multi-year solo project with AI assistance. The ADR process ([ADR-0001](0001-microkernel-architecture.md) onward) answers *why* decisions are made; the [standards](../standards/) answer *how* work is done; the [skills](../../.agents/skills/) encode procedures for recurring tasks. What is missing is the **sequencing and tracking layer**: which phase of the project we are in, which milestone is active, which task is being worked on, and what reviews happen when a milestone lands or when a change affects security / performance.
 
 A project with no deadline still needs a roadmap — not to meet dates, but so that work proceeds in a considered order, so that the maintainer can pause for weeks and return without having to page the entire project back in, and so that contributors (human or AI) arriving later know the direction without guessing. Without a plan, time does not produce progress; it produces ad-hoc choices that accumulate.
 
@@ -126,7 +126,7 @@ Reviews are **event-triggered**, not calendar-triggered. See the individual revi
 
 ### Changing the roadmap
 
-- **Adding a task** — use the [`start-task`](../../.claude/skills/start-task/SKILL.md) skill; new tasks get the next T-NNN and land under the right phase folder.
+- **Adding a task** — use the [`start-task`](../../.agents/skills/start-task/SKILL.md) skill; new tasks get the next T-NNN and land under the right phase folder.
 - **Reordering tasks within a milestone** — edit `phases/phase-<letter>.md` and each affected task's frontmatter.
 - **Moving tasks between milestones (same phase)** — edit the phase file and the task's frontmatter.
 - **Moving tasks between phases** — move the file from `analysis/tasks/phase-<from>/` to `analysis/tasks/phase-<to>/`, update the task's frontmatter, note the move in the task's review-history section.
@@ -136,9 +136,9 @@ Reviews are **event-triggered**, not calendar-triggered. See the individual revi
 
 ### Skills
 
-- [`start-task`](../../.claude/skills/start-task/SKILL.md) — create a new task file in the correct phase folder, assign next T-NNN, update `current.md` on status transition.
-- [`conduct-review`](../../.claude/skills/conduct-review/SKILL.md) — produce a review artifact, taking the review type as input, following that type's master plan.
-- [`perform-code-review`](../../.claude/skills/perform-code-review/SKILL.md) and [`perform-security-review`](../../.claude/skills/perform-security-review/SKILL.md) — pre-existing skills for executing a review during development; they now also produce an artifact in the corresponding `analysis/reviews/<type>/` directory.
+- [`start-task`](../../.agents/skills/start-task/SKILL.md) — create a new task file in the correct phase folder, assign next T-NNN, update `current.md` on status transition.
+- [`conduct-review`](../../.agents/skills/conduct-review/SKILL.md) — produce a review artifact, taking the review type as input, following that type's master plan.
+- [`perform-code-review`](../../.agents/skills/perform-code-review/SKILL.md) and [`perform-security-review`](../../.agents/skills/perform-security-review/SKILL.md) — pre-existing skills for executing a review during development; they now also produce an artifact in the corresponding `analysis/reviews/<type>/` directory.
 
 ### Integration with ADRs
 
@@ -212,7 +212,7 @@ The roadmap does not replace ADRs. It sequences them. A task may require an ADR 
 
 ## References
 
-- Existing [ADRs](.), [standards](../standards/), [skills](../../.claude/skills/).
+- Existing [ADRs](.), [standards](../standards/), [skills](../../.agents/skills/).
 - User story format — agile community prior art, adapted here.
 - Amazon six-pager / working-backwards — partial inspiration for the "what, why, definition of done" structure.
 - Hubris roadmap practices — public prior art.

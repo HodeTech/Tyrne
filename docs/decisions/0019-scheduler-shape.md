@@ -213,6 +213,13 @@ impl Scheduler {
 
 - **2026-04-27 — pointer to architecture doc.** [T-008](../analysis/tasks/phase-b/T-008-architecture-docs.md) created [`docs/architecture/scheduler.md`](../architecture/scheduler.md), which synthesises this ADR (FIFO ready queue + bounded arena), [ADR-0020](0020-cpu-trait-v2-context-switch.md) (`ContextSwitch` split), [ADR-0021](0021-raw-pointer-scheduler-ipc-bridge.md) (raw-pointer bridge), and [ADR-0022](0022-idle-task-and-typed-scheduler-deadlock.md) (idle task + `SchedError::Deadlock`) into a single readable picture of the scheduler's `how`. The ADR body is unchanged; this rider provides the bidirectional cross-reference T-008's DoD asks for. The "Idle task" open question above was settled by ADR-0022.
 
+- **2026-05-22 — the §Public-API sketch is superseded in shape by ADR-0021/0026/0028.** The `&mut self` method sketch in §Public API and the separate `TaskContexts<C>` struct above predate three later ADRs and no longer match the shipped [`kernel/src/sched/mod.rs`](../../kernel/src/sched/mod.rs). The original sketch is preserved (append-only); for the evolved shape, read:
+  - [ADR-0021](0021-raw-pointer-scheduler-ipc-bridge.md) — `yield_now` / `ipc_send_and_yield` / `ipc_recv_and_yield` are now module-level `unsafe fn` **free functions** taking `*mut Scheduler<C>` (the raw-pointer bridge), not `&mut self` methods. The `TaskContexts<C>` struct is **inlined directly into `Scheduler<C>`** as a `contexts: [C::TaskContext; TASK_ARENA_CAPACITY]` field; no separate `TaskContexts<C>` type exists.
+  - [ADR-0026](0026-idle-dispatch-fallback.md) — adds the dedicated `idle: Option<TaskHandle>` fallback slot (the "Idle task" open question's production shape; the 2026-04-27 rider noted ADR-0022 settled it, ADR-0026 then superseded the idle-task-location axis).
+  - [ADR-0028](0028-address-space-data-structure.md) — adds the `task_address_space_handles: [Option<AddressSpaceHandle>; TASK_ARENA_CAPACITY]` parallel array and the `activate_address_space: impl FnOnce(AddressSpaceHandle)` activation-on-context-switch hook parameter threaded through the bridge functions.
+
+  The §Decision outcome (FIFO ready queue + bounded parallel arenas + `current` slot) is unchanged by these; only the call shape and the field set evolved.
+
 ## References
 
 - [ADR-0017: IPC primitive set](0017-ipc-primitive-set.md) — the IPC layer this scheduler wires up.
