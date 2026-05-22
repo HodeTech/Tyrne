@@ -8,7 +8,7 @@ This guide describes the GitHub Actions pipeline configured in [`.github/workflo
 |-----|-----------|----------------------|----------|
 | `lint-and-host-test` | pinned nightly + `rustfmt` + `clippy` | ~2 min | `cargo fmt --check` diff, any clippy warning, any failing host test |
 | `kernel-build` | pinned nightly + `aarch64-unknown-none` + `clippy` | ~1 min | `cargo kernel-build` error, any kernel-clippy warning |
-| `host-stable-check` | stable + `rustfmt` + `clippy` | ~2 min | host crates failing to fmt/clippy/build/test on stable Rust |
+| `host-stable-check` | stable (no extra components) | ~2 min | host crates failing to build or test on stable Rust |
 | `miri` | pinned nightly + `miri` component | ~10–15 min | Any Stacked Borrows violation in `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` |
 | `coverage` | pinned nightly + `llvm-tools-preview` + `cargo-llvm-cov` | ~3–5 min | **Never** (informational only, `continue-on-error: true`) |
 
@@ -20,7 +20,7 @@ The kernel needs nightly to build (inline asm intrinsics / lang items — see `r
 
 ### What does `host-stable-check` give us, then?
 
-A genuine "the host-buildable crates compile, lint, and test on **stable** Rust" signal. It runs `cargo +stable fmt/clippy/build/test` over the workspace `default-members` (kernel, hal, test-hal) — the bare-metal BSP is excluded because it needs nightly. The `+stable` prefix bypasses the `rust-toolchain.toml` override so this job exercises stable for real. If a host crate ever grows a `#![feature(...)]` it does not strictly need, this job is the one that goes red on stable.
+A genuine "the host-buildable crates compile and pass tests on **stable** Rust" signal. It runs `cargo +stable build` and `cargo +stable host-test` over the workspace `default-members` (kernel, hal, test-hal) — the bare-metal BSP is excluded because it needs nightly. The `+stable` prefix bypasses the `rust-toolchain.toml` override so this job exercises stable for real. It deliberately does **not** run clippy/fmt with `-D warnings`: `clippy::pedantic` is `warn` workspace-wide and stable is a rolling toolchain, so a future stable pedantic lint could redden the gate with no code change of ours — lint/format enforcement lives only on the pinned-nightly jobs. If a host crate ever grows a `#![feature(...)]` it does not strictly need, this job is the one that goes red on stable.
 
 ### How the action versions are pinned
 
@@ -44,7 +44,7 @@ The CI matrix mirrors what a contributor should run locally before opening a PR:
 | `cargo host-test` | `lint-and-host-test` (step 3) |
 | `cargo kernel-build` | `kernel-build` |
 | `cargo kernel-clippy` | `kernel-build` |
-| `cargo +stable fmt/clippy/build/test` (host crates) | `host-stable-check` |
+| `cargo +stable build` + `cargo +stable host-test` (host crates) | `host-stable-check` |
 | `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` | `miri` |
 | `cargo llvm-cov --workspace --exclude tyrne-bsp-qemu-virt --summary-only` | `coverage` |
 
@@ -87,5 +87,5 @@ To bump either pin:
 The `coverage` job is marked `continue-on-error: true`. GitHub's UI renders this as a **neutral / yellow** verdict rather than green or red. Be deliberate when configuring branch-protection rules:
 
 - **Do not add `coverage` to the required-checks list** while it is informational; the neutral result does not satisfy `required == passing`, so every push would be blocked even when coverage is fine.
-- **Do add `lint-and-host-test`, `kernel-build`, `host-stable-check`, and `miri`** to required checks — those four are the real gates.
+- **Do add the four real gates** to required checks. GitHub matches each job's display **name**, not its id, so add these exact strings: `fmt + clippy + host tests (nightly)`, `aarch64-unknown-none kernel build (nightly)`, `host crates on stable`, and `miri (Stacked Borrows)`.
 - When coverage flips from informational to enforcing (planned post-T-011), remove `continue-on-error: true` first, confirm a full run is green, then add the job to branch-protection.

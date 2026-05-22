@@ -18,7 +18,7 @@ How Tyrne is built, how its dependencies are managed, what its CI gates are, and
 - The pinned nightly is bumped deliberately, via a dedicated PR, with a commit message explaining the upgrade. Do not update the toolchain as a side effect of other changes.
 - `Cargo.lock` is format `version = 4`, which requires a reasonably recent Cargo (Rust 1.78+). The pinned nightly is far newer than that floor, so this is not a constraint today; it is recorded here only so that, should an external contributor on an older Cargo ever appear, the minimum is known.
 - The kernel jobs run against the pinned nightly only — the same toolchain `rust-toolchain.toml` selects for every in-repo `cargo` invocation (its override beats `rustup default`). The `lint-and-host-test`, `kernel-build`, `miri`, and `coverage` jobs all select the pin explicitly. Multiple-toolchain matrices are not useful for a `no_std` kernel that requires nightly.
-- One additional job, `host-stable-check`, runs `cargo +stable fmt/clippy/build/test` over the host-buildable crates (workspace `default-members`: kernel, hal, test-hal; the bare-metal BSP is excluded because it needs nightly). It is a deliberate "host crates compile clean on stable Rust" gate, not a kernel build — see [ci.md](../guides/ci.md).
+- One additional job, `host-stable-check`, runs `cargo +stable build` and `cargo +stable host-test` over the host-buildable crates (workspace `default-members`: kernel, hal, test-hal; the bare-metal BSP is excluded because it needs nightly). It is a deliberate "host crates compile and pass tests on stable Rust" gate, not a kernel build. It deliberately does **not** run clippy/fmt with `-D warnings`: `clippy::pedantic` is `warn` workspace-wide and stable is a rolling toolchain, so a future stable release could add a pedantic lint that reddens the gate with no code change of ours — lint/format enforcement therefore lives only on the pinned-nightly jobs. See [ci.md](../guides/ci.md).
 - Cross-compile targets are installed with `rustup target add` per CI job:
   - `aarch64-unknown-none` (primary kernel target; the only target pinned in `rust-toolchain.toml`).
   - `aarch64-unknown-none-softfloat` (added on demand if FP-trap behaviour ever requires it; not pinned and not used by any current job).
@@ -68,11 +68,11 @@ CI was set up in Phase 4 (completed 2026-04-23); the gates below define the bar.
 
 These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml):
 
-- `cargo fmt --all -- --check` (`lint-and-host-test`, also re-run on stable by `host-stable-check`).
+- `cargo fmt --all -- --check` (`lint-and-host-test`).
 - Clippy with `-D warnings`, run as the two aliases CI executes: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates and `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP. The two aliases together cover the whole workspace; their combination is the executed equivalent of `cargo clippy --workspace --all-targets -- -D warnings`.
 - `cargo test` — host-runnable unit and integration tests over `default-members` (`lint-and-host-test`; re-run on stable by `host-stable-check`).
 - `cargo kernel-build` — the kernel ELF builds clean for `aarch64-unknown-none` (`kernel-build`).
-- Host crates build/lint/test clean on **stable** Rust (`host-stable-check`).
+- Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
 - Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
 
 ### Planned gates (not yet enforced)
@@ -183,7 +183,7 @@ When the project moves out of solo phase:
 
 - `main` is protected.
 - PRs to `main` require at least one approval (two for security-sensitive changes — see [security-review.md](security-review.md)).
-- Required status checks: the gates listed under "Required gates (enforced today, block merge)" above — `lint-and-host-test`, `kernel-build`, `host-stable-check`, and `miri`. The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
+- Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), and `miri (Stacked Borrows)` (job `miri`). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
 - Force-push to `main` disabled.
 - Force-push to protected `release/*` branches disabled.
 

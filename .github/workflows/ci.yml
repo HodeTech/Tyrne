@@ -133,13 +133,20 @@ jobs:
       - name: cargo kernel-clippy
         run: cargo +$NIGHTLY_PIN kernel-clippy
 
-  # ─── Host stable check: host crates build clean on stable ───────────────
-  # A genuine "the host-buildable crates compile, lint, and test on stable
+  # ─── Host stable check: host crates compile + test on stable ────────────
+  # A genuine "the host-buildable crates compile and pass tests on stable
   # Rust" gate. The kernel image itself needs nightly (inline asm / lang
   # items) so the bare-metal BSP is NOT built here — this job runs only the
   # workspace default-members (kernel, hal, test-hal), which carry no
   # nightly-only features today. If a host crate ever grows a `#![feature]`,
   # this job is the one that will (correctly) go red on stable.
+  #
+  # Deliberately build + test only — NOT clippy/fmt with `-D warnings`.
+  # `clippy::pedantic` is `warn` workspace-wide and stable is a rolling
+  # toolchain: a future stable release can add a pedantic lint that turns a
+  # `-D warnings` gate red with no code change of ours. Lint/format
+  # enforcement therefore lives only on the pinned-nightly jobs (which run
+  # host-clippy + fmt), keeping this gate immune to upstream lint drift.
   host-stable-check:
     name: host crates on stable
     runs-on: ubuntu-latest
@@ -149,9 +156,9 @@ jobs:
           # CI only reads the repo; do not persist the token into local git
           # config (least-privilege; avoids credential reuse by later steps).
           persist-credentials: false
-      - name: Install Rust stable with rustfmt + clippy
+      - name: Install Rust stable
         run: |
-          rustup toolchain install stable --component rustfmt --component clippy --no-self-update
+          rustup toolchain install stable --no-self-update
       - name: Cache cargo registry and build
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
@@ -164,12 +171,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-stable-
       # Explicit `+stable` bypasses the rust-toolchain.toml override so this
-      # job exercises stable for real. Aliases operate on default-members
-      # (host-buildable crates only); the bare-metal BSP is never built here.
-      - name: cargo +stable fmt --check
-        run: cargo +stable fmt --all -- --check
-      - name: cargo +stable host-clippy
-        run: cargo +stable host-clippy
+      # job exercises stable for real. `cargo build` / `host-test` operate on
+      # default-members (host-buildable crates only); the bare-metal BSP is
+      # never built here. No `-D warnings` lint/fmt step — see the job header.
       - name: cargo +stable build (host crates)
         run: cargo +stable build
       - name: cargo +stable host-test
