@@ -63,6 +63,13 @@ use crate::obj::ENDPOINT_ARENA_CAPACITY;
 ///
 /// Shape and rationale: [ADR-0017][adr-0017].
 ///
+/// `Default` (all-zero) is derived for ergonomics (tests, register-frame
+/// initialisation). Note (C3-007): a zero `Message` is a perfectly valid
+/// payload — the rendezvous state machine distinguishes "no message"
+/// *structurally* via the [`EndpointState`] variant, never via a sentinel
+/// field. The future syscall ABI (Phase B) must therefore **not** treat a
+/// `Message::default()` as an "empty / absent message" convention.
+///
 /// [adr-0017]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Message {
@@ -120,7 +127,13 @@ pub enum SendOutcome {
 }
 
 /// Outcome of a successful [`ipc_recv`].
-#[derive(Debug)]
+///
+/// Derives the full `Copy + Clone + Debug + Eq + PartialEq` set, matching
+/// [`SendOutcome`] (C3-002). Both inner payloads are themselves `Copy + Eq`
+/// ([`Message`] and [`CapHandle`]), so the derive is free and lets tests /
+/// the future syscall layer assert on a whole outcome with `assert_eq!`
+/// rather than destructuring with `let-else { panic! }`.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum RecvOutcome {
     /// A message was available — either a waiting sender or a prior delivery
     /// from a sender that found a registered receiver. Returns the message
@@ -316,6 +329,18 @@ pub fn ipc_send(
         }
         EndpointState::SendPending { .. } | EndpointState::RecvComplete { .. } => {
             // Excluded by the pre-check above; unreachable in correct code.
+            //
+            // Note (C3-009): this unreachability is a *temporal* invariant —
+            // the `peek_state` queue-full check above runs, then this commit
+            // match runs, with nothing mutating the state in between because
+            // v1 is single-threaded cooperative (no interleaving between peek
+            // and commit). It is NOT a structural invariant. If a future
+            // change splits peek and commit across a yield / await / preemption
+            // point (B5+), a second sender could land a SendPending/RecvComplete
+            // in this window and make this branch reachable, panicking in
+            // release. Re-audit when preemption lands (cross-ref ADR-0032
+            // §Context's preemption note); the defensive alternative is to
+            // return `Err(IpcError::QueueFull)` here.
             unreachable!()
         }
     }
@@ -402,6 +427,18 @@ pub fn ipc_recv(
 /// (silent deadlock). Tracked for Phase B alongside the scheduler/IPC
 /// wait-set design.
 ///
+/// # Table borrow (intentional `&`, not `&mut`)
+///
+/// `caller_table` is taken as a **shared** `&CapabilityTable` (C3-005):
+/// `ipc_notify` only `lookup`s the cap for validation, never `cap_take`s or
+/// `insert_root`s, so it needs no mutable borrow. This mirrors
+/// [`ipc_cancel_recv`] and is **deliberately asymmetric** with
+/// [`ipc_send`] / [`ipc_recv`] (which take `&mut` because they move caps).
+/// The asymmetry is load-bearing for the scheduler bridge: it lets the
+/// bridge re-borrow the table as `&` while the arena/queues are borrowed
+/// `&mut` (see `sched::ipc_recv_and_yield`'s Deadlock rollback). A "tidy to
+/// uniform `&mut`" cleanup here would break that non-aliasing borrow split.
+///
 /// # Errors
 ///
 /// [`IpcError::InvalidCapability`] — `notif_cap` is stale or lacks `NOTIFY`.
@@ -470,6 +507,17 @@ pub fn ipc_notify(
 /// signature gains a `caller: TaskHandle` parameter to remove the named
 /// caller from the waiter list rather than blanket-clearing the slot.
 ///
+/// # Table borrow (intentional `&`, not `&mut`)
+///
+/// `caller_table` is taken as a **shared** `&CapabilityTable` (C3-005):
+/// cancel only `lookup`s the cap to re-validate `RECV`; it never moves a
+/// cap. This matches [`ipc_notify`] and is **deliberately asymmetric** with
+/// [`ipc_send`] / [`ipc_recv`]. The shared borrow is *depended upon* by the
+/// scheduler bridge's Deadlock rollback (`sched::ipc_recv_and_yield`), which
+/// re-borrows the table `&` while holding `&mut` on the arena and queues —
+/// a uniform-`&mut` "cleanup" would re-introduce an aliasing borrow there
+/// and surface as a Miri failure on the bridge test.
+///
 /// # Errors
 ///
 /// [`IpcError::InvalidCapability`] — `ep_cap` is stale, refers to a
@@ -533,6 +581,20 @@ fn validate_notif_cap(
     }
 }
 
+/// Take the cap at `handle` (if any) out of `table` for in-flight transfer.
+///
+/// Note (C3-008): every `cap_take` failure (`InvalidHandle`, `HasChildren`)
+/// is collapsed into a single [`IpcError::InvalidTransferCap`]. This is
+/// *currently* defensible — from the sender's perspective both mean "this
+/// handle is not transferable", and the pre-flight `lookup` in [`ipc_send`]
+/// makes a bare `InvalidHandle` improbable (the realistic failure is
+/// `HasChildren` for a derived-from cap). It is lossy, though: a future
+/// userspace caller cannot distinguish "stale handle (retry pointless)" from
+/// "has children (revoke first, then retry)" — a *handleable* distinction per
+/// error-handling.md. `IpcError` is `#[non_exhaustive]`, so when a userspace
+/// caller exists this can grow a distinct `TransferCapHasChildren` variant
+/// (or carry the inner `CapError`, mirroring `SchedError::Ipc`'s nesting)
+/// without a breaking change.
 fn take_cap_if_some(
     table: &mut CapabilityTable,
     handle: Option<CapHandle>,
@@ -577,7 +639,9 @@ mod tests {
     use crate::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
     use crate::obj::arena::SlotId;
     use crate::obj::endpoint::{create_endpoint, Endpoint, EndpointArena, EndpointHandle};
-    use crate::obj::notification::{create_notification, Notification, NotificationArena};
+    use crate::obj::notification::{
+        create_notification, destroy_notification, Notification, NotificationArena,
+    };
     use crate::obj::TaskHandle;
 
     // ── Setup helpers ────────────────────────────────────────────────────────
@@ -1035,6 +1099,47 @@ mod tests {
         assert_eq!(
             ipc_notify(&mut notif_arena, cap_h, &table, 0xFF).unwrap_err(),
             IpcError::InvalidCapability
+        );
+    }
+
+    #[test]
+    fn notify_with_stale_handle_after_slot_reuse_fails() {
+        // Pin C3-003: the notification analogue of
+        // `stale_queue_state_reset_on_slot_reuse`. A cap whose underlying
+        // notification was destroyed (and a new one re-allocated in the same
+        // slot with a bumped generation) must make `ipc_notify` return
+        // `InvalidCapability` via the arena `get_mut(...).ok_or(...)` branch —
+        // the realistic adversarial case where the cap's rights check still
+        // passes but the handle is stale. The endpoint side already pins this;
+        // this closes the notification-side gap at the `ipc_notify` boundary.
+        let mut table = CapabilityTable::new();
+        let mut notif_arena = NotificationArena::default();
+
+        // Install a fully-valid NOTIFY cap, then destroy its notification.
+        let notif_cap = setup_notif(&mut table, &mut notif_arena);
+        let stale_handle = match table.lookup(notif_cap).unwrap().object() {
+            CapObject::Notification(h) => h,
+            _ => panic!("wrong kind"),
+        };
+        destroy_notification(&mut notif_arena, stale_handle).unwrap();
+
+        // The cap still satisfies the rights/kind check (it was minted with
+        // NOTIFY), so the failure must come from the arena staleness lookup,
+        // not the rights gate — proving the `ok_or(InvalidCapability)` mapping
+        // at the IPC boundary fires. (No cap_drop is even needed to provoke it.)
+        assert_eq!(
+            ipc_notify(&mut notif_arena, notif_cap, &table, 0xFF).unwrap_err(),
+            IpcError::InvalidCapability,
+            "ipc_notify on a stale notification handle must return InvalidCapability"
+        );
+
+        // Re-allocating reuses the slot with a bumped generation; the stale
+        // cap must still fail (it names the predecessor's generation).
+        let _new_handle = create_notification(&mut notif_arena, Notification::new(1)).unwrap();
+        assert_eq!(
+            ipc_notify(&mut notif_arena, notif_cap, &table, 0xFF).unwrap_err(),
+            IpcError::InvalidCapability,
+            "stale cap must still fail after the slot is reused by a new notification"
         );
     }
 
