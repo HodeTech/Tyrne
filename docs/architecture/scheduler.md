@@ -24,7 +24,9 @@ classDiagram
         ready: SchedQueue~TASK_ARENA_CAPACITY~
         task_states: [TaskState; TASK_ARENA_CAPACITY]
         task_handles: [Option~TaskHandle~; TASK_ARENA_CAPACITY]
+        task_address_space_handles: [Option~AddressSpaceHandle~; TASK_ARENA_CAPACITY]
         current: Option~TaskHandle~
+        idle: Option~TaskHandle~
         contexts: [C::TaskContext; TASK_ARENA_CAPACITY]
     }
     class SchedQueue~N~ {
@@ -47,10 +49,12 @@ A `Scheduler<C: ContextSwitch + Cpu>` is parametrised by the BSP's CPU type so t
 - **`ready`** — a bounded FIFO queue (`SchedQueue<N>`) of `TaskHandle`s. Capacity equals `TASK_ARENA_CAPACITY`, so the queue is structurally never full relative to the number of tasks that can exist.
 - **`task_states`** — one `TaskState` per arena slot. `Idle` means the slot is unoccupied; `Ready` means the task is in the ready queue or currently running; `Blocked { on }` means the task is parked on a specific endpoint waiting for a message.
 - **`task_handles`** — caches the slot's `TaskHandle` so the scheduler can wake a specific task by index without re-querying the arena.
+- **`task_address_space_handles`** — per-slot `Option<AddressSpaceHandle>`, parallel to `task_handles`. Read by the activation-on-context-switch hook to decide whether `Mmu::activate` must fire before the architectural switch (per [ADR-0028](../decisions/0028-address-space-data-structure.md)). In v1 all tasks share the bootstrap address space, so the hook short-circuits.
 - **`current`** — `Some(handle)` of the running task, or `None` before `start` runs and during the brief window inside `ipc_recv_and_yield`'s Phase 2 block.
+- **`idle`** — the idle-task fallback slot per [ADR-0026](../decisions/0026-idle-dispatch-fallback.md). Consulted only when `ready.dequeue()` returns `None` (`ready.dequeue().or(s.idle)`); idle's handle is deliberately **not** stored in `ready`, so it can never displace a real `Ready` task.
 - **`contexts`** — the BSP-defined `TaskContext` array. Each entry is the saved-register block for the slot's task. The scheduler never reads or writes the inside of a context; it only hands them to `cpu.context_switch`.
 
-`Idle` here is the *task-state* sentinel for an unoccupied arena slot. It is unrelated to the **idle task** that ADR-0022 introduces — that is an ordinary `Ready` task whose body spins.
+`Idle` here is the *task-state* sentinel for an unoccupied arena slot. It is unrelated to the **idle task** that ADR-0022 introduces and ADR-0026 moved into the dedicated `idle` fallback slot described above.
 
 ### Lifecycle of a task slot
 

@@ -1,10 +1,10 @@
 # Boot flow
 
-Tyrne boots in four stages: QEMU (or the board firmware) hands control to the ELF entry point, a short assembly stub sets up the runtime environment, a Rust entry function (`kernel_entry`) wires the BSP together, and the portable `tyrne_kernel::run` function takes over. This document is the "how" for Phase 4c on `bsp-qemu-virt`; the "why" for each concrete choice lives in [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md). Each future BSP will follow the same stage structure with its own addresses and peripherals.
+Tyrne boots in four stages: QEMU (or the board firmware) hands control to the ELF entry point, a short assembly stub sets up the runtime environment, a Rust entry function (`kernel_entry`) wires the BSP together and brings up every kernel subsystem, and finally `start()` transfers control to the cooperative scheduler. This document is the "how" for Phase 4c on `bsp-qemu-virt`; the "why" for each concrete choice lives in [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md). Each future BSP will follow the same stage structure with its own addresses and peripherals.
 
 ## Context
 
-The overall three-layer architecture is described in [`overview.md`](overview.md), and the HAL traits the kernel uses are in [`hal.md`](hal.md). This document focuses specifically on the boot path from reset to `kernel_main` steady state, as implemented for the QEMU `virt` aarch64 target.
+The overall three-layer architecture is described in [`overview.md`](overview.md), and the HAL traits the kernel uses are in [`hal.md`](hal.md). This document focuses specifically on the boot path from reset to scheduler steady state, as implemented for the QEMU `virt` aarch64 target.
 
 ## Design
 
@@ -15,7 +15,7 @@ The four boot stages, each with a tightly bounded responsibility:
 1. **Firmware / loader.** QEMU's `-kernel` flag loads the ELF image at its linked-in load address (`0x40080000` per [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md)), sets the PC to the ELF's entry point (`_start`), and enters at EL1 (default QEMU `virt`) or EL2 (`-machine virtualization=on`, or most real-hardware boot stacks delivering at EL2). The device-tree blob address is placed in `x0`; v1 ignores it.
 2. **Assembly stub (`_start`).** Three phases: first, K3-12 (interrupts masked via `MSR DAIFSet, #0xf`) executes at the very head of the reset vector so a spurious interrupt cannot escape into an uninstalled vector table. Second, the EL drop (per [ADR-0024](../decisions/0024-el-drop-policy.md)) reads `CurrentEL`; on EL2 it configures `HCR_EL2` / `SPSR_EL2` / `ELR_EL2` and `eret`s to a post-drop label, on EL1 it falls through, on EL3 (or any unexpected EL) it halts in a named-label `wfe`-loop (`halt_unsupported_el: wfe ; b halt_unsupported_el`) — there is no Rust panic infrastructure pre-`kernel_entry`. Third, the conventional setup: load `__stack_top` into `SP`, enable FP/SIMD via `CPACR_EL1`, zero the BSS range (`__bss_start` .. `__bss_end`) using 8-byte stores, and branch to `kernel_entry`. If `kernel_entry` ever returns (it shouldn't), the stub falls into a defensive `wfe ; b 2b` halt loop. After phase two, every later instruction runs at EL1 — the precondition T-009's `UNSAFE-2026-0016` runtime check now relies on as a load-bearing invariant rather than a defensive guard.
 3. **`kernel_entry` (Rust, in the BSP).** The first Rust code to run. Constructs the BSP's concrete HAL instances (for Phase 4c: the `Pl011Uart` console), installs the EL1 vector table (T-012), captures the boot-to-end timestamp, **activates the MMU** via `mmu_bootstrap` (T-016 / ADR-0027 — this lands the v1 identity layout in `TTBR0_EL1` and flips `SCTLR_EL1.{M,I,C} = 1`; every subsequent MMIO access goes through device-nGnRnE attributes), **initialises the Physical Memory Manager** (T-017 / ADR-0035 — bitmap allocator over the 128 MiB RAM extent with two reserved ranges covering the QEMU firmware region and the kernel image / `.bss` / `.boot_pt` / boot stack), **initialises the address-space arena** (T-018 / ADR-0028 — wraps the already-active L0 root frame as `AddressSpaceArena<QemuVirtMmu>` slot 0 + mints the bootstrap AS authority cap; no `Mmu::create_address_space` call on the live root per ADR-0028 §Simulation row 0), **loads the embedded userspace placeholder image** via [`task_loader::load_image`](task-loader.md) (T-019 / ADR-0029 — produces a `LoadedImage` describing a freshly populated AS for the embedded `mov w0, #42; ret` blob; **does NOT execute** — runnability gates on B5/B6 per phase-b §B4 §Revision-notes; first runtime exerciser of [UNSAFE-2026-0025](../audits/unsafe-log.md) post-bootstrap `Mmu::map`, [UNSAFE-2026-0026](../audits/unsafe-log.md) `Pmm::alloc_frame` zero-fill, and [UNSAFE-2026-0027](../audits/unsafe-log.md) loader byte-copy), initialises the GIC, unmasks `DAIF.I`, prints the timer banner, then sets up the kernel-object arenas + capability tables + IPC + scheduler before transferring control. Marked `#[no_mangle] extern "C"` so the assembly stub can find it.
-4. **`tyrne_kernel::run` (portable kernel).** Architecture- and board-agnostic. In Phase 4c v0.0.1 it writes a greeting to the console and halts with a `spin_loop` idle. Subsequent phases will bring up the scheduler, IPC, and capability system here before reaching steady state.
+4. **Scheduler start (`start`).** The final call in `kernel_entry` is `start(SCHED.as_mut_ptr(), cpu, activate_address_space)`, which hands control to the cooperative FIFO scheduler and never returns; the scheduler runs the first ready task and drives the cooperative IPC demo until the system halts (see [scheduler.md](scheduler.md)). An early design intended a portable `tyrne_kernel::run` that a BSP would delegate to; the B-phase brought subsystem bring-up into `kernel_entry` instead, and `start` (defined in `kernel/src/sched/mod.rs`) is the actual handoff point. Consolidating the bring-up back into a portable kernel entry is a possible future refactor.
 
 ### Boot-time sequence
 
@@ -24,7 +24,6 @@ sequenceDiagram
     participant QEMU as QEMU virt / firmware
     participant Asm as _start (asm stub)
     participant KE as kernel_entry (BSP, Rust)
-    participant K as tyrne_kernel::run
     participant U as PL011 UART
 
     QEMU->>Asm: PC = _start, DTB in x0 (ignored), entry EL = 1 or 2
@@ -155,7 +154,7 @@ post_eret:
 
 ### Panic path
 
-When `tyrne_kernel::run` or any later kernel code panics, control reaches the BSP's `#[panic_handler]` function. In Phase 4c, that handler:
+When `kernel_entry`, the scheduler, or any later kernel code panics, control reaches the BSP's `#[panic_handler]` function. In Phase 4c, that handler:
 
 1. Reconstructs the `Pl011Uart` (the original instance may not be reachable from the panic context).
 2. Writes a short marker (`"\n!! tyrne panic !!\n"`).

@@ -42,15 +42,15 @@ flowchart TB
         TIrq["IrqController"]
         TTimer["Timer"]
         TConsole["Console"]
-        TIommu["Iommu (optional)"]
+        TIommu["Iommu (planned — stub)"]
     end
     subgraph BSP["BSP (per-board, selected at build time)"]
-        BCpu["aarch64 Cpu impl"]
+        BCpu["aarch64 Cpu + ContextSwitch impl"]
         BMmu["VMSAv8 Mmu impl"]
         BIrq["GICv2 / GIC-400 impl"]
         BTimer["ARM generic timer impl"]
         BConsole["PL011 / mini-UART impl"]
-        BIommu["SMMUv3 impl (bsp-qemu-virt)"]
+        BIommu["Iommu impl (planned — none yet)"]
     end
     subgraph HW["Hardware"]
         CPU["CPU cores"]
@@ -73,17 +73,26 @@ This section describes the traits at a high level. Each trait will have a dedica
 
 #### `Cpu`
 
-Privileged CPU state and control. Implementations are architecture-specific.
+Privileged CPU state and control. Implementations are architecture-specific. The trait as shipped ([`hal/src/cpu.rs`](../../hal/src/cpu.rs)) carries exactly these methods:
 
-- Current core identifier.
-- Number of cores online.
-- Enable / disable IRQs at the CPU level (PSTATE on aarch64).
-- `wait_for_interrupt()` — low-power halt until the next interrupt.
-- Context save / restore primitives used by the scheduler.
-- Memory barriers that Rust's atomics do not cover.
-- Secondary-core start via PSCI (or architecturally equivalent mechanism).
+- `current_core_id()` — identifier of the core this call runs on.
+- `disable_irqs()` / `restore_irq_state(state)` — mask CPU-level interrupts and later restore the saved mask (PSTATE/DAIF on aarch64). Paired to form a critical section; the `IrqGuard` RAII wrapper is layered on top.
+- `wait_for_interrupt()` — low-power halt until the next interrupt (`WFI` on aarch64).
+- `instruction_barrier()` — synchronize the instruction stream after writing privileged system registers (`ISB` on aarch64). Data memory barriers are covered by Rust's `core::sync::atomic::fence` and are not on this trait.
 
-Most methods are `unsafe fn`. The kernel wraps them with safe helpers that encode the preconditions.
+Context save / restore is **not** on `Cpu`; it lives in the separate `ContextSwitch` trait (see below). The trait deliberately exposes no "number of cores online," no secondary-core start (PSCI), and no `enable_interrupts()`; those are **future / planned** surfaces that arrive with the multi-core ADR. Boot-time interrupt unmasking is done by the BSP via DAIF manipulation (`restore_irq_state`) plus the GIC enable sequence, not a `Cpu` method.
+
+Most methods touch privileged state internally; the kernel wraps them with safe helpers that encode the preconditions.
+
+#### `ContextSwitch`
+
+Cooperative register save/restore for task switching. Settled by [ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md), which split this out of `Cpu` so that `Cpu` stays object-safe and so the `unsafe` audit surface around register manipulation is concentrated in one place rather than diffused across the CPU trait. Defined in [`hal/src/context_switch.rs`](../../hal/src/context_switch.rs).
+
+- An associated `TaskContext` type — the BSP-specific saved-register layout (`Default + Send`).
+- `context_switch(current, next)` — `unsafe`; atomically saves the calling task's callee-saved register set into `current` and restores `next`. The caller must have interrupts disabled across the call.
+- `init_context(ctx, entry, stack_top)` — `unsafe`; writes an initial register state so the first restore begins executing `entry` on `stack_top`.
+
+The scheduler is generic over this trait: `Scheduler<C: ContextSwitch + Cpu>` — the BSP type provides both the CPU control surface and the context-switch primitive, and the scheduler never inspects the saved context's contents (see [scheduler.md](scheduler.md)).
 
 #### `Mmu`
 
@@ -142,15 +151,15 @@ A byte sink for the earliest possible diagnostic output.
 
 The console is used during boot (before the log service is up), during panic (when nothing else can be trusted), and — optionally, gated by a build flag — for debug output in development builds.
 
-#### `Iommu` (platforms with an IOMMU)
+#### `Iommu` (planned — stub)
 
-Programs the system IOMMU (SMMUv3 on aarch64 platforms that have one) to scope a peripheral's DMA to the regions granted to its driver.
+Programming the system IOMMU to scope a peripheral's DMA to the regions granted to its driver. The eventual responsibilities are:
 
 - Install a stream-to-address-space mapping.
 - Update or remove such a mapping.
 - Invalidate IOMMU caches when mappings change.
 
-See [security-model.md — Trust boundary 7](security-model.md) for the security role the IOMMU plays. `bsp-qemu-virt` implements this trait; `bsp-pi4` does not (the Pi 4 has no IOMMU) and the trait is therefore either absent or a no-op on that target — an explicit decision in a future ADR.
+**Current status.** QEMU virt is GICv2 / no IOMMU in v1; the `Iommu` trait ([`hal/src/lib.rs`](../../hal/src/lib.rs)) is an empty stub (`pub trait Iommu {}`) reserved for a future SMMUv3 ADR. No BSP implements it today — `bsp-qemu-virt` does not, and `bsp-pi4` has no IOMMU hardware at all. See [security-model.md — Trust boundary 7](security-model.md) for the security role the IOMMU will play and the honest description of the present DMA-scoping gap.
 
 ### BSP structure
 
@@ -158,7 +167,7 @@ A BSP is a Rust crate named `bsp-<board>` that provides:
 
 1. **An entry point** — the architecture reset vector (`_start`), implemented as a small assembly stub that sets up a stack, zeros BSS, and jumps into Rust early-init.
 2. **Early-init Rust code** that configures the MMU with a minimal identity + high-half mapping, installs exception vectors, and hands control to `kernel_main(boot_info)`.
-3. **Implementations of the HAL traits** — `Cpu`, `Mmu`, `IrqController`, `Timer`, `Console`, and `Iommu` where applicable.
+3. **Implementations of the HAL traits** — `Cpu`, `ContextSwitch`, `Mmu`, `IrqController`, `Timer`, and `Console`. (`Iommu` is a stub today; no BSP implements it yet — see the `Iommu` trait note above.)
 4. **Board-specific constants** — MMIO base addresses, IRQ numbers, expected memory layout — as a `bsp::config` module, not spread across the crate.
 5. **A linker script** specifying where the kernel image is loaded, where RAM begins, and any reserved regions.
 
@@ -185,7 +194,7 @@ Runtime multi-board support (one kernel binary that detects its host and selects
 | Interrupt controller | GICv2 |
 | Console | PL011 UART at `0x0900_0000` |
 | Timer | ARM generic timer |
-| IOMMU | SMMUv3 (optional, enabled with `-device smmuv3`; CI uses it) |
+| IOMMU | none in v1 (QEMU virt is GICv2 / no IOMMU); the `Iommu` trait is a stub reserved for a future SMMUv3 ADR |
 | Boot loader | none — QEMU loads the ELF and jumps to `_start` |
 | Secondary-core start | PSCI |
 | Virtio | present (virtio-mmio); used by userspace drivers in future phases |
@@ -235,10 +244,10 @@ sequenceDiagram
     Early->>Early: install exception vectors
     Early->>Early: configure Cpu trait state
     Early->>K: kernel_main(boot_info)
-    K->>HAL: Cpu::enable_interrupts()
     K->>HAL: Mmu::activate(kernel_tt)
-    K->>HAL: IrqController::init()
+    K->>HAL: IrqController init + GIC enable sequence
     K->>HAL: Timer::init()
+    K->>HAL: unmask DAIF.I (BSP, via the CPU IRQ-state path)
     K->>HAL: Console::write_bytes(b"tyrne: online\n")
     Note over K: scheduler, init task, steady state
 ```
