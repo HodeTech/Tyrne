@@ -64,9 +64,9 @@ Business review. The HAL abstraction has been tested by three architecturally di
 
 | ADR | Purpose | Expected state | Notes |
 |-----|---------|----------------|-------|
-| ADR-0063 | Pi 5 differences | H1 | renumbered 2026-05-22, was ADR-0063 (cascade from the Phase C/D collision fix, MR-001) |
-| ADR-0064 | Jetson boot chain | H2 | renumbered 2026-05-22, was ADR-0064 (cascade) |
-| ADR-0065 | RISC-V target choice | H3 | renumbered 2026-05-22, was ADR-0065 (cascade) |
+| ADR-0063 | Pi 5 differences | H1 | renumbered 2026-05-22, was ADR-0052 (cascade from the Phase C/D collision fix, MR-001) |
+| ADR-0064 | Jetson boot chain | H2 | renumbered 2026-05-22, was ADR-0053 (cascade) |
+| ADR-0065 | RISC-V target choice | H3 | renumbered 2026-05-22, was ADR-0054 (cascade) |
 
 ## Open questions carried into Phase H
 

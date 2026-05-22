@@ -65,9 +65,9 @@ The mobile milestone is explicitly a stretch goal. Reaching I4 makes Tyrne a cre
 
 | ADR | Purpose | Expected state | Notes |
 |-----|---------|----------------|-------|
-| ADR-0066 | Mobile target | I1 | renumbered 2026-05-22, was ADR-0066 (cascade from the Phase C/D collision fix, MR-001) |
-| ADR-0067 | Display stack architecture | I2 | renumbered 2026-05-22, was ADR-0067 (cascade) |
-| ADR-0068 | Power management scope | I3 | renumbered 2026-05-22, was ADR-0068 (cascade; frees ADR-0068 for the Phase F5 field-update placeholder) |
+| ADR-0066 | Mobile target | I1 | renumbered 2026-05-22, was ADR-0055 (cascade from the Phase C/D collision fix, MR-001) |
+| ADR-0067 | Display stack architecture | I2 | renumbered 2026-05-22, was ADR-0056 (cascade) |
+| ADR-0068 | Power management scope | I3 | renumbered 2026-05-22, was ADR-0057 (cascade; frees ADR-0057 for the Phase F5 field-update placeholder) |
 
 ## Open questions carried into Phase I
 

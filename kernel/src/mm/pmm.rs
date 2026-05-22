@@ -643,11 +643,7 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
         let start_idx = clipped_start
             .saturating_sub(extent_start)
             .wrapping_div(PAGE_SIZE);
-        let end_idx = clipped_end
-            .saturating_sub(extent_start)
-            .saturating_add(PAGE_SIZE)
-            .saturating_sub(1)
-            .wrapping_div(PAGE_SIZE);
+        let end_idx = clipped_end.saturating_sub(extent_start).div_ceil(PAGE_SIZE);
 
         // Interval-coverage walk in frame-index space. `cursor` is the
         // first frame index in the window not yet proven reserved.

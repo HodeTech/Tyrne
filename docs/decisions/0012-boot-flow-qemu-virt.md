@@ -157,18 +157,14 @@ Each will be resolved by a future ADR or a paired update.
 
 - **2026-05-22 — §Memory-layout diagram updated for the `.boot_pt` reservation (ADR-0027).** The §Memory-layout diagram above predates [ADR-0027](0027-kernel-virtual-memory-layout.md), which added four bootstrap page-table frames (16 KiB) inside `.bss`. The original diagram is preserved (append-only); the current layout is:
 
-  ```
-  0x40080000  _start (.text.boot)
-              .text
-              .rodata
-              .data
-              .bss          — zeroed in _start
-                ├─ .boot_pt — 4 × 4 KiB bootstrap page-table frames (16 KiB),
-                │             bracketed by __boot_pt_start / __boot_pt_end,
-                │             pre-zeroed by the BSS-zero loop (ADR-0027 / T-016)
-                └─ (other BSS)
-              (64 KiB)      — initial stack region
-              __stack_top
+  ```mermaid
+  flowchart TD
+  A["0x40080000 — _start (.text.boot)"] --> B[".text"] --> C[".rodata"] --> D[".data"] --> E[".bss — zeroed in _start"]
+  E --> F[".boot_pt — 4 × 4 KiB bootstrap page-table frames (16 KiB);<br/>bracketed by __boot_pt_start / __boot_pt_end;<br/>pre-zeroed by the BSS-zero loop (ADR-0027 / T-016)"]
+  E --> G["(other BSS)"]
+  F --> H["(64 KiB) — initial stack region"]
+  G --> H
+  H --> I["__stack_top"]
   ```
 
   The kernel image's load address stays at `0x4008_0000` and is identity-mapped (no mapped-vs-identity split in v1). See the §Open-questions "Boot-time MMU activation" rider above and [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) for the authoritative section ordering.

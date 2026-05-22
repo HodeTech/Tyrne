@@ -66,9 +66,11 @@ pub trait Cpu: Send + Sync {
     /// Restore the CPU interrupt mask to the given saved state.
     ///
     /// `state` must be a value previously returned by
-    /// [`Cpu::disable_irqs`]; passing any other value is a violation of
-    /// the calling contract and the resulting behaviour is
-    /// implementation-defined.
+    /// [`Cpu::disable_irqs`], with one canonical exception: callers may
+    /// synthesize `IrqState(0)`, which every implementation must treat as
+    /// "enable interrupts" (see [`IrqState`] § Canonical zero value).
+    /// Passing any other unsynthesized value is a violation of the calling
+    /// contract and the resulting behaviour is implementation-defined.
     fn restore_irq_state(&self, state: IrqState);
 
     /// Halt the CPU until the next interrupt wakes it.

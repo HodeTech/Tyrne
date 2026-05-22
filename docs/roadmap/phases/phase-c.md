@@ -59,7 +59,7 @@ Replace the cooperative scheduler from A5 with a preemptive one driven by the ti
 4. **Time slice** — configurable per-task or global for v1.
 5. **Idle-core behaviour** — WFI until IRQ, wake on timer or work-steal signal.
 6. **Interrupt-masked critical-section primitive on [`tyrne-hal::Cpu`](../../../hal/src/cpu.rs).** Introduce a closure-based `Cpu::without_interrupts(|| { ... })` (equivalent of `x86_64::instructions::interrupts::without_interrupts`) backed by aarch64 `DAIF` manipulation. Every spin-locked kernel resource that an IRQ handler can touch must be acquired inside this closure to avoid handler-vs.-main-path deadlock. Discipline is mandatory, not optional; C3 makes it real because this is the phase where IRQs can interrupt kernel code.
-6. **Tests** — two userspace tasks (from B6) time-slice; tick frequency observable; tasks that never yield still get preempted.
+7. **Tests** — two userspace tasks (from B6) time-slice; tick frequency observable; tasks that never yield still get preempted.
 
 ### Acceptance criteria
 

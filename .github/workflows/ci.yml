@@ -73,6 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # CI only reads the repo; do not persist the token into local git
+          # config (least-privilege; avoids credential reuse by later steps).
+          persist-credentials: false
       - name: Install pinned nightly with rustfmt + clippy
         run: |
           rustup toolchain install $NIGHTLY_PIN --component rustfmt --component clippy --no-self-update
@@ -104,6 +108,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # CI only reads the repo; do not persist the token into local git
+          # config (least-privilege; avoids credential reuse by later steps).
+          persist-credentials: false
       - name: Install pinned nightly + aarch64 target
         run: |
           rustup toolchain install $NIGHTLY_PIN --component clippy --no-self-update
@@ -137,6 +145,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # CI only reads the repo; do not persist the token into local git
+          # config (least-privilege; avoids credential reuse by later steps).
+          persist-credentials: false
       - name: Install Rust stable with rustfmt + clippy
         run: |
           rustup toolchain install stable --component rustfmt --component clippy --no-self-update
@@ -173,6 +185,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # CI only reads the repo; do not persist the token into local git
+          # config (least-privilege; avoids credential reuse by later steps).
+          persist-credentials: false
       - name: Install pinned nightly with miri
         run: |
           rustup toolchain install $NIGHTLY_PIN --component miri --no-self-update
@@ -204,6 +220,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # CI only reads the repo; do not persist the token into local git
+          # config (least-privilege; avoids credential reuse by later steps).
+          persist-credentials: false
       - name: Install pinned nightly with llvm-tools
         run: |
           rustup toolchain install $NIGHTLY_PIN --component llvm-tools-preview --no-self-update

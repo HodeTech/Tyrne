@@ -370,16 +370,22 @@ impl Mmu for OutOfFramesMmu {
         flags: MappingFlags,
         frames: &mut dyn FrameProvider,
     ) -> Result<MapperFlush, MmuError> {
-        // Pull one frame to model an intermediate-table allocation. If the
-        // provider is empty, fail with OutOfFrames BEFORE mutating `as_`
-        // and WITHOUT consuming `pa` — exactly the real walker's contract.
+        // Validate + insert via the inner FakeMmu FIRST (it runs the
+        // alignment / flag / double-map checks and ignores its own `frames`
+        // argument). A non-OutOfFrames rejection therefore returns WITHOUT
+        // consuming a provider frame — matching the real walker, which
+        // validates before allocating any intermediate table.
+        let flush = self.inner.map(as_, va, pa, flags, frames)?;
+        // Then model one intermediate-table allocation. If the provider is
+        // empty, roll the just-inserted mapping back and report OutOfFrames,
+        // so the only path that returns OutOfFrames leaves no mapping and the
+        // only path that consumes a provider frame is a fully successful map.
         if frames.alloc_frame().is_none() {
+            // Undo the insert; unmap cannot fail for a VA mapped one line above.
+            let _ = self.inner.unmap(as_, va);
             return Err(MmuError::OutOfFrames);
         }
-        // Frame consumed; delegate the success path to the inner FakeMmu,
-        // which performs the alignment / flag / double-map checks and the
-        // actual insert. It ignores its own `frames` argument.
-        self.inner.map(as_, va, pa, flags, frames)
+        Ok(flush)
     }
 
     fn unmap(
