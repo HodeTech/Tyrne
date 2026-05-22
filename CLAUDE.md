@@ -4,7 +4,7 @@ This file is the entry point for Claude-based AI agents (Claude Code, Claude API
 
 ## What this project is
 
-Tyrne is a **capability-based microkernel** written in Rust, in the lineage of seL4 and Hubris. The project is **pre-alpha** — most code is not yet written, and the current phase is architecture design captured in Architecture Decision Records (ADRs). Primary development target is QEMU `virt` on aarch64; first real hardware target is the Raspberry Pi 4.
+Tyrne is a **capability-based microkernel** written in Rust, in the lineage of seL4 and Hubris. The project is **pre-alpha**, but implementation is well underway: the kernel boots end-to-end on QEMU `virt` aarch64 and runs a two-task capability-gated IPC demo. The project is **mid-Phase B** — the MMU, PMM, address-space objects, and task loader (load half) are done; the syscall ABI and first userspace task are next. Architecture is documented as Architecture Decision Records (see the [ADR index](docs/decisions/README.md)); active implementation work lives under `kernel/`, `hal/`, and `bsp-qemu-virt/`. Primary development target is QEMU `virt` on aarch64; first real hardware target is the Raspberry Pi 4.
 
 See [README.md](README.md) for the public overview.
 
@@ -13,7 +13,7 @@ See [README.md](README.md) for the public overview.
 These rules apply to every AI agent acting inside this repository, regardless of model, runner, or tool.
 
 1. **Security-first mindset.** Tyrne is built to be a high-assurance OS. When in doubt, choose the more conservative option. Never weaken a capability check, never introduce ambient authority, never suppress a failing security test.
-2. **Memory safety through Rust.** All kernel and userspace code is Rust. Every `unsafe` block must have a comment explaining (a) why it is needed, (b) what invariants it upholds, (c) why safer alternatives were rejected. Audit tracking for `unsafe` is defined in [docs/standards/](docs/standards/).
+2. **Memory safety through Rust.** All kernel and userspace code is Rust. Every `unsafe` block must have a comment explaining (a) why it is needed, (b) what invariants it upholds, (c) why safer alternatives were rejected. The `unsafe` policy is in [docs/standards/unsafe-policy.md](docs/standards/unsafe-policy.md); each block's audit entry lives in the log at [docs/audits/unsafe-log.md](docs/audits/unsafe-log.md).
 3. **English in the repository.** Source code, comments, doc-comments, documentation, commit messages, PR descriptions, issue text, and this file are English. Conversation with the maintainer in chat may be Turkish, but nothing committed to the repo should be.
 4. **Mermaid for diagrams.** All architectural diagrams are inline Mermaid code fences. Do not add PNG, SVG, ASCII-art, or other binary diagram formats.
 5. **Record decisions as ADRs.** Any non-trivial architectural, security, or process decision is recorded as an ADR in [docs/decisions/](docs/decisions/) using the MADR template. ADRs are append-only; to override an old decision, write a new ADR that supersedes it.

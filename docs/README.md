@@ -10,13 +10,16 @@ This is the canonical documentation tree for Tyrne. It is organized by the *kind
 | [decisions/](decisions/) | **Why is Tyrne built this way?** Architecture Decision Records (ADRs) in MADR format. One ADR per non-trivial choice. |
 | [guides/](guides/) | **How do I do X?** Task-oriented walkthroughs: setting up the toolchain, running the kernel under QEMU, porting to a new board, writing a new userspace driver. |
 | [standards/](standards/) | **How should things be written?** Documentation style, code style, commit message style, review checklists, security-review checklist. |
+| [analysis/](analysis/) | **What is being built, and how is it going?** Per-task user stories and the business / code / security / performance reviews. |
+| [roadmap/](roadmap/) | **What is active, and what is next?** Phase plans and the currently-active milestone. |
+| [audits/](audits/) | **What `unsafe` is in the tree?** The append-only `unsafe` audit log — one entry per audited `unsafe` block. |
 | [glossary.md](glossary.md) | Project-specific terminology. |
 
 ## Suggested reading order for newcomers
 
 1. [glossary.md](glossary.md) — terms used throughout the project.
 2. [decisions/](decisions/) — the numbered ADRs, in order. These capture the reasoning behind the design and are the fastest way to get oriented.
-3. [architecture/](architecture/) — start with the overview (Phase 2), then dive into whichever subsystem interests you.
+3. [architecture/](architecture/) — start with [`overview.md`](architecture/overview.md), then dive into whichever subsystem interests you.
 4. [standards/documentation-style.md](standards/documentation-style.md) — before you send a documentation PR.
 
 ## Conventions in this tree

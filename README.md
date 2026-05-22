@@ -32,13 +32,13 @@ The active task and its current state live in [`docs/roadmap/current.md`](docs/r
 
 **Microkernel by construction, not by branding.** The kernel runs exclusively in privileged mode and contains five subsystems: capabilities, IPC, scheduling, memory management, and interrupt dispatch. Drivers, filesystems, and network stacks land in userspace compartments — see [`docs/architecture/overview.md`](docs/architecture/overview.md) for the layer diagram. Adding a feature does not enlarge the trusted computing base unless it strictly has to.
 
-**Memory safety through Rust + audited `unsafe`.** All kernel, HAL, and userspace code is Rust. Every `unsafe` block carries a SAFETY comment explaining (a) why it is needed, (b) the invariants it upholds, and (c) why safer alternatives were rejected, and is tracked in [`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md) with a numbered ID, a reviewed-by line, and a status field. There are currently 27 `unsafe` audit entries; the kernel proper exposes one (`UNSAFE-2026-0027`, the task-loader byte-copy).
+**Memory safety through Rust + audited `unsafe`.** All kernel, HAL, and userspace code is Rust. Every `unsafe` block carries a SAFETY comment explaining (a) why it is needed, (b) the invariants it upholds, and (c) why safer alternatives were rejected, and is tracked in [`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md) with a numbered ID, a reviewed-by line, and a status field. The audit log is the source of truth for the current set of `unsafe` blocks; the kernel proper exposes a single one (the task-loader byte-copy).
 
 **HAL separation as a hard architectural rule.** Hardware-specific code lives behind a small set of traits — `Console`, `Cpu`, `Mmu`, `Timer`, `IrqController`, `ContextSwitch` — defined in the `tyrne-hal` crate. Each Board Support Package implements those traits for one board. Bringing up a new aarch64 SoC means writing a new BSP, not editing the kernel.
 
 **Heterogeneous hardware as a stated goal.** The same kernel is intended to scale from microcontroller-class smart-home devices to single-board computers and eventually to mobile-class SoCs. Hardware tiers (below) make the level of support explicit per target.
 
-**Documented decisions, append-only.** Every non-trivial architectural choice is captured as an Architecture Decision Record under [`docs/decisions/`](docs/decisions/). ADRs are append-only: corrections land as revision notes, supersessions write a new ADR. The current count is 32 accepted ADRs.
+**Documented decisions, append-only.** Every non-trivial architectural choice is captured as an Architecture Decision Record under [`docs/decisions/`](docs/decisions/). ADRs are append-only: corrections land as revision notes, supersessions write a new ADR. See the [ADR index](docs/decisions/README.md) for the full list with each ADR's title, status, and date.
 
 ---
 
@@ -54,7 +54,7 @@ cargo kernel-build
 cargo kernel-run
 ```
 
-You should see, in order:
+You should see, in order (the exact frame counts and addresses are representative and vary by build):
 
 ```text
 tyrne: hello from kernel_main
@@ -77,7 +77,7 @@ Exit QEMU with `Ctrl-A x`. Full prerequisites, troubleshooting, and a line-by-li
 **Host-side tests** (no QEMU required):
 
 ```sh
-cargo host-test          # 259 tests across kernel, HAL, test-HAL
+cargo host-test          # host-side test suite (kernel · HAL · test-HAL)
 cargo host-clippy        # -D warnings
 cargo kernel-clippy      # -D warnings (kernel crate's stricter lints)
 cargo fmt --check

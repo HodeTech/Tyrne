@@ -12,6 +12,8 @@ Terminology used throughout Tyrne. Entries are alphabetical. If a term appears i
 
 **Arena.** A fixed-capacity slot array that backs a specific kernel-object kind (tasks, endpoints, notifications). Per [ADR-0016](decisions/0016-kernel-object-storage.md), every kernel-object type has its own arena; slots are handed out and returned without heap involvement. See also *Generation tag*.
 
+**Badge.** An immutable value embedded in a derived capability that lets the holder of the original object identify *which* derived capability a message arrived through. Badges are stamped at derivation time and cannot be altered by the holder, so a receiver can distinguish callers without trusting them. Borrowed from seL4, where a badge on an endpoint capability identifies the sender. In Tyrne the badge scheme is specified by [ADR-0018](decisions/0018-badge-scheme-and-reply-recv-deferral.md). See also *Reply capability*.
+
 **BSP (Board Support Package).** The concrete implementation of HAL trait surfaces for a specific board. A BSP plugs into the kernel at build time and provides drivers for on-board peripherals.
 
 **Capability.** An unforgeable token, held by a subject (process, task, thread), that authorizes a specific operation on a specific object. In a capability-based system, *having the capability is the permission*; there is no separate access control list to consult.
@@ -74,6 +76,8 @@ Terminology used throughout Tyrne. Entries are alphabetical. If a term appears i
 
 **Ready queue.** The scheduler's bounded FIFO of task handles that are runnable and waiting for the CPU. Tyrne's queue capacity equals the task arena capacity, so it can never refuse an enqueue when the total task count is within the limit. See [ADR-0019](decisions/0019-scheduler-shape.md).
 
+**Reply capability.** A single-use send capability that the kernel auto-issues to a receiver when it accepts a call-style IPC message, naming the original sender so the receiver can reply exactly once without holding a standing capability to that sender. Using or dropping it consumes it. Borrowed from seL4's reply-capability mechanism. In Tyrne the reply-capability scheme is specified — and its eager-versus-lazy issuance deferred — by [ADR-0018](decisions/0018-badge-scheme-and-reply-recv-deferral.md). See also *Badge* and *Endpoint*.
+
 **Rendezvous IPC.** A synchronous IPC model where `ipc_send` and `ipc_recv` meet at an endpoint: the first caller records a waiter, the second delivers and unblocks it, both return with the transfer complete. Tyrne uses rendezvous IPC per [ADR-0017](decisions/0017-ipc-primitive-set.md).
 
 **seL4.** A formally verified microkernel in the L4 family. Its verified correctness and capability-based design are reference points for Tyrne, even though Tyrne is not aiming for full formal verification in its first years.
@@ -81,6 +85,8 @@ Terminology used throughout Tyrne. Entries are alphabetical. If a term appears i
 **Stacked Borrows.** A model for Rust's pointer-aliasing rules that tracks a stack of tags per memory location and requires every access to present a valid tag. Violations are UB. Miri enforces Stacked Borrows; Tree Borrows is a stricter successor. Tyrne's raw-pointer bridge ([ADR-0021](decisions/0021-raw-pointer-scheduler-ipc-bridge.md)) is designed to honour Stacked Borrows.
 
 **StaticCell.** A BSP helper in [bsp-qemu-virt](../bsp-qemu-virt/src/main.rs) that wraps `UnsafeCell<MaybeUninit<T>>` to provide write-once-at-boot, share-afterwards static storage for kernel state. It exposes `as_mut_ptr` so callers can derive raw pointers without materialising a `&mut` (see [ADR-0021](decisions/0021-raw-pointer-scheduler-ipc-bridge.md)).
+
+**TCB (Trusted Computing Base).** The set of components that must be correct for the system's security guarantees to hold — code whose compromise would compromise everything. Tyrne keeps the TCB deliberately small by running drivers, filesystems, and network stacks in userspace rather than in the kernel, so that adding a feature does not enlarge the trusted core unless it strictly must; the README frames this as "the entire trusted computing base can be audited line by line." The boundary of the TCB is drawn in [architecture/security-model.md](architecture/security-model.md). See also *Microkernel* and *Trust boundary*.
 
 **Trust boundary.** A line in the system at which assumptions about integrity, confidentiality, or availability change. Crossing a trust boundary should require an explicit capability check. Trust boundaries are drawn in [architecture/security-model.md](architecture/security-model.md).
 
