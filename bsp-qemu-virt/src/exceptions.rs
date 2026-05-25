@@ -21,6 +21,7 @@
 //! [`docs/architecture/exceptions.md`]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/exceptions.md
 
 use core::arch::asm;
+use core::fmt;
 use core::sync::atomic::{compiler_fence, Ordering};
 
 use tyrne_hal::IrqController;
@@ -40,8 +41,10 @@ const TIMER_IRQ_ID: u32 = 27;
 /// `#[repr(C)]` is mandatory — the field order and offsets must match
 /// the asm `stp` sequence in `src/vectors.s` byte-for-byte. The frame
 /// is 192 bytes total; SP alignment is preserved.
+///
+/// `Debug` is **hand-written** (not derived) so it can redact the
+/// deliberately-uninitialised `_reserved` slot — see that field's note.
 #[repr(C)]
-#[derive(Debug)]
 pub struct TrapFrame {
     /// `x0` and `x1` saved at frame offset 0x00.
     pub x0_x1: [u64; 2],
@@ -70,12 +73,35 @@ pub struct TrapFrame {
     /// **Deliberately uninitialised.** The `vectors.s` trampoline does
     /// `sub sp, sp, #192` and writes only offsets `0x00..0xB0`; this slot
     /// (`[sp, #0xB0]`) is left holding whatever was previously on the
-    /// stack. `irq_entry` never reads it, so this is sound — but note that
-    /// a future handler `#[derive(Debug)]`-printing the whole `TrapFrame`
-    /// (the struct derives `Debug`) would emit garbage for this field
-    /// (C7-010). Zero it in the trampoline if clean debug output is ever
-    /// needed.
+    /// stack. `irq_entry` never reads it, so this is sound. Because the
+    /// slot holds stale kernel-stack bytes, the hand-written `Debug` impl
+    /// below redacts it (C7-010) so that printing a `TrapFrame` can never
+    /// leak those 16 bytes into a log or panic message; zero it in the
+    /// trampoline as well if the raw value is ever genuinely needed.
     pub _reserved: [u64; 2],
+}
+
+impl fmt::Debug for TrapFrame {
+    /// Formats every saved-register field but **redacts `_reserved`**:
+    /// that slot is deliberately uninitialised (see its field note), so
+    /// emitting it would leak up to 16 bytes of stale kernel-stack
+    /// contents (C7-010). Redaction closes that path with no per-IRQ cost.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrapFrame")
+            .field("x0_x1", &self.x0_x1)
+            .field("x2_x3", &self.x2_x3)
+            .field("x4_x5", &self.x4_x5)
+            .field("x6_x7", &self.x6_x7)
+            .field("x8_x9", &self.x8_x9)
+            .field("x10_x11", &self.x10_x11)
+            .field("x12_x13", &self.x12_x13)
+            .field("x14_x15", &self.x14_x15)
+            .field("x16_x17", &self.x16_x17)
+            .field("x18_lr", &self.x18_lr)
+            .field("elr_spsr", &self.elr_spsr)
+            .field("_reserved", &"<uninitialised; redacted>")
+            .finish()
+    }
 }
 
 // The trampoline in `vectors.s` reserves exactly 192 bytes of stack

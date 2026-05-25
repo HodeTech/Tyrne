@@ -1305,9 +1305,14 @@ mod tests {
         let mut arena: AddressSpaceArena<M> = AddressSpaceArena::new();
         let mut table = CapabilityTable::new();
 
-        // SAFETY: the decorators delegate `create_address_space` to the
-        // inner `FakeMmu`, which never dereferences `root` — it is a
-        // host-side mock that just stores the aligned `PhysFrame`. No UB.
+        // SAFETY:
+        // (a) `Mmu::create_address_space` is `unsafe` at the trait boundary,
+        //     so this call site discharges the contract manually.
+        // (b) `frame(0x4000_0000)` is page-aligned, and these decorators
+        //     delegate to `FakeMmu`, a host-side mock that only stores the
+        //     `PhysFrame` and never dereferences `root` — no UB.
+        // (c) A local safe shim would hide, not remove, the trait-level
+        //     `unsafe` contract and weaken audit visibility at the call site.
         let bootstrap_inner = unsafe { mmu.create_address_space(frame(0x4000_0000)) };
         let bootstrap_as = AddressSpace::wrap_bootstrap(bootstrap_inner);
         let as_handle = create_address_space(&mut arena, bootstrap_as).unwrap();

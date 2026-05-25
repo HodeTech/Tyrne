@@ -59,14 +59,24 @@ pub struct FakeTaskContext {
 /// let mut stack = [0u8; 512];
 /// let top = stack.as_mut_ptr().wrapping_add(stack.len());
 ///
-/// // SAFETY: `top` is one-past a 512-byte live stack region; `never_returns`
-/// // diverges. The fake does not dereference either — it only records.
+/// // SAFETY:
+/// // (a) `ContextSwitch::init_context` is `unsafe` — for a real CPU it would
+/// //     install `top` as the stack pointer and `never_returns` as the entry.
+/// // (b) `top` is one-past a live 512-byte stack and `never_returns` diverges;
+/// //     `FakeContextSwitch` only records the arguments, dereferencing neither.
+/// // (c) No safe shim exists: the trait method is `unsafe` by contract, so the
+/// //     call site must discharge it even for the recording fake.
 /// unsafe { cs.init_context(&mut a, never_returns, top) };
 /// assert!(a.initialized);
 /// assert_eq!(cs.init_count(), 1);
 ///
 /// let b = FakeTaskContext::default();
-/// // SAFETY: the fake performs no real switch; it only records.
+/// // SAFETY:
+/// // (a) `ContextSwitch::context_switch` is `unsafe` — for a real CPU it
+/// //     saves/restores callee-saved state through the context pointers.
+/// // (b) `a`/`b` are live `FakeTaskContext`s; the fake performs no real switch
+/// //     and never dereferences register state — it only records.
+/// // (c) The trait method is `unsafe` by contract; no safe alternative exists.
 /// unsafe { cs.context_switch(&mut a, &b) };
 /// assert!(a.switched);
 /// assert_eq!(cs.switch_count(), 1);
@@ -173,8 +183,12 @@ mod tests {
         let mut stack = [0u8; 512];
         let top = stack.as_mut_ptr().wrapping_add(stack.len());
 
-        // SAFETY: `top` is one-past a 512-byte live stack; the fake only
-        // records the pointer value, it does not dereference it.
+        // SAFETY:
+        // (a) `init_context` is `unsafe` — for a real CPU it installs `top`
+        //     as the stack pointer and `never_returns` as the entry point.
+        // (b) `top` is one-past a live 512-byte stack and `never_returns`
+        //     diverges; the fake only records the pointer, never derefs it.
+        // (c) The trait method is `unsafe` by contract; no safe shim exists.
         unsafe { cs.init_context(&mut ctx, never_returns, top) };
 
         assert!(ctx.initialized);
@@ -198,13 +212,20 @@ mod tests {
         let mut a = FakeTaskContext::default();
         let b = FakeTaskContext::default();
 
-        // SAFETY: the fake performs no real switch; it only records.
+        // SAFETY:
+        // (a) `context_switch` is `unsafe` — for a real CPU it saves/restores
+        //     callee-saved state through the two context pointers.
+        // (b) `a`/`b` are live `FakeTaskContext`s; the fake performs no real
+        //     switch and only records, dereferencing no register state.
+        // (c) The trait method is `unsafe` by contract; no safe alternative.
         unsafe { cs.context_switch(&mut a, &b) };
         assert!(a.switched);
         assert!(!b.switched);
         assert_eq!(cs.switch_count(), 1);
 
-        // SAFETY: as above.
+        // SAFETY: as the first `context_switch` call above — (a) the trait
+        // method is `unsafe`, (b) the fake only records over live contexts and
+        // derefs no register state, (c) no safe alternative to the `unsafe` API.
         unsafe { cs.context_switch(&mut a, &b) };
         assert_eq!(cs.switch_count(), 2);
     }

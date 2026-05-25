@@ -94,7 +94,7 @@ pub fn send(&self, msg: Message) -> Result<(), IpcError> { /* ... */ }
 ## `no_std` discipline
 
 - Kernel and HAL crates are `#![no_std]`. Do not depend, transitively or directly, on anything that pulls `std`.
-- Heap allocation is **not** available in the kernel by default. When the allocator is added (see the allocator ADR, to be written when the allocator is introduced — no ADR in the current 0001–0035 range covers it), it will be a distinct crate and kernel code will opt in explicitly.
+- Heap allocation is **not** available in the kernel by default. When the allocator is added (see the allocator ADR, to be written when the allocator is introduced — no existing ADR covers it), it will be a distinct crate and kernel code will opt in explicitly.
 - No `println!`, `print!`, `eprintln!`. Use the logging facade (see [logging-and-observability.md](logging-and-observability.md)).
 
 ## Capability type conventions
