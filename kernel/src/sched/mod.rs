@@ -38,13 +38,13 @@
 //! [`docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md`]
 //! for the incident report and ADR-0026 for the structural fix.
 //!
-//! [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
-//! [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
-//! [`docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md`]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
+//! [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+//! [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+//! [`docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md`]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
 //!
-//! [T-004]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md
-//! [ADR-0019]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0019-scheduler-shape.md
-//! [ADR-0020]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0020-cpu-trait-v2-context-switch.md
+//! [T-004]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md
+//! [ADR-0019]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0019-scheduler-shape.md
+//! [ADR-0020]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0020-cpu-trait-v2-context-switch.md
 
 use tyrne_hal::{ContextSwitch, Cpu, IrqGuard};
 
@@ -226,9 +226,9 @@ pub enum SchedError {
     /// land, this symmetric rollback keeps the recovery path
     /// well-defined.
     ///
-    /// [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
-    /// [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
-    /// [ADR-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+    /// [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+    /// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+    /// [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
     Deadlock,
 }
 
@@ -264,7 +264,7 @@ pub struct Scheduler<C: ContextSwitch + Cpu> {
     /// every registered task so B5+ multi-AS tasks slot in
     /// additively.
     ///
-    /// [ADR-0028 §Simulation row 3]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
+    /// [ADR-0028 §Simulation row 3]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
     /// [`Mmu::activate`]: tyrne_hal::Mmu::activate
     task_address_space_handles: [Option<AddressSpaceHandle>; TASK_ARENA_CAPACITY],
     current: Option<TaskHandle>,
@@ -279,7 +279,7 @@ pub struct Scheduler<C: ContextSwitch + Cpu> {
     /// dispatching idle is mechanically identical to dispatching any
     /// other task once the handle is selected.
     ///
-    /// [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+    /// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
     idle: Option<TaskHandle>,
     /// Saved register contexts, one per task arena slot.
     ///
@@ -536,8 +536,8 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
 // shared rationale for the "why not safer Rust" half of its justification,
 // alongside the block-local invariants it states inline.
 //
-// [ADR-0021]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
-// [UNSAFE-2026-0012]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+// [ADR-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
+// [UNSAFE-2026-0012]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 
 /// Register the BSP-owned idle task in the dispatcher's fallback slot.
 ///
@@ -579,7 +579,7 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
 /// 16-byte aligned, at least 512 bytes of backing memory, valid for the
 /// idle task's entire lifetime.
 ///
-/// [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+/// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
 pub unsafe fn register_idle<C: ContextSwitch + Cpu>(
     sched: *mut Scheduler<C>,
     cpu: &C,
@@ -781,7 +781,7 @@ pub unsafe fn start<C: ContextSwitch + Cpu>(
     // per-task AS without the kernel mapping would translation-fault
     // any IRQ taken in this window.
     //
-    // [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
+    // [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
     if let Some(target) = first_as {
         activate_address_space(target);
     } else {
@@ -1103,8 +1103,8 @@ pub unsafe fn ipc_send_and_yield<C: ContextSwitch + Cpu>(
 /// *Pointer validity*. The four pointers must not alias each other or any
 /// live `&mut` in the caller's scope.
 ///
-/// [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
-/// [ADR-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+/// [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+/// [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
 #[allow(
     clippy::too_many_arguments,
     reason = "IPC bridge must forward all parameters that ipc_recv requires \
@@ -1172,7 +1172,7 @@ pub unsafe fn ipc_recv_and_yield<C: ContextSwitch + Cpu>(
     // any instant. With idle registered (the v1 expected configuration),
     // Deadlock is structurally unreachable.
     //
-    // [ADR-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+    // [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
     let dispatch = {
         // SAFETY: caller contract — `sched` valid and exclusive for this
         // block; `&mut` does not cross the switch below. Rejected
@@ -2343,7 +2343,7 @@ mod tests {
     // Option A and verifies the post-fix dispatcher routes correctly.
     // Refs: ADR-0026, T-014, [B1 smoke regression mini-retro].
     //
-    // [B1 smoke regression mini-retro]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
+    // [B1 smoke regression mini-retro]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
 
     #[test]
     fn register_idle_stores_handle_in_idle_slot_and_not_in_ready_queue() {

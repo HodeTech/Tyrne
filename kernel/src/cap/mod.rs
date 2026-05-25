@@ -10,10 +10,10 @@
 //! [ADR-0014][adr-0014]. The architectural role of capabilities lives in
 //! [`security-model.md`][sec] and [architectural principle P1][p1].
 //!
-//! [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
-//! [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
-//! [sec]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/security-model.md
-//! [p1]: https://github.com/cemililik/Tyrne/blob/main/docs/standards/architectural-principles.md#p1--no-ambient-authority
+//! [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+//! [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+//! [sec]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/security-model.md
+//! [p1]: https://github.com/HodeTech/Tyrne/blob/main/docs/standards/architectural-principles.md#p1--no-ambient-authority
 //!
 //! ## Status (T-001 + T-002)
 //!
@@ -54,7 +54,7 @@ use crate::obj::{EndpointHandle, NotificationHandle, TaskHandle};
 /// the live [`AddressSpace`][crate::mm::AddressSpace] kernel-object
 /// landing per [ADR-0028][adr-0028].
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum CapKind {
     /// Refers to a task kernel object.
@@ -68,7 +68,7 @@ pub enum CapKind {
     /// [`CapObject::AddressSpace`] variant carries the typed
     /// [`AddressSpaceHandle`].
     ///
-    /// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+    /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     AddressSpace,
     /// Refers to a physical memory region (Phase B4+).
     MemoryRegion,
@@ -84,7 +84,7 @@ pub enum CapKind {
 /// introduces frame-ownership semantics. `AddressSpace` landed with
 /// T-018 (per [ADR-0028][adr-0028]).
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum CapObject {
     /// Capability naming a [`Task`][crate::obj::Task] kernel object.
@@ -96,7 +96,7 @@ pub enum CapObject {
     /// Capability naming an [`AddressSpace`][crate::mm::AddressSpace]
     /// kernel object (per [ADR-0028][adr-0028]; T-018 commit 2).
     ///
-    /// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+    /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     AddressSpace(AddressSpaceHandle),
 }
 

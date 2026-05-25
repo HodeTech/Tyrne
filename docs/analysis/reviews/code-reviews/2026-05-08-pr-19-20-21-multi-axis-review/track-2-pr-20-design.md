@@ -1,6 +1,6 @@
 # Track 2 — PR #20 ADR-0027 design correctness + §Simulation
 
-- **PR:** [#20](https://github.com/cemililik/Tyrne/pull/20)
+- **PR:** [#20](https://github.com/HodeTech/Tyrne/pull/20)
 - **Branch:** adr-0027-kernel-virtual-memory-layout
 - **Commits reviewed:** dc4d92b (Propose) + bb0a6ba (Accept) + 8b6eef4 (PR-num fix)
 - **Reviewer:** Claude Opus 4.7 sub-agent (Track 2)

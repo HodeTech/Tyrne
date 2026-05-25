@@ -26,7 +26,7 @@ version = "0.0.1"
 edition = "2021"
 authors = ["Cemil İlik"]
 license = "Apache-2.0"
-repository = "https://github.com/cemililik/Tyrne"
+repository = "https://github.com/HodeTech/Tyrne"
 
 # Workspace-wide lint LEVELS. These are the authoritative source for lint
 # levels — `clippy.toml` holds only numeric thresholds, not levels. A lint set

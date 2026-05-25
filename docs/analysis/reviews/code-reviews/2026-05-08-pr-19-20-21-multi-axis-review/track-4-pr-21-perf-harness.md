@@ -1,6 +1,6 @@
 # Track 4 — PR #21 perf-harness implementation
 
-- **PR:** [#21](https://github.com/cemililik/Tyrne/pull/21)
+- **PR:** [#21](https://github.com/HodeTech/Tyrne/pull/21)
 - **Branch:** p10-wall-clock-bench-harness
 - **Commits reviewed:** `1de8143` + `abf26b9`
 - **Reviewer:** Claude Opus 4.7 sub-agent (Track 4) — paper review only; harness not executed

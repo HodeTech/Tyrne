@@ -23,11 +23,11 @@
 //! "could `alloc_frame` ever return a PA aliasing this range" query
 //! the task loader uses to discharge [UNSAFE-2026-0027].
 //!
-//! [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
-//! [UNSAFE-2026-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [UNSAFE-2026-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 //!
-//! [ADR-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md
-//! [T-017]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-017-physical-memory-manager.md
+//! [ADR-0035]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md
+//! [T-017]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-017-physical-memory-manager.md
 //! [`Mmu::map`]: tyrne_hal::Mmu::map
 
 use tyrne_hal::{FrameProvider, PhysAddr, PhysFrame, PAGE_SIZE};
@@ -65,7 +65,7 @@ pub enum PmmError {
     /// the bit-set but twice to the cached counter), leaving
     /// `stats()` inconsistent with the bitmap and risking
     /// `free_count = 0` while `alloc_frame()` still has free
-    /// frames. See [PR #26 review-round 1](https://github.com/cemililik/Tyrne/pull/26).
+    /// frames. See [PR #26 review-round 1](https://github.com/HodeTech/Tyrne/pull/26).
     OverlappingReservedRanges,
     /// `free_frame` rejected an attempt to free a frame that is
     /// already Free, or whose PA falls in a Reserved range (the
@@ -73,7 +73,7 @@ pub enum PmmError {
     /// the cached reserved-range list is the discrimination
     /// mechanism, per [ADR-0035 §Simulation §Step 2 Critical row]).
     ///
-    /// [ADR-0035 §Simulation §Step 2 Critical row]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
+    /// [ADR-0035 §Simulation §Step 2 Critical row]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
     DoubleFree,
 }
 
@@ -115,7 +115,7 @@ pub struct PmmStats {
 ///
 /// Per [ADR-0035 §Decision outcome][adr-0035].
 ///
-/// [adr-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#decision-outcome
+/// [adr-0035]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#decision-outcome
 pub struct Pmm<const N: usize, const R: usize> {
     /// One bit per frame; bit `i` set ⇔ frame `i` is Allocated or
     /// Reserved (single-bit collapse per [ADR-0035 §Negative
@@ -195,7 +195,7 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
     /// `extent.frame_count() <= N * 8` and reported as
     /// [`PmmError::OutOfRange`] (no kernel-static panic).
     ///
-    /// [adr-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
+    /// [adr-0035]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
     pub fn new(extent: PhysFrameRange, reserved: &[PhysFrameRange]) -> Result<Self, PmmError> {
         // Validation (i): extent page-aligned.
         if !extent.is_aligned() {
@@ -344,7 +344,7 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
     /// forward-compat note, a wrap-then-scan-prefix step would land
     /// when SMP per-core caches arrive; not v1.
     ///
-    /// [adr-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
+    /// [adr-0035]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
     pub fn alloc_frame(&mut self) -> Option<PhysFrame> {
         // Test-only failure injection (see `alloc_failure_after`'s
         // doc-comment). Runs before the production body so a forced
@@ -609,8 +609,8 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
     /// walk; the `could_yield_pa_overlapping_interval_equals_perframe`
     /// host test pins that the two formulations agree on every input.
     ///
-    /// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-    /// [unsafe-27]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+    /// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+    /// [unsafe-27]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
     #[must_use]
     pub fn could_yield_pa_overlapping(&self, pa_range: core::ops::Range<usize>) -> bool {
         // Empty (or inverted) range cannot overlap anything.
@@ -712,8 +712,8 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
 /// [ADR-0035 §Decision drivers][adr-0035], this is the canonical
 /// surface the PMM layer satisfies.
 ///
-/// [adr-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-/// [adr-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md
+/// [adr-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+/// [adr-0035]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md
 impl<const N: usize, const R: usize> FrameProvider for Pmm<N, R> {
     fn alloc_frame(&mut self) -> Option<PhysFrame> {
         Pmm::alloc_frame(self)

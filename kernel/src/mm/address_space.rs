@@ -27,7 +27,7 @@
 //! commit 4. The bootstrap-AS wrap + arena `StaticCell` publication
 //! land in T-018 commit 5.
 //!
-//! [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+//! [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 
 use crate::cap::{
     CapError, CapHandle, CapKind, CapObject, CapRights, CapabilityTable, MAX_DERIVATION_DEPTH,
@@ -55,7 +55,7 @@ pub const ADDRESS_SPACE_ARENA_CAPACITY: usize = 8;
 /// slot) so this handle's `(index=0, generation=0)` deterministically
 /// matches the live arena slot.
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 pub const BOOTSTRAP_ADDRESS_SPACE_HANDLE: AddressSpaceHandle =
     AddressSpaceHandle::from_slot(SlotId::first_slot());
 
@@ -73,8 +73,8 @@ pub const BOOTSTRAP_ADDRESS_SPACE_HANDLE: AddressSpaceHandle =
 /// land here additively when ADR-0033 (high-half migration) opens —
 /// not added today (CLAUDE.md non-negotiable #6, no speculative design).
 ///
-/// [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 pub struct AddressSpace<M: Mmu> {
     inner: M::AddressSpace,
 }
@@ -97,7 +97,7 @@ impl<M: Mmu> AddressSpace<M> {
     /// via `cap_create_address_space` → `PMM.alloc_frame()` →
     /// `Mmu::create_address_space(root)` (T-018 commit 3).
     ///
-    /// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+    /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     #[must_use]
     pub const fn wrap_bootstrap(inner: M::AddressSpace) -> Self {
         Self { inner }
@@ -200,7 +200,7 @@ impl AddressSpaceHandle {
 /// the kernel inherits this generic from the scheduler surface
 /// (ADR-0019 / ADR-0020) rather than introducing a parallel axis.
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 pub type AddressSpaceArena<M> = Arena<AddressSpace<M>, ADDRESS_SPACE_ARENA_CAPACITY>;
 
 /// Errors returned by address-space operations.
@@ -406,7 +406,7 @@ pub fn activate_address_space_handle<M: Mmu>(
 // [`AddressSpaceError`] return type that wraps the underlying
 // [`CapError`] / [`MmuError`] taxonomies without flattening.
 //
-// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 
 /// Resolve a capability handle to an [`AddressSpaceHandle`].
 ///
@@ -523,9 +523,9 @@ fn resolve_address_space_cap(
 /// - [`CapError(InvalidHandle)`][`CapError(CapError)`] —
 ///   `parent_cap_handle` lookup failed at step 1.
 ///
-/// [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
-/// [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 /// [`OutOfFrames`]: AddressSpaceError::OutOfFrames
 /// [`ArenaFull`]: AddressSpaceError::ArenaFull
 /// [`CapError(CapError)`]: AddressSpaceError::CapError
@@ -647,8 +647,8 @@ pub fn cap_create_address_space<M: Mmu>(
     // way of forcing every caller (not just BSPs with side-effecting
     // bodies) through an audit-disciplined site.
     //
-    // [ADR-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-    // [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+    // [ADR-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+    // [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
     let inner = unsafe { mmu.create_address_space(root) };
 
     // Step 6: arena slot. Preflight at step 3 guarantees `arena`
@@ -715,8 +715,8 @@ pub fn cap_create_address_space<M: Mmu>(
 ///   (`OutOfFrames` for intermediate-table allocs, `AlreadyMapped`,
 ///   `MisalignedAddress`, `InvalidFlags`, ...).
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
-/// [UNSAFE-2026-0025]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [UNSAFE-2026-0025]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 /// [`CapError(_)`]: AddressSpaceError::CapError
 /// [`StaleHandle`]: AddressSpaceError::StaleHandle
 /// [`MmuMapError(MmuError)`]: AddressSpaceError::MmuMapError
@@ -771,7 +771,7 @@ pub fn cap_map<M: Mmu>(
 /// - [`MmuUnmapError(MmuError)`] — pass-through from `Mmu::unmap`
 ///   (`NotMapped`, `MisalignedAddress`, ...).
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 /// [`CapError(_)`]: AddressSpaceError::CapError
 /// [`StaleHandle`]: AddressSpaceError::StaleHandle
 /// [`MmuUnmapError(MmuError)`]: AddressSpaceError::MmuUnmapError

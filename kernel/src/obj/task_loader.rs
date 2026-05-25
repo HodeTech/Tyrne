@@ -60,9 +60,9 @@
 //! and B6 (first userspace "hello") per
 //! [phase-b §B4 §Revision-notes][phase-b-b4-rider].
 //!
-//! [adr-0029]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
-//! [t-019]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
-//! [phase-b-b4-rider]: https://github.com/cemililik/Tyrne/blob/main/docs/roadmap/phases/phase-b.md#milestone-b4--task-loader
+//! [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
+//! [t-019]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
+//! [phase-b-b4-rider]: https://github.com/HodeTech/Tyrne/blob/main/docs/roadmap/phases/phase-b.md#milestone-b4--task-loader
 
 use crate::cap::{CapError, CapHandle, CapKind, CapRights, CapabilityTable};
 use crate::mm::{
@@ -135,8 +135,8 @@ use tyrne_hal::{MappingFlags, Mmu, VirtAddr, PAGE_SIZE};
 /// `Mmu::intermediate_frames_for_span` HAL method. v1's single
 /// aarch64 BSP keeps the constants inline.
 ///
-/// [adr-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 #[must_use]
 pub fn intermediate_frame_count(
     image_base_va: VirtAddr,
@@ -187,7 +187,7 @@ pub fn intermediate_frame_count(
 /// is unusual but not architecturally forbidden); the loader does
 /// not impose a stylistic "no-null-page" policy in v1.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 pub const USERSPACE_VA_LIMIT: usize = 1usize << 48;
 
 /// Metadata describing a freshly populated address space produced by
@@ -225,7 +225,7 @@ pub const USERSPACE_VA_LIMIT: usize = 1usize << 48;
 /// - `stack_bytes == stack_size_pages * PAGE_SIZE` (always a multiple
 ///   of `PAGE_SIZE`).
 ///
-/// [unsafe-26]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [unsafe-26]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct LoadedImage {
     /// Cap handle for the newly-minted address space. Backed by a
@@ -266,7 +266,7 @@ pub struct LoadedImage {
 /// — e.g. a per-section permission failure that lands with ADR-0034
 /// (placeholder; B5+).
 ///
-/// [t-019-rollback]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
+/// [t-019-rollback]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum LoadError {
@@ -306,7 +306,7 @@ pub enum LoadError {
     /// path; non-sentinel `end` values name the offending
     /// saturated-add result for diagnostics.
     ///
-    /// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+    /// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
     InvalidImageBaseVa {
         /// The caller-supplied `image_base_va`.
         base: VirtAddr,
@@ -369,7 +369,7 @@ pub enum LoadError {
     /// retained as a defensive variant so a misconfigured BSP fails
     /// fast with a typed error instead of UB.
     ///
-    /// [unsafe-27]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+    /// [unsafe-27]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
     ImageOverlapsAllocatableMemory,
 
     /// `pmm.alloc_frame()` (the loader's *own* leaf/root alloc) returned
@@ -387,7 +387,7 @@ pub enum LoadError {
     /// leaf-alloc path); the sibling mid-walk `MapFailed(OutOfFrames)` clause
     /// is exercised via `tyrne_test_hal::OutOfFramesMmu`.
     ///
-    /// [t-019-rollback]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
+    /// [t-019-rollback]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
     OutOfFrames,
 
     /// `cap_map` returned `Err` mid-loop. Wraps the underlying
@@ -435,7 +435,7 @@ pub enum LoadError {
 /// 7. Stack-page loop under `USER | WRITE` (same).
 /// 8. Construct and return [`LoadedImage`].
 ///
-/// [unsafe-27]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [unsafe-27]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 ///
 /// # Arguments
 ///
@@ -485,9 +485,9 @@ pub enum LoadError {
 /// `cap_drop` `free_slot`s the leaf directly, is rights-agnostic, and
 /// fails only with `HasChildren` (impossible here).
 ///
-/// [adr-0029]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
-/// [t-019]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
-/// [t-019-rollback]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
+/// [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
+/// [t-019]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
+/// [t-019-rollback]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
 #[allow(
     clippy::too_many_arguments,
     reason = "load_image threads the full kernel-state surface (pmm + mmu + \
@@ -683,9 +683,9 @@ pub fn load_image<M: Mmu, const N: usize, const R: usize>(
         // step; `Mmu::copy_into_frame`-style HAL relocation just moves
         // the audit point without removing it.
         //
-        // [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
-        // [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-        // [audit]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+        // [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
+        // [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+        // [audit]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
         unsafe {
             let src = chunk.as_ptr();
             let dst = crate::mm::phys_frame_kernel_ptr(frame);

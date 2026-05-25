@@ -6,7 +6,7 @@
 //! Milestone A4 populates them with real waiter lists when `send` /
 //! `recv` / `reply_recv` arrive.
 //!
-//! [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+//! [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
 
 use super::arena::{Arena, SlotId};
 use super::{ObjError, ENDPOINT_ARENA_CAPACITY};
@@ -105,7 +105,7 @@ pub fn create_endpoint(
 ///
 /// [`ObjError::InvalidHandle`] when `handle` is stale or already freed.
 ///
-/// [ADR-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+/// [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
 pub fn destroy_endpoint(
     arena: &mut EndpointArena,
     handle: EndpointHandle,

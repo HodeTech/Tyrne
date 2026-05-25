@@ -8,8 +8,8 @@
 //! [ADR-0009 §Revision notes][adr-0009-rev] for the additive-extension
 //! record.
 //!
-//! [ADR-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-//! [adr-0009-rev]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
+//! [ADR-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+//! [adr-0009-rev]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
 
 pub mod vmsav8;
 
@@ -250,8 +250,8 @@ pub trait FrameProvider {
 /// `PhantomData` AS-id or a stored ASID) and make `flush` reject a
 /// mismatch.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 #[must_use = "MapperFlush carries a TLB-invalidation responsibility — \
               call .flush(mmu) to invalidate the per-address TLB entry, \
               or .ignore() if a bulk invalidate_tlb_all() will follow"]
@@ -336,9 +336,9 @@ impl MapperFlush {
 /// [ADR-0009 §Revision notes][adr-0009-rev] for the additive-extension
 /// record.
 ///
-/// [ADR-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [adr-0009-rev]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
+/// [ADR-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0009-rev]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
 pub trait Mmu: Send + Sync {
     /// Per-BSP address-space structure.
     type AddressSpace: Send;

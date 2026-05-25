@@ -8,10 +8,10 @@
 //! [`docs/architecture/memory-management.md`] for the synthesised
 //! architecture chapter.
 //!
-//! [ADR-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
-//! [ADR-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md
-//! [T-017]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-017-physical-memory-manager.md
-//! [T-018]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-018-address-space-kernel-object.md
+//! [ADR-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+//! [ADR-0035]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md
+//! [T-017]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-017-physical-memory-manager.md
+//! [T-018]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-018-address-space-kernel-object.md
 
 pub mod address_space;
 pub mod pmm;
@@ -35,7 +35,7 @@ use tyrne_hal::{PhysAddr, PAGE_SIZE};
 /// panicking; the validation layer at the BSP is the canonical
 /// source for "well-formed range".
 ///
-/// [adr-0035]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
+/// [adr-0035]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0035-physical-memory-manager.md#simulation
 /// [`Pmm::new`]: pmm::Pmm::new
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PhysFrameRange {
@@ -170,10 +170,10 @@ pub use pmm::{Pmm, PmmError, PmmStats};
 /// commit ADR-0033 lands (kept inline today to avoid churning the
 /// audit-log entries that landed with T-017).
 ///
-/// [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [UNSAFE-2026-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [UNSAFE-2026-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 #[must_use]
 #[inline]
 pub(crate) fn phys_frame_kernel_ptr(frame: tyrne_hal::PhysFrame) -> *mut u8 {

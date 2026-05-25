@@ -62,7 +62,7 @@ Depth is **one** — at most one sender or receiver waits per endpoint at a time
 
 The `RecvWaiting → Idle` reverse arc is the recovery primitive [`ipc_cancel_recv`][cancel-recv] added by [ADR-0032](../decisions/0032-endpoint-rollback-and-cancel-recv.md). It is consumed exclusively by `ipc_recv_and_yield`'s Phase 2 Deadlock branch in v1 (kernel-internal — no userspace caller exists), keeping the symmetric "error path leaves observable state unchanged" invariant: when the bridge returns `SchedError::Deadlock`, both the scheduler state *and* the endpoint state are restored to their pre-call shape, so a subsequent retry observes a clean `Idle` slot rather than `QueueFull`. Userspace-driven endpoint destroy (Phase B2+) and a future preemption-rollback path (B5+) will reuse the same primitive.
 
-[cancel-recv]: https://github.com/cemililik/Tyrne/blob/main/kernel/src/ipc/mod.rs
+[cancel-recv]: https://github.com/HodeTech/Tyrne/blob/main/kernel/src/ipc/mod.rs
 
 ### `IpcQueues`: states + slot generations
 

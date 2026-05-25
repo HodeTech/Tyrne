@@ -1,6 +1,6 @@
 # Track 1 — PR #19 mechanical sweep validation
 
-- **PR:** [#19](https://github.com/cemililik/Tyrne/pull/19)
+- **PR:** [#19](https://github.com/HodeTech/Tyrne/pull/19)
 - **Branch:** doc-hygiene-2026-05-06-path-drift-sweep
 - **Commit reviewed:** 2877e0d4ebda67641e5e40e4dbdb52119abce0c6
 - **Reviewer:** Claude Opus 4.7 sub-agent (Track 1)

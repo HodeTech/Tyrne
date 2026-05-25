@@ -18,9 +18,9 @@
 //!   already-live, populated bootstrap L0 root without zero-fill (distinct
 //!   from `create_address_space`'s zero-filled-root contract).
 //!
-//! [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-//! [UNSAFE-2026-0023]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
-//! [UNSAFE-2026-0024]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+//! [UNSAFE-2026-0023]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [UNSAFE-2026-0024]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 
 // `QemuVirtMmu` and its `Mmu` impl are the post-bootstrap address-
 // space-management surface (per ADR-0027 §Decision outcome (c)). The
@@ -125,7 +125,7 @@ impl QemuVirtAddressSpace {
     ///
     /// Audit: UNSAFE-2026-0028.
     ///
-    /// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+    /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     #[must_use]
     pub unsafe fn from_existing_root(root: PhysFrame) -> Self {
         Self { root }

@@ -29,7 +29,7 @@ use tyrne_hal::{
 /// backing memory; pairing such a fake with `VecFrameProvider` as-is
 /// would feed it non-zero descriptor bytes.
 ///
-/// [pmm]: https://github.com/cemililik/Tyrne/blob/main/kernel/src/mm/pmm.rs
+/// [pmm]: https://github.com/HodeTech/Tyrne/blob/main/kernel/src/mm/pmm.rs
 pub struct VecFrameProvider {
     available: Vec<PhysFrame>,
 }
@@ -107,7 +107,7 @@ impl FakeAddressSpace {
 /// add exactly one failure mode each, delegating the success path
 /// unchanged.
 ///
-/// [bsp]: https://github.com/cemililik/Tyrne/blob/main/bsp-qemu-virt/src/mmu.rs
+/// [bsp]: https://github.com/HodeTech/Tyrne/blob/main/bsp-qemu-virt/src/mmu.rs
 pub struct FakeMmu {
     state: Mutex<FakeMmuState>,
 }

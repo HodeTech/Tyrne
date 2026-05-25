@@ -11,7 +11,7 @@
 //! [`docs/architecture/memory-management.md` §"Page-table entry encoding"][mm-doc]
 //! for the field-by-field bit map this module reifies.
 //!
-//! Lands with [T-016](https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-016-mmu-activation.md).
+//! Lands with [T-016](https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-016-mmu-activation.md).
 //!
 //! ## Scope
 //!
@@ -29,8 +29,8 @@
 //! safety contract) live in the BSP's `Mmu::map` / `Mmu::unmap` impl
 //! and are audited under UNSAFE-2026-0025.
 //!
-//! [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-//! [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+//! [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+//! [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 
 use super::MappingFlags;
 
@@ -67,8 +67,8 @@ pub const ATTR_IDX_NORMAL: u8 = 1;
 /// Per [ADR-0027 §Decision outcome (a)][adr-0027] / [`memory-management.md`
 /// §"`MAIR_EL1` attribute encoding"][mm-doc].
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 pub const MAIR_EL1_VALUE: u64 = 0x0000_0000_0000_FF00;
 
 // ── Shareability + access-permission encodings ─────────────────────────────────
@@ -135,7 +135,7 @@ pub const AP_USER_RO: u8 = 0b11;
 ///
 /// Per [ADR-0027 §Decision outcome (a)][adr-0027].
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 #[allow(
     clippy::unreadable_literal,
     reason = "system-register bit-pattern; field-by-field decomposition lives in the surrounding comment"
@@ -179,7 +179,7 @@ pub const TCR_EL1_VALUE: u64 = {
 /// bits are read-modify-written: the bootstrap reads the current value,
 /// ORs in this mask, and writes back.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 pub const SCTLR_EL1_MMU_ENABLE_MASK: u64 = (1 << 0) | (1 << 2) | (1 << 12);
 
 // ── Descriptor field bit positions ─────────────────────────────────────────────
@@ -265,8 +265,8 @@ pub struct DescriptorBits {
 /// test pins this behaviour. Callers that must reject stray bits should
 /// mask the value against the named constants before calling.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 #[must_use]
 pub const fn flags_to_descriptor_bits(flags: MappingFlags) -> DescriptorBits {
     let device = flags.contains(MappingFlags::DEVICE);

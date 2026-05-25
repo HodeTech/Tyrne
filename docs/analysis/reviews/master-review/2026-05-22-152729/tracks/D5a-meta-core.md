@@ -137,9 +137,9 @@ The skills README states: *"If a skill needs more than ~200 lines, either (a) th
 
 `NOTICE:5`; `SECURITY.md:13`
 
-NOTICE references `https://github.com/cemililik/TyrneOS` (note: `TyrneOS`). SECURITY.md references `https://github.com/cemililik/Tyrne`. The correct slug per the project name is `Tyrne`. The NOTICE URL likely predates the rename from Umbrix / pre-rename-era tooling.
+NOTICE references `https://github.com/cemililik/TyrneOS` (note: `TyrneOS`). SECURITY.md references `https://github.com/HodeTech/Tyrne`. The correct slug per the project name is `Tyrne`. The NOTICE URL likely predates the rename from Umbrix / pre-rename-era tooling.
 
-**Suggested fix:** Update NOTICE line 5 to `https://github.com/cemililik/Tyrne`.
+**Suggested fix:** Update NOTICE line 5 to `https://github.com/HodeTech/Tyrne`.
 
 ---
 
@@ -205,7 +205,7 @@ Every path was verified with `ls` or `git ls-files` at commit 288ddb2.
 | Reference | Source file:line | Status | Notes |
 |---|---|---|---|
 | `docs/roadmap/reviews/` | `.agents/skills/README.md:76` | Stale — path does not exist | Correct path is `docs/analysis/reviews/<type>-reviews/`; the conduct-review SKILL.md itself uses the correct path |
-| `https://github.com/cemililik/TyrneOS` | `NOTICE:5` | Stale repo slug | Should be `https://github.com/cemililik/Tyrne` (matches SECURITY.md) |
+| `https://github.com/cemililik/TyrneOS` | `NOTICE:5` | Stale repo slug | Should be `https://github.com/HodeTech/Tyrne` (matches SECURITY.md) |
 | "(Phase 2)" in reading order | `docs/README.md:19` | Orphaned phrase | No Phase-N numbering scheme exists in arch docs |
 | `docs/standards/` for unsafe audit tracking | `CLAUDE.md:16` | Misleading pointer | Policy is in docs/standards/; log is in docs/audits/; only the former is pointed to |
 | "most code is not yet written … architecture design" | `CLAUDE.md:7` | Stale status description | Phase B implementation is well underway |

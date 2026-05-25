@@ -43,9 +43,9 @@
 //! schedules tasks. `ipc_notify` sets bits on the notification word; waiter
 //! wakeup is wired in A5.
 //!
-//! [t003]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-003-ipc-primitives.md
-//! [adr-0017]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
-//! [adr-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+//! [t003]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-003-ipc-primitives.md
+//! [adr-0017]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
+//! [adr-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
 
 use crate::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
 use crate::obj::endpoint::{EndpointArena, EndpointHandle};
@@ -70,7 +70,7 @@ use crate::obj::ENDPOINT_ARENA_CAPACITY;
 /// field. The future syscall ABI (Phase B) must therefore **not** treat a
 /// `Message::default()` as an "empty / absent message" convention.
 ///
-/// [adr-0017]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
+/// [adr-0017]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Message {
     /// Caller-defined discriminator. The kernel does not interpret this field.
@@ -104,7 +104,7 @@ pub enum IpcError {
     /// instead of silently decoding as `Ok(Pending)` which the caller would
     /// turn into a downstream panic.
     ///
-    /// [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+    /// [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
     PendingAfterResume,
 }
 
@@ -524,9 +524,9 @@ pub fn ipc_notify(
 /// non-endpoint object, or lacks `RECV`. The endpoint state is not
 /// touched on this error.
 ///
-/// [adr-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
-/// [ADR-0017]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
-/// [ADR-0019]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0019-scheduler-shape.md
+/// [adr-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+/// [ADR-0017]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
+/// [ADR-0019]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0019-scheduler-shape.md
 pub fn ipc_cancel_recv(
     ep_arena: &mut EndpointArena,
     queues: &mut IpcQueues,

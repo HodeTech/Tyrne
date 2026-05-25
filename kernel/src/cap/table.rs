@@ -6,7 +6,7 @@
 //! `cap_derive`, `cap_revoke`, `cap_drop` — plus `insert_root` for
 //! bootstrapping. No `unsafe`, no heap.
 //!
-//! [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+//! [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
 
 use super::{CapError, CapObject, CapRights, Capability};
 
@@ -15,7 +15,7 @@ use super::{CapError, CapObject, CapRights, Capability};
 /// Per [ADR-0014][adr-0014]; revisit when a real use-case demands more.
 /// For v1 this is a compile-time constant.
 ///
-/// [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+/// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
 pub const CAP_TABLE_CAPACITY: usize = 64;
 
 /// Hard cap on derivation depth.
@@ -405,7 +405,7 @@ impl CapabilityTable {
     /// conservative choice of refusing to drop interior nodes keeps the
     /// contract auditable and leaves cascade semantics to `cap_revoke`.
     ///
-    /// [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+    /// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
     ///
     /// # Errors
     ///
@@ -524,7 +524,7 @@ impl CapabilityTable {
     /// `free_slot`; this pairs with the ADR-0023 cross-table-CDT
     /// question (both ask "who references this object across tables").
     ///
-    /// [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+    /// [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
     #[must_use]
     pub fn references_object(&self, target: CapObject) -> bool {
         self.slots
