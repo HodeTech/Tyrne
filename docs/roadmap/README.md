@@ -22,7 +22,7 @@ The plan is separate from the work. Individual tasks and reviews live under [`..
 - **Reviews** — they live under [`../analysis/reviews/<type>/`](../analysis/reviews/).
 - **Design rationale for architectural choices** — [`../decisions/`](../decisions/) (ADRs).
 - **Procedural rules** — [`../standards/`](../standards/).
-- **Repeatable procedures** — [`../../.claude/skills/`](../../.claude/skills/).
+- **Repeatable procedures** — [`../../.agents/skills/`](../../.agents/skills/).
 
 ## How to read the roadmap
 
@@ -42,5 +42,5 @@ See [ADR-0013](../decisions/0013-roadmap-and-planning.md) for the full identifie
 
 - **Tweaking a phase's milestones or sub-breakdowns** — edit the phase file.
 - **Adding or dropping a phase, or reordering phases at the top level** — structural change; requires an ADR that supersedes the affected statements.
-- **Opening a new task** — [`start-task`](../../.claude/skills/start-task/SKILL.md) skill.
-- **Running a review** — [`conduct-review`](../../.claude/skills/conduct-review/SKILL.md) skill.
+- **Opening a new task** — [`start-task`](../../.agents/skills/start-task/SKILL.md) skill.
+- **Running a review** — [`conduct-review`](../../.agents/skills/conduct-review/SKILL.md) skill.

@@ -88,7 +88,7 @@ Each role produces a section of the final artifact. Within each role, every item
 
 **Adversarial question:** does the change pull in trust that we have not earned?
 
-- Any new dependency went through [`add-dependency`](../../../../.claude/skills/add-dependency/SKILL.md).
+- Any new dependency went through [`add-dependency`](../../../../.agents/skills/add-dependency/SKILL.md).
 - The dependency's trust category is understood; build-time-only is very different from kernel-linked.
 - `cargo-vet` trust decisions are updated.
 
@@ -105,7 +105,7 @@ Combine the role outputs into a single artifact. The verdict is computed from th
 
 - **Approve** — every applicable axis returned OK; flagged items are all minor non-blocking.
 - **Changes requested** — one or more axes returned a blocking `flagged` outcome. Each is specific and actionable.
-- **Escalate** — the review surfaces an issue larger than this change (e.g., a trust-model gap that the subsystem exposes). A tracking task is opened via [`start-task`](../../../../.claude/skills/start-task/SKILL.md).
+- **Escalate** — the review surfaces an issue larger than this change (e.g., a trust-model gap that the subsystem exposes). A tracking task is opened via [`start-task`](../../../../.agents/skills/start-task/SKILL.md).
 
 The verdict is propagated to the corresponding code-review artifact as a cross-reference.
 

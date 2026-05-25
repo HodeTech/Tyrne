@@ -27,7 +27,7 @@
 //! commit 4. The bootstrap-AS wrap + arena `StaticCell` publication
 //! land in T-018 commit 5.
 //!
-//! [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+//! [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 
 use crate::cap::{
     CapError, CapHandle, CapKind, CapObject, CapRights, CapabilityTable, MAX_DERIVATION_DEPTH,
@@ -55,7 +55,7 @@ pub const ADDRESS_SPACE_ARENA_CAPACITY: usize = 8;
 /// slot) so this handle's `(index=0, generation=0)` deterministically
 /// matches the live arena slot.
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 pub const BOOTSTRAP_ADDRESS_SPACE_HANDLE: AddressSpaceHandle =
     AddressSpaceHandle::from_slot(SlotId::first_slot());
 
@@ -73,8 +73,8 @@ pub const BOOTSTRAP_ADDRESS_SPACE_HANDLE: AddressSpaceHandle =
 /// land here additively when ADR-0033 (high-half migration) opens —
 /// not added today (CLAUDE.md non-negotiable #6, no speculative design).
 ///
-/// [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 pub struct AddressSpace<M: Mmu> {
     inner: M::AddressSpace,
 }
@@ -97,7 +97,7 @@ impl<M: Mmu> AddressSpace<M> {
     /// via `cap_create_address_space` → `PMM.alloc_frame()` →
     /// `Mmu::create_address_space(root)` (T-018 commit 3).
     ///
-    /// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+    /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     #[must_use]
     pub const fn wrap_bootstrap(inner: M::AddressSpace) -> Self {
         Self { inner }
@@ -200,7 +200,7 @@ impl AddressSpaceHandle {
 /// the kernel inherits this generic from the scheduler surface
 /// (ADR-0019 / ADR-0020) rather than introducing a parallel axis.
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 pub type AddressSpaceArena<M> = Arena<AddressSpace<M>, ADDRESS_SPACE_ARENA_CAPACITY>;
 
 /// Errors returned by address-space operations.
@@ -241,8 +241,8 @@ pub enum AddressSpaceError {
     /// underlying [`AddressSpaceArena`] is in use.
     ArenaFull,
     /// The handle does not name a live slot — either never allocated,
-    /// already freed, or stale after reuse. Returned by
-    /// [`destroy_address_space`] and by the cap-gated `cap_map` /
+    /// already freed, or stale after reuse. Returned by the crate-internal
+    /// `destroy_address_space` and by the cap-gated `cap_map` /
     /// `cap_unmap` wrappers when the cap's handle has gone stale.
     StaleHandle,
     /// PMM exhausted: the underlying [`FrameProvider::alloc_frame`]
@@ -296,11 +296,17 @@ pub fn create_address_space<M: Mmu>(
 /// for one v1 caller — the rollback path in [`cap_create_address_space`]
 /// when cap-table minting fails after a successful arena allocation.
 ///
+/// `pub(crate)`: its only v1 caller is the in-module rollback path, so
+/// it is not part of the kernel-facing free-function surface that
+/// `mm/mod.rs` re-exports (C2-004 API-coherence fix). Promote to `pub`
+/// — and add it to the `mm/mod.rs` `pub use` — when the B4+ per-AS
+/// destroy path gives it an out-of-module caller.
+///
 /// # Errors
 ///
 /// [`AddressSpaceError::StaleHandle`] when `handle` is stale or
 /// already freed.
-pub fn destroy_address_space<M: Mmu>(
+pub(crate) fn destroy_address_space<M: Mmu>(
     arena: &mut AddressSpaceArena<M>,
     handle: AddressSpaceHandle,
 ) -> Result<AddressSpace<M>, AddressSpaceError> {
@@ -321,7 +327,13 @@ pub fn get_address_space<M: Mmu>(
 
 /// Return a mutable reference to the address space at `handle`, or
 /// `None` if stale / freed.
-pub fn get_address_space_mut<M: Mmu>(
+///
+/// `pub(crate)`: used in-module by [`cap_map`] / [`cap_unmap`] and not
+/// re-exported from `mm/mod.rs`. Narrowed from `pub` for API coherence
+/// (C2-004) — its sibling [`get_address_space`] stays `pub` because it
+/// *is* re-exported; the mutable form has no out-of-module caller, and
+/// keeping it crate-internal shrinks the cap-bypass-able surface.
+pub(crate) fn get_address_space_mut<M: Mmu>(
     arena: &mut AddressSpaceArena<M>,
     handle: AddressSpaceHandle,
 ) -> Option<&mut AddressSpace<M>> {
@@ -394,7 +406,7 @@ pub fn activate_address_space_handle<M: Mmu>(
 // [`AddressSpaceError`] return type that wraps the underlying
 // [`CapError`] / [`MmuError`] taxonomies without flattening.
 //
-// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 
 /// Resolve a capability handle to an [`AddressSpaceHandle`].
 ///
@@ -511,9 +523,9 @@ fn resolve_address_space_cap(
 /// - [`CapError(InvalidHandle)`][`CapError(CapError)`] —
 ///   `parent_cap_handle` lookup failed at step 1.
 ///
-/// [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
-/// [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 /// [`OutOfFrames`]: AddressSpaceError::OutOfFrames
 /// [`ArenaFull`]: AddressSpaceError::ArenaFull
 /// [`CapError(CapError)`]: AddressSpaceError::CapError
@@ -635,8 +647,8 @@ pub fn cap_create_address_space<M: Mmu>(
     // way of forcing every caller (not just BSPs with side-effecting
     // bodies) through an audit-disciplined site.
     //
-    // [ADR-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-    // [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+    // [ADR-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+    // [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
     let inner = unsafe { mmu.create_address_space(root) };
 
     // Step 6: arena slot. Preflight at step 3 guarantees `arena`
@@ -703,8 +715,8 @@ pub fn cap_create_address_space<M: Mmu>(
 ///   (`OutOfFrames` for intermediate-table allocs, `AlreadyMapped`,
 ///   `MisalignedAddress`, `InvalidFlags`, ...).
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
-/// [UNSAFE-2026-0025]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [UNSAFE-2026-0025]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 /// [`CapError(_)`]: AddressSpaceError::CapError
 /// [`StaleHandle`]: AddressSpaceError::StaleHandle
 /// [`MmuMapError(MmuError)`]: AddressSpaceError::MmuMapError
@@ -759,7 +771,7 @@ pub fn cap_map<M: Mmu>(
 /// - [`MmuUnmapError(MmuError)`] — pass-through from `Mmu::unmap`
 ///   (`NotMapped`, `MisalignedAddress`, ...).
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 /// [`CapError(_)`]: AddressSpaceError::CapError
 /// [`StaleHandle`]: AddressSpaceError::StaleHandle
 /// [`MmuUnmapError(MmuError)`]: AddressSpaceError::MmuUnmapError
@@ -795,7 +807,7 @@ mod tests {
     };
     use crate::cap::{CapError, CapObject, CapRights, Capability, CapabilityTable};
     use tyrne_hal::{mmu::Mmu, MappingFlags, MmuError, PhysAddr, PhysFrame, VirtAddr};
-    use tyrne_test_hal::{FakeMmu, VecFrameProvider};
+    use tyrne_test_hal::{BlockMappedMmu, FakeMmu, OutOfFramesMmu, VecFrameProvider};
 
     fn frame(addr: usize) -> PhysFrame {
         PhysFrame::from_aligned(PhysAddr(addr)).expect("test addr must be page-aligned")
@@ -1265,6 +1277,183 @@ mod tests {
             result,
             Err(AddressSpaceError::MmuUnmapError(MmuError::NotMapped))
         ));
+    }
+
+    // ── MR-018: pin the `Mmu::map` failure contract through `cap_map` ──────────
+    //
+    // `FakeMmu` has a flat-HashMap design with no intermediate page
+    // tables, so it can never return `MmuError::OutOfFrames` (mid-walk
+    // intermediate-table allocation failure) or `MmuError::BlockMapped`
+    // (walk hits a 2 MiB block descriptor) — the two clauses of the
+    // `Mmu::map` failure contract that `cap_map` rides for unsafe-free
+    // callers (C2-006). The sibling test-hal stream's `OutOfFramesMmu` /
+    // `BlockMappedMmu` decorators inject exactly those failures *before*
+    // any address-space mutation and *without* consuming `pa`. These
+    // tests drive `cap_map` through both clauses and assert the wrapper
+    // surfaces the error, does not consume the leaf `pa`, and leaves no
+    // mapping behind.
+
+    /// Generic cap-wrapper setup over an arbitrary `M: Mmu`. Builds a
+    /// bootstrap address space in `arena`, mints a full-rights cap for
+    /// it in a fresh `CapabilityTable`, and returns
+    /// `(table, cap_handle, arena)`. Mirrors `bootstrap_setup` but is
+    /// parametric in the MMU type so the failure-injecting decorators
+    /// can be threaded through `cap_map` as `M`.
+    fn bootstrap_setup_generic<M: Mmu>(
+        mmu: &M,
+    ) -> (CapabilityTable, crate::cap::CapHandle, AddressSpaceArena<M>) {
+        let mut arena: AddressSpaceArena<M> = AddressSpaceArena::new();
+        let mut table = CapabilityTable::new();
+
+        // SAFETY:
+        // (a) `Mmu::create_address_space` is `unsafe` at the trait boundary,
+        //     so this call site discharges the contract manually.
+        // (b) `frame(0x4000_0000)` is page-aligned, and these decorators
+        //     delegate to `FakeMmu`, a host-side mock that only stores the
+        //     `PhysFrame` and never dereferences `root` — no UB.
+        // (c) A local safe shim would hide, not remove, the trait-level
+        //     `unsafe` contract and weaken audit visibility at the call site.
+        let bootstrap_inner = unsafe { mmu.create_address_space(frame(0x4000_0000)) };
+        let bootstrap_as = AddressSpace::wrap_bootstrap(bootstrap_inner);
+        let as_handle = create_address_space(&mut arena, bootstrap_as).unwrap();
+
+        let bootstrap_cap = Capability::new(
+            CapRights::DUPLICATE | CapRights::DERIVE | CapRights::REVOKE | CapRights::TRANSFER,
+            CapObject::AddressSpace(as_handle),
+        );
+        let cap_handle = table.insert_root(bootstrap_cap).unwrap();
+
+        (table, cap_handle, arena)
+    }
+
+    #[test]
+    fn cap_map_propagates_intermediate_out_of_frames_and_does_not_consume_pa() {
+        // C2-006: drive `cap_map` through the `Mmu::map` clause-3
+        // intermediate-frame `OutOfFrames` path. `OutOfFramesMmu::map`
+        // pulls one frame from the provider (modelling an intermediate
+        // page-table allocation); with an empty provider it returns
+        // `OutOfFrames` before any AS mutation and without consuming
+        // `pa`.
+        let mmu = OutOfFramesMmu::new();
+        let (table, bootstrap_cap, mut arena) = bootstrap_setup_generic(&mmu);
+
+        // Empty provider → the intermediate-frame alloc fails.
+        let mut empty = VecFrameProvider::new(vec![]);
+        let va = VirtAddr(0x0001_0000);
+        let pa = frame(0x7000_0000);
+
+        let result = cap_map(
+            &table,
+            bootstrap_cap,
+            &mmu,
+            &mut empty,
+            &mut arena,
+            va,
+            pa,
+            MappingFlags::WRITE,
+        );
+
+        // The wrapper surfaces the HAL error verbatim.
+        assert!(
+            matches!(
+                result,
+                Err(AddressSpaceError::MmuMapError(MmuError::OutOfFrames))
+            ),
+            "cap_map must propagate the intermediate-frame OutOfFrames \
+             from Mmu::map"
+        );
+
+        // Rollback contract: `pa` (the leaf frame) was NOT consumed —
+        // the caller may safely return it to its provider. The provider
+        // started empty, so a successful re-alloc would mean a frame was
+        // wrongly handed back; we instead confirm the leaf `pa` is still
+        // mappable (no mapping was installed for `va`).
+        let handle = resolve_address_space_cap(&table, bootstrap_cap).unwrap();
+        let as_ref = get_address_space(&arena, handle).unwrap();
+        assert_eq!(
+            as_ref.inner().mapping_count(),
+            0,
+            "no mapping must be installed on the OutOfFrames error path"
+        );
+
+        // The flush token is never produced on the error path, so no TLB
+        // invalidation was issued (`?` returns before `token.flush`).
+        assert!(
+            mmu.inner().tlb_address_invalidations().is_empty(),
+            "no TLB flush must be issued when map fails"
+        );
+    }
+
+    #[test]
+    fn cap_map_propagates_block_mapped_and_leaves_no_mapping() {
+        // C2-006: drive `cap_map` through the `Mmu::map` `BlockMapped`
+        // clause. `BlockMappedMmu` returns `BlockMapped` for a blocked
+        // VA before any AS mutation and without consuming `pa`.
+        let va = VirtAddr(0x0001_0000);
+        let mmu = BlockMappedMmu::with_blocked([va]);
+        let (table, bootstrap_cap, mut arena) = bootstrap_setup_generic(&mmu);
+
+        // A populated provider proves the failure is the block descriptor,
+        // not frame exhaustion: even with frames available, the blocked VA
+        // must short-circuit to BlockMapped.
+        let mut pmm = VecFrameProvider::new(vec![frame(0x6000_0000)]);
+        let pa = frame(0x7000_0000);
+        let pmm_before = pmm.remaining();
+
+        let result = cap_map(
+            &table,
+            bootstrap_cap,
+            &mmu,
+            &mut pmm,
+            &mut arena,
+            va,
+            pa,
+            MappingFlags::WRITE,
+        );
+
+        assert!(
+            matches!(
+                result,
+                Err(AddressSpaceError::MmuMapError(MmuError::BlockMapped))
+            ),
+            "cap_map must propagate BlockMapped from Mmu::map"
+        );
+
+        // `pa` not consumed and no intermediate frame pulled: the block
+        // check fires before any allocation, so the provider is untouched.
+        assert_eq!(
+            pmm.remaining(),
+            pmm_before,
+            "BlockMapped must fire before any frame is consumed"
+        );
+
+        // No mapping installed and no TLB flush issued.
+        let handle = resolve_address_space_cap(&table, bootstrap_cap).unwrap();
+        let as_ref = get_address_space(&arena, handle).unwrap();
+        assert_eq!(
+            as_ref.inner().mapping_count(),
+            0,
+            "no mapping must be installed on the BlockMapped error path"
+        );
+        assert!(
+            mmu.inner().tlb_address_invalidations().is_empty(),
+            "no TLB flush must be issued when map fails"
+        );
+
+        // Sanity: a non-blocked VA on the same MMU still maps (the
+        // decorator is faithful for the success path).
+        let ok_va = VirtAddr(0x0002_0000);
+        let ok = cap_map(
+            &table,
+            bootstrap_cap,
+            &mmu,
+            &mut pmm,
+            &mut arena,
+            ok_va,
+            pa,
+            MappingFlags::WRITE,
+        );
+        assert!(ok.is_ok(), "a non-blocked VA must still map successfully");
     }
 
     // ── Revocation cascade regression (Fix 1) ────────────────────────────────

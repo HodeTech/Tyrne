@@ -14,10 +14,13 @@
 //!   (TLB asm + barriers).
 //! - UNSAFE-2026-0025 — per-call `Mmu::map` / `Mmu::unmap` page-table entry
 //!   writes; lands with the body of those methods (Stage 4).
+//! - UNSAFE-2026-0028 — `QemuVirtAddressSpace::from_existing_root` wraps the
+//!   already-live, populated bootstrap L0 root without zero-fill (distinct
+//!   from `create_address_space`'s zero-filled-root contract).
 //!
-//! [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-//! [UNSAFE-2026-0023]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
-//! [UNSAFE-2026-0024]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+//! [UNSAFE-2026-0023]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [UNSAFE-2026-0024]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 
 // `QemuVirtMmu` and its `Mmu` impl are the post-bootstrap address-
 // space-management surface (per ADR-0027 §Decision outcome (c)). The
@@ -120,7 +123,9 @@ impl QemuVirtAddressSpace {
     /// `TTBR0_EL1`. The bootstrap path is the only well-known
     /// already-live root in v1.
     ///
-    /// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+    /// Audit: UNSAFE-2026-0028.
+    ///
+    /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     #[must_use]
     pub unsafe fn from_existing_root(root: PhysFrame) -> Self {
         Self { root }
@@ -148,9 +153,26 @@ impl QemuVirtMmu {
 impl Mmu for QemuVirtMmu {
     type AddressSpace = QemuVirtAddressSpace;
 
+    /// # Safety
+    ///
+    /// Inherits the [`Mmu::create_address_space`] trait-declaration
+    /// contract: `root` must be a [`PAGE_SIZE`]-sized physical frame that
+    /// is exclusively owned by the caller for the lifetime of the
+    /// resulting address space, and zero-initialised. (For the *already-
+    /// live* bootstrap root, use [`QemuVirtAddressSpace::from_existing_root`]
+    /// instead — its contract is the inverse: a populated, non-zero root.)
     unsafe fn create_address_space(&self, root: PhysFrame) -> QemuVirtAddressSpace {
-        // No allocation; the safety contract of the trait method covers
-        // exclusive ownership + zero-initialisation of `root`.
+        // SAFETY: this body performs NO unsafe operation — it stores the
+        // `PhysFrame` value (an aligned address) without dereferencing it.
+        // The unsafety is entirely the trait-level caller contract above
+        // (root exclusively-owned + zero-initialised); the resulting AS's
+        // soundness when later walked by `Mmu::map`/`unmap` rides those
+        // preconditions and the UNSAFE-2026-0025 walker invariants. No
+        // separate audit-log entry: per unsafe-policy §4, a trait-impl
+        // `unsafe fn` whose body is alloc-free inherits the trait
+        // declaration's contract; the zero-fill responsibility is the
+        // caller's (kernel `cap_create_address_space`, covered by
+        // UNSAFE-2026-0026's PMM zero-fill).
         QemuVirtAddressSpace { root }
     }
 

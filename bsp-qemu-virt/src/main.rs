@@ -15,9 +15,9 @@
 //! The boot flow is documented in [`docs/architecture/boot.md`][boot-doc]
 //! and the memory-layout decisions in [ADR-0012][adr-0012].
 //!
-//! [adr-0004]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0004-target-platforms.md
-//! [adr-0012]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0012-boot-flow-qemu-virt.md
-//! [boot-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/boot.md
+//! [adr-0004]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0004-target-platforms.md
+//! [adr-0012]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0012-boot-flow-qemu-virt.md
+//! [boot-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/boot.md
 
 #![no_std]
 #![no_main]
@@ -69,7 +69,7 @@ use gic::{QemuVirtGic, QEMU_VIRT_GIC_CPU_INTERFACE_BASE, QEMU_VIRT_GIC_DISTRIBUT
 // reservations cover everything that must never be handed to a
 // runtime caller.
 //
-// [ADR-0012]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0012-boot-flow-qemu-virt.md
+// [ADR-0012]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0012-boot-flow-qemu-virt.md
 
 /// PMM-managed extent base PA. Matches `linker.ld` `MEMORY` `RAM`
 /// `ORIGIN` for QEMU virt.
@@ -107,7 +107,7 @@ type BspPmm = Pmm<PMM_BITMAP_BYTES, PMM_RESERVED_RANGES>;
 /// peripheral addresses. QEMU `virt` has exposed this address across
 /// all versions the project targets.
 ///
-/// [adr-0012]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0012-boot-flow-qemu-virt.md
+/// [adr-0012]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0012-boot-flow-qemu-virt.md
 const PL011_UART_BASE: usize = 0x0900_0000;
 
 // ─── StaticCell ───────────────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ impl<T> StaticCell<T> {
     /// and must not use the pointer to create a `&mut T` that outlives a
     /// cooperative context switch (ADR-0021). Audit: UNSAFE-2026-0013.
     ///
-    /// [ADR-0021]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
+    /// [ADR-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
     #[inline]
     #[allow(
         clippy::mut_from_ref,
@@ -310,7 +310,7 @@ static BOOTSTRAP_AS_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 /// (kernel mappings in userspace AS, EL0-ready context, syscall
 /// entry).
 ///
-/// [adr-0029]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
+/// [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
 static USERSPACE_IMAGE: &[u8] = &[0x40, 0x05, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6];
 
 /// Base VA the loader places the image at — userspace VA range per
@@ -323,7 +323,7 @@ static USERSPACE_IMAGE: &[u8] = &[0x40, 0x05, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6
 /// reading the smoke trace. Hard-coded for the placeholder blob; B6's
 /// `userland` linker script picks the real VA.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 const USERSPACE_IMAGE_BASE_VA: usize = 0x0080_0000;
 
 /// Stack region size in `PAGE_SIZE`-multiples. Minimum 1; v1's
@@ -391,7 +391,7 @@ static EP_CAP_B: StaticCell<CapHandle> = StaticCell::new();
 /// not on `kernel_entry`'s stack) avoids a second BSP static-cell churn
 /// when task destruction / status-query APIs arrive in later Phase B work.
 ///
-/// [ADR-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+/// [ADR-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
 static TASK_ARENA: StaticCell<TaskArena> = StaticCell::new();
 
 // ─── Idle task ────────────────────────────────────────────────────────────────
@@ -423,8 +423,8 @@ static TASK_ARENA: StaticCell<TaskArena> = StaticCell::new();
 /// the BSP did not register idle at all (i.e. `register_idle` was not
 /// called before `start`).
 ///
-/// [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
-/// [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+/// [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+/// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
 fn idle_entry() -> ! {
     // SAFETY: CPU is fully initialised in `kernel_entry` before `start()`;
     // single-core cooperative scheduling prevents concurrent access.
@@ -907,17 +907,22 @@ pub extern "C" fn kernel_entry() -> ! {
     // `kernel/src/mm/address_space.rs::tests`.
     let bootstrap_root_pa = l0_root.as_usize();
     // SAFETY:
-    // - AS_ARENA was just written above; momentary &mut for the
-    //   create_address_space call drops at scope end. Audit:
-    //   UNSAFE-2026-0010 (StaticCell pattern) + UNSAFE-2026-0014
-    //   (momentary &mut to the just-initialised arena).
+    // - AS_ARENA was just written above; the momentary &mut to the
+    //   just-initialised arena (the `assume_init_mut()` line) drops at
+    //   scope end. Audit: UNSAFE-2026-0010 (StaticCell pattern) +
+    //   UNSAFE-2026-0014 (momentary &mut to the just-initialised arena).
+    //   These two entries cover ONLY the StaticCell/arena publish
+    //   mechanics, not the `from_existing_root` wrap below.
     // - `QemuVirtAddressSpace::from_existing_root(l0_root)` requires
     //   `l0_root` to be a currently-live VMSAv8 L0 translation table
     //   (see its `# Safety` doc). `mmu_bootstrap` populated this exact
     //   frame and wrote its PA into `TTBR0_EL1` before this block runs
     //   (we are post-`mmu_bootstrap` at this point); the kernel-half
     //   mappings are installed; the descriptors are correctly encoded
-    //   per the host-tested `tyrne_hal::mmu::vmsav8` encoders.
+    //   per the host-tested `tyrne_hal::mmu::vmsav8` encoders. The wrap
+    //   does NOT zero-fill the live root (which would unmap the running
+    //   kernel) — that is why it cannot route through the zero-fill
+    //   `create_address_space`. Audit: UNSAFE-2026-0028.
     let bootstrap_as_handle = unsafe {
         let arena = (*AS_ARENA.0.get()).assume_init_mut();
         let inner = mmu::QemuVirtAddressSpace::from_existing_root(l0_root);
@@ -1231,7 +1236,7 @@ pub extern "C" fn kernel_entry() -> ! {
     // UNSAFE-2026-0009 (init_context site) + UNSAFE-2026-0014
     // (register_idle's momentary `&mut Scheduler<C>` discipline).
     //
-    // [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+    // [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
     unsafe {
         sched
             .add_task(

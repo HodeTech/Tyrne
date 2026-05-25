@@ -6,7 +6,7 @@
 //! `cap_derive`, `cap_revoke`, `cap_drop` — plus `insert_root` for
 //! bootstrapping. No `unsafe`, no heap.
 //!
-//! [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+//! [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
 
 use super::{CapError, CapObject, CapRights, Capability};
 
@@ -15,7 +15,7 @@ use super::{CapError, CapObject, CapRights, Capability};
 /// Per [ADR-0014][adr-0014]; revisit when a real use-case demands more.
 /// For v1 this is a compile-time constant.
 ///
-/// [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+/// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
 pub const CAP_TABLE_CAPACITY: usize = 64;
 
 /// Hard cap on derivation depth.
@@ -196,16 +196,11 @@ impl CapabilityTable {
         let new_index = self.pop_free().ok_or(CapError::CapsExhausted)?;
         let generation = self.slots[new_index as usize].generation;
 
-        // Splice into the parent's child list (or leave as a root if the
-        // source has no parent). Read the parent's current first_child
-        // *before* writing the new entry.
-        let former_first_child = match parent {
-            Some(parent_idx) => match &self.slots[parent_idx as usize].entry {
-                Some(parent_entry) => parent_entry.first_child,
-                None => return Err(CapError::InvalidHandle),
-            },
-            None => None,
-        };
+        // Splice `new_index` into the parent's child list as the new
+        // head (or leave it a root if the source has no parent), and
+        // recover the former head to chain as `next_sibling`. Shared with
+        // `cap_derive` via `link_child` (C1-008).
+        let former_first_child = self.link_child(parent, new_index)?;
 
         self.slots[new_index as usize].entry = Some(SlotEntry {
             capability: Capability::new(new_rights, object),
@@ -214,13 +209,6 @@ impl CapabilityTable {
             next_sibling: former_first_child,
             depth,
         });
-
-        // Update the parent's first_child to point at us.
-        if let Some(parent_idx) = parent {
-            if let Some(parent_entry) = self.slots[parent_idx as usize].entry.as_mut() {
-                parent_entry.first_child = Some(new_index);
-            }
-        }
 
         Ok(CapHandle {
             index: new_index,
@@ -272,7 +260,13 @@ impl CapabilityTable {
         if new_depth_usize > MAX_DERIVATION_DEPTH {
             return Err(CapError::DerivationTooDeep);
         }
-        // `new_depth_usize` fits in `u8` because MAX_DERIVATION_DEPTH ≤ u8::MAX.
+        // `new_depth_usize` fits in `u8` because MAX_DERIVATION_DEPTH ≤
+        // u8::MAX. The const-assert (C1-009) converts a future ADR that
+        // raises the cap above 255 — which the `depth: u8` field and
+        // this cast would otherwise silently truncate — into a hard
+        // build error, matching the `const { assert!(...) }` idiom in
+        // `CapabilityTable::new`.
+        const { assert!(MAX_DERIVATION_DEPTH <= u8::MAX as usize) };
         #[allow(
             clippy::cast_possible_truncation,
             reason = "bounded by MAX_DERIVATION_DEPTH"
@@ -282,12 +276,10 @@ impl CapabilityTable {
         let new_index = self.pop_free().ok_or(CapError::CapsExhausted)?;
         let generation = self.slots[new_index as usize].generation;
 
-        // Read the parent's current first_child (cap_derive always has a
-        // concrete parent: `src` itself).
-        let former_first_child = match &self.slots[parent_index as usize].entry {
-            Some(parent_entry) => parent_entry.first_child,
-            None => return Err(CapError::InvalidHandle),
-        };
+        // Splice `new_index` as the new head of the parent's child list
+        // (cap_derive always has a concrete parent: `src` itself) and
+        // recover the former head. Shared with `cap_copy` (C1-008).
+        let former_first_child = self.link_child(Some(parent_index), new_index)?;
 
         self.slots[new_index as usize].entry = Some(SlotEntry {
             capability: Capability::new(new_rights, new_object),
@@ -296,10 +288,6 @@ impl CapabilityTable {
             next_sibling: former_first_child,
             depth: new_depth,
         });
-
-        if let Some(parent_entry) = self.slots[parent_index as usize].entry.as_mut() {
-            parent_entry.first_child = Some(new_index);
-        }
 
         Ok(CapHandle {
             index: new_index,
@@ -417,7 +405,7 @@ impl CapabilityTable {
     /// conservative choice of refusing to drop interior nodes keeps the
     /// contract auditable and leaves cascade semantics to `cap_revoke`.
     ///
-    /// [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+    /// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
     ///
     /// # Errors
     ///
@@ -441,8 +429,8 @@ impl CapabilityTable {
     }
 
     /// Remove the capability at `handle` from this table and return it,
-    /// transferring ownership to the caller. Behaves like [`cap_drop`] but
-    /// gives the caller the capability value instead of discarding it.
+    /// transferring ownership to the caller. Behaves like [`Self::cap_drop`]
+    /// but gives the caller the capability value instead of discarding it.
     ///
     /// Used by the IPC layer ([`crate::ipc`]) to atomically move a capability
     /// from a sender's table into an in-flight message during `ipc_send`.
@@ -523,10 +511,20 @@ impl CapabilityTable {
     /// [ADR-0016][adr-0016] — callers pass their watcher tables and
     /// refuse destruction if any of them reports a reference.
     ///
-    /// The check is linear in [`CAP_TABLE_CAPACITY`]; acceptable at
-    /// Phase A's scale.
+    /// The check is linear in [`CAP_TABLE_CAPACITY`] (a full-table scan,
+    /// no early reverse index). The [`crate::obj`] destroy paths call it
+    /// **per candidate-destroy against every watcher table**, so the
+    /// aggregate cost is `O(watcher_tables × CAP_TABLE_CAPACITY)` — i.e.
+    /// bounded by the total capability space, not by a small constant or
+    /// a derivation subtree. This is the one operation in the module
+    /// whose complexity is not subtree-bounded; it is acceptable at
+    /// Phase A's scale (C1-002). When the watcher-set grows, replace the
+    /// scan with a reverse index (object → referencing slots) or a
+    /// per-object refcount maintained at `insert_root` / `cap_derive` /
+    /// `free_slot`; this pairs with the ADR-0023 cross-table-CDT
+    /// question (both ask "who references this object across tables").
     ///
-    /// [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+    /// [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
     #[must_use]
     pub fn references_object(&self, target: CapObject) -> bool {
         self.slots
@@ -570,18 +568,65 @@ impl CapabilityTable {
         Some(head)
     }
 
+    /// Splice `new_index` in as the **head** of `parent`'s child list and
+    /// return the former head (to be chained as `new_index`'s
+    /// `next_sibling`). For a `None` parent (`new_index` is a root /
+    /// peer-of-root), returns `Ok(None)` and repoints nothing.
+    ///
+    /// Factored out of `cap_copy` and `cap_derive` (C1-008), which must
+    /// stay in lockstep so the linked-list invariants `cap_revoke` /
+    /// `unlink_from_siblings` rely on cannot diverge. The caller is
+    /// responsible for writing `new_index`'s `SlotEntry` (with
+    /// `next_sibling` set to the returned former head) *after* this call;
+    /// there is no intervening fallible step, so the parent pointer and
+    /// the child entry are always published together.
+    ///
+    /// # Errors
+    ///
+    /// [`CapError::InvalidHandle`] if `parent` names a slot whose entry is
+    /// absent (an internal inconsistency — every caller passes a parent
+    /// it has already resolved to a live slot).
+    fn link_child(
+        &mut self,
+        parent: Option<Index>,
+        new_index: Index,
+    ) -> Result<Option<Index>, CapError> {
+        let Some(parent_idx) = parent else {
+            // Root / peer-of-root: no parent to splice into.
+            return Ok(None);
+        };
+        let Some(parent_entry) = self.slots[parent_idx as usize].entry.as_mut() else {
+            return Err(CapError::InvalidHandle);
+        };
+        let former_first_child = parent_entry.first_child;
+        parent_entry.first_child = Some(new_index);
+        Ok(former_first_child)
+    }
+
     /// Free the slot at `index`: clear the entry, bump the generation,
     /// prepend to the free list.
+    ///
+    /// The `free_head` publish is the **last** write, gated on the
+    /// bounds check succeeding (C1-001): if `index` were ever
+    /// out-of-range, an early-published head would orphan the prior free
+    /// list and leave `free_head` pointing at a non-existent slot (the
+    /// next `pop_free` would then index out of bounds). Every current
+    /// caller derives `index` from a validated handle / tree walk, so
+    /// the out-of-range branch is unreachable — the `debug_assert!`
+    /// surfaces a future mis-call loudly in tests while release builds
+    /// fail safe as a clean no-op that leaves the free list intact.
     fn free_slot(&mut self, index: Index) {
         let old_free_head = self.free_head;
-        self.free_head = Some(index);
-
         let Some(slot) = self.slots.get_mut(index as usize) else {
+            debug_assert!(false, "free_slot called with out-of-range index");
             return;
         };
         slot.entry = None;
         slot.generation = slot.generation.wrapping_add(1);
         slot.next_free = old_free_head;
+        // Publish the new head only now that the slot is confirmed
+        // in-range and wired into the free list.
+        self.free_head = Some(index);
     }
 
     /// Remove the slot at `index` from its parent's child list.
@@ -598,10 +643,18 @@ impl CapabilityTable {
         };
 
         // Walk the parent's child list to find us and remove.
-        let mut cursor = match &self.slots[parent_idx as usize].entry {
-            Some(entry) => entry.first_child,
-            None => return Err(CapError::InvalidHandle),
+        let Some(parent_entry) = &self.slots[parent_idx as usize].entry else {
+            // C1-003: we hold a parent index but the parent slot is
+            // empty. Callers reach `unlink_from_siblings` only after
+            // `resolve_handle` has validated the handle, so this is
+            // internal tree corruption, not a stale handle. Surface it
+            // loudly in tests; release still returns conservatively
+            // without mutating state. (Mirrors the `cap_revoke`
+            // cycle/duplicate guard.)
+            debug_assert!(false, "unlink_from_siblings: parent slot is empty");
+            return Err(CapError::InvalidHandle);
         };
+        let mut cursor = parent_entry.first_child;
 
         // Case 1: we are the head of the list.
         if cursor == Some(index) {
@@ -626,8 +679,17 @@ impl CapabilityTable {
             cursor = c_next;
         }
 
-        // Not found — either the slot was never linked or the parent's
-        // child list is inconsistent. The latter is an internal bug.
+        // Not found — the slot claims this parent, but it is absent from
+        // the parent's child list. Since the caller already validated the
+        // handle via `resolve_handle`, this can only mean the derivation
+        // tree's bookkeeping is inconsistent — an internal bug, not a
+        // stale handle (C1-003). The `debug_assert!` distinguishes the
+        // two in tests/CI; release returns `InvalidHandle` conservatively
+        // (no state mutation) rather than corrupting the tree further.
+        debug_assert!(
+            false,
+            "unlink_from_siblings: slot not found in parent's child list"
+        );
         Err(CapError::InvalidHandle)
     }
 }
@@ -1184,5 +1246,48 @@ mod tests {
         t.cap_revoke(root).unwrap();
         assert_eq!(t.lookup(first).unwrap_err(), CapError::InvalidHandle);
         assert_eq!(t.lookup(middle).unwrap_err(), CapError::InvalidHandle);
+    }
+
+    #[test]
+    fn cap_copy_of_root_then_revoke_root_leaves_peer_alive() {
+        // C1-004: a peer produced by `cap_copy` of a *root* capability
+        // is itself an independent root (same tree position = no parent,
+        // depth 0). `cap_revoke` is subtree-only — it walks the source's
+        // descendants — so revoking the original root does NOT reach a
+        // peer-of-a-root (the peer is a sibling root, not a descendant).
+        // This is the within-table analogue of the cross-table
+        // revocation gap ADR-0023 defers, and the documented asymmetry
+        // vs. `copy_of_a_child_shares_parent` (where the peer shares the
+        // child's parent and so dies with the parent).
+        let mut t = CapabilityTable::new();
+        let root = t.insert_root(root_cap()).unwrap();
+        let peer = t.cap_copy(root, all_rights()).unwrap();
+
+        // Revoking the original root must NOT invalidate the peer-of-root.
+        t.cap_revoke(root).unwrap();
+        assert!(
+            t.lookup(peer).is_ok(),
+            "a peer of a root survives cap_revoke of the original root \
+             (peers are siblings; revoke is subtree-only)"
+        );
+        assert!(t.lookup(root).is_ok(), "the revoked root itself survives");
+    }
+
+    #[test]
+    fn slot_entry_size_matches_adr_0023() {
+        // X2-N4: pin `SlotEntry`'s in-memory size so a future field
+        // addition / reorder that bloats the `CapabilityTable`'s L1-cache
+        // footprint (64 slots × slot size) is a visible test change, and
+        // to confirm the ADR-0023:47 cross-reference ("Capability slot is
+        // currently 32 bytes"). The value is layout-dependent
+        // (`Capability` = `CapRights(u32)` + `CapObject` enum; plus three
+        // `Option<Index>` tree links + a `u8` depth with padding); assert
+        // the concrete number rather than an upper bound so any drift is
+        // caught.
+        assert_eq!(
+            core::mem::size_of::<super::SlotEntry>(),
+            32,
+            "SlotEntry size drifted from ADR-0023's 32 bytes"
+        );
     }
 }

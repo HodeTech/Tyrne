@@ -21,7 +21,7 @@ Files with `umbrix` (case-insensitive, excluding `.git/`, `target/`, `docs/analy
 - [`docs/analysis/reviews/code-reviews/2026-05-06-full-tree-comprehensive-review-plan.md`](../2026-05-06-full-tree-comprehensive-review-plan.md) — four mentions, all describing this Track J's own scope (and the glossary track's "no orphaned entries from the umbrix→tyrne rename" check). Self-referential / scoping prose; not residue.
 - One filename match — `docs/analysis/technical-analysis/WOSR/12-comparison-with-umbrix.md` — sits inside the explicitly out-of-scope `technical-analysis/` subtree (per the review plan's §2 carve-out).
 
-**Verdict on the residue scan: clean.** Commit [`10e3351`](https://github.com/cemililik/Tyrne/commit/10e3351) closed the file-name half of the rename. The four lines that still mention "Umbrix" are all narrative, not link or identifier residue.
+**Verdict on the residue scan: clean.** Commit [`10e3351`](https://github.com/HodeTech/Tyrne/commit/10e3351) closed the file-name half of the rename. The four lines that still mention "Umbrix" are all narrative, not link or identifier residue.
 
 ## Repository-URL drift (scope cousin to umbrix residue)
 
@@ -30,7 +30,7 @@ While verifying the umbrix scan I noticed a **second, distinct** rename inconsis
 | Form | Count (excluding `target/`, `.git/`, `technical-analysis/`) | Where |
 |---|---|---|
 | `https://github.com/cemililik/TyrneOS` | 66 (across 27 files) | `Cargo.toml`, `SECURITY.md`, every `tyrne-hal` / `tyrne-kernel` / `tyrne-bsp-qemu-virt` rustdoc cross-reference, `docs/guides/run-under-qemu.md`'s clone command |
-| `https://github.com/cemililik/Tyrne` | 4 | recent docs only — `T-012-exception-and-irq-infrastructure.md`, `2026-04-28-B1-closure.md` (business + security), `current.md` |
+| `https://github.com/HodeTech/Tyrne` | 4 | recent docs only — `T-012-exception-and-irq-infrastructure.md`, `2026-04-28-B1-closure.md` (business + security), `current.md` |
 | `git@github.com:cemililik/UmbrixOS.git` (origin) | 1 | local `git remote -v` (not in working tree) |
 
 The 64 `TyrneOS` URLs all 404 against the actual remote (whatever the canonical name is — `git remote -v` and the four newest references disagree). Track A's cross-track note (`track-a-kernel.md` line 85) already observed "every link points at `cemililik/TyrneOS`" but flagged it as a clean-state observation rather than a finding; in fact none of those URLs resolve. Cross-track note coordinates with Track G (root-doc link integrity) and Track H (rustdoc cross-references) on whether to fix in this review window or hand off as a follow-up commit. See *Findings → Non-blocking → J-NB1* below.
@@ -135,7 +135,7 @@ Severity: **Non-blocking** — the term is a single word, semantically clear fro
 - `docs/standards/security-review.md` and `docs/standards/code-review.md` use the English vocabulary (`Critical` / `High` / `Medium` / `Low`).
 - A reader using the project as a reference for *their own* security-review template will see two competing severity vocabularies in the same review tree.
 
-Recommended action: pick one English replacement (`High` is the natural carry-over) and apply it across the seven affected non-quoted references. The two commit-message-quoted instances ([`db3a4c7`](https://github.com/cemililik/Tyrne/commit/db3a4c7) and the [T-009 mini-retro line 29 quote](../../business-reviews/2026-04-27-T-009-mini-retro.md)) cannot be retroactively edited and should be left as-is. A small follow-up `docs(localization):` commit is the most compact framing.
+Recommended action: pick one English replacement (`High` is the natural carry-over) and apply it across the seven affected non-quoted references. The two commit-message-quoted instances ([`db3a4c7`](https://github.com/HodeTech/Tyrne/commit/db3a4c7) and the [T-009 mini-retro line 29 quote](../../business-reviews/2026-04-27-T-009-mini-retro.md)) cannot be retroactively edited and should be left as-is. A small follow-up `docs(localization):` commit is the most compact framing.
 
 ### Observation
 

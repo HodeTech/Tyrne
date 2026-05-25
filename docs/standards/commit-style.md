@@ -8,6 +8,8 @@ Every commit to every branch. Local work-in-progress commits are the author's bu
 
 ## Format
 
+This format is enforced **by convention and review**, not by a git hook or a CI check: there is no `commit-msg` hook or commitlint gate at present (see the Tooling section — both are planned). Until one is added, conformance depends on authors and reviewers applying this standard.
+
 Each commit follows the Conventional Commits pattern with Tyrne-specific trailers:
 
 ```
@@ -40,11 +42,13 @@ Refs: ADR-0001
   - `fix` — a bug fix.
   - `docs` — documentation changes only.
   - `refactor` — code change that neither fixes a bug nor adds a feature.
+  - `style` — non-behavioral, non-refactor code-style changes (e.g. `cargo fmt` reflow, comment formatting).
   - `perf` — a performance improvement with a measurement.
   - `test` — adding or correcting tests.
   - `build` — build system, dependency updates.
   - `ci` — continuous integration configuration.
   - `chore` — tooling, reformatting, licensing housekeeping.
+  - `audit` — `unsafe`-audit-log or security-audit bookkeeping (e.g. reconciliation rounds, audit-entry amendments).
   - `revert` — reverts a previous commit (subject: `revert: <original subject>`).
 - **Scope** — the subsystem most affected. Choose from the short list:
   `kernel`, `hal`, `ipc`, `mm`, `sched`, `syscalls`, `drivers`, `userspace`,

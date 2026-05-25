@@ -265,7 +265,7 @@ The code the kernel runs is only as trustworthy as the sources it came from. Tyr
 - Reproducible builds are an explicit goal.
 - SBOM generation per release.
 - Signed release artifacts.
-- Dependency additions follow the [add-dependency skill](../../.claude/skills/add-dependency/SKILL.md).
+- Dependency additions follow the [add-dependency skill](../../.agents/skills/add-dependency/SKILL.md).
 
 ### Boot integrity (future)
 

@@ -1,6 +1,6 @@
 # Track 3 — PR #20 governance, T-016 scoping, audit-log forward-flags, docs
 
-- **PR:** [#20](https://github.com/cemililik/Tyrne/pull/20)
+- **PR:** [#20](https://github.com/HodeTech/Tyrne/pull/20)
 - **Branch:** adr-0027-kernel-virtual-memory-layout
 - **Commits reviewed:** dc4d92b + bb0a6ba + 8b6eef4
 - **Reviewer:** Claude Opus 4.7 sub-agent (Track 3)

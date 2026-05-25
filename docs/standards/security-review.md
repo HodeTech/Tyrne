@@ -85,7 +85,7 @@ The security reviewer works through every applicable item. "Not applicable" is a
 
 ### Threat model impact
 
-- [ ] The change is reconciled with the documented threat model (once `docs/architecture/security-model.md` exists — Phase 3).
+- [ ] The change is reconciled with the documented threat model in [`docs/architecture/security-model.md`](../architecture/security-model.md).
 - [ ] If the change reshapes the threat model, the PR includes the threat-model update or links to a follow-up PR scheduled imminently.
 
 ## Outcome

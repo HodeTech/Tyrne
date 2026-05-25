@@ -11,7 +11,7 @@
 //! [`docs/architecture/memory-management.md` §"Page-table entry encoding"][mm-doc]
 //! for the field-by-field bit map this module reifies.
 //!
-//! Lands with [T-016](https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-016-mmu-activation.md).
+//! Lands with [T-016](https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-016-mmu-activation.md).
 //!
 //! ## Scope
 //!
@@ -29,8 +29,8 @@
 //! safety contract) live in the BSP's `Mmu::map` / `Mmu::unmap` impl
 //! and are audited under UNSAFE-2026-0025.
 //!
-//! [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-//! [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+//! [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+//! [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 
 use super::MappingFlags;
 
@@ -43,6 +43,15 @@ use super::MappingFlags;
 /// MAIR index for **device-nGnRnE** memory (encoding `0x00`).
 ///
 /// Used for every `MappingFlags::DEVICE` mapping (GIC + UART MMIO).
+///
+/// Note (C7-002): the device attribute byte `0x00` is *both* the
+/// architecture's device-nGnRnE encoding *and* the all-zero "unset MAIR
+/// slot" value, so there is no positive bit pattern that distinguishes
+/// "device attribute correctly programmed" from "MAIR slot is zero". The
+/// device-attribute correctness therefore rests on [`ATTR_IDX_NORMAL`]
+/// being `1` (selecting the non-zero `Attr1 = 0xFF`): a regression that
+/// zeroed `Attr1` would be caught by the `Attr1 == 0xFF` half of the host
+/// test, even though the `Attr0 == 0x00` half passes for any all-zero MAIR.
 pub const ATTR_IDX_DEVICE: u8 = 0;
 
 /// MAIR index for **normal cached** memory (encoding `0xFF` — write-back,
@@ -58,8 +67,8 @@ pub const ATTR_IDX_NORMAL: u8 = 1;
 /// Per [ADR-0027 §Decision outcome (a)][adr-0027] / [`memory-management.md`
 /// §"`MAIR_EL1` attribute encoding"][mm-doc].
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 pub const MAIR_EL1_VALUE: u64 = 0x0000_0000_0000_FF00;
 
 // ── Shareability + access-permission encodings ─────────────────────────────────
@@ -126,7 +135,7 @@ pub const AP_USER_RO: u8 = 0b11;
 ///
 /// Per [ADR-0027 §Decision outcome (a)][adr-0027].
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 #[allow(
     clippy::unreadable_literal,
     reason = "system-register bit-pattern; field-by-field decomposition lives in the surrounding comment"
@@ -170,7 +179,7 @@ pub const TCR_EL1_VALUE: u64 = {
 /// bits are read-modify-written: the bootstrap reads the current value,
 /// ORs in this mask, and writes back.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 pub const SCTLR_EL1_MMU_ENABLE_MASK: u64 = (1 << 0) | (1 << 2) | (1 << 12);
 
 // ── Descriptor field bit positions ─────────────────────────────────────────────
@@ -246,8 +255,18 @@ pub struct DescriptorBits {
 /// (`PXN = UXN = 1`) because the v1 attack surface gains nothing from
 /// MMIO execute.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+/// **Unknown flag bits are ignored by design.** Only the five named
+/// [`MappingFlags`] (bits 0–4) are consulted, each via
+/// [`MappingFlags::contains`]; any bit ≥ 5 set via
+/// [`MappingFlags::from_raw`] is silently dropped. This is intentional
+/// and safe-by-construction: an unrecognised bit cannot *grant* a
+/// permission (the encoder is locked-shut by default), only the named
+/// flags can. The [`flags_to_descriptor_bits_ignores_bits_above_four`]
+/// test pins this behaviour. Callers that must reject stray bits should
+/// mask the value against the named constants before calling.
+///
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 #[must_use]
 pub const fn flags_to_descriptor_bits(flags: MappingFlags) -> DescriptorBits {
     let device = flags.contains(MappingFlags::DEVICE);
@@ -314,10 +333,18 @@ pub const fn flags_to_descriptor_bits(flags: MappingFlags) -> DescriptorBits {
 /// Encode an L2 block descriptor (2 MiB block at level 2 with 4 KiB
 /// granule) per ARM ARM §D5.3.
 ///
-/// `pa` must be 2 MiB-aligned (bottom 21 bits zero); behaviour for
-/// unaligned inputs is to mask the address into the OA field, dropping
-/// the low bits — callers are expected to validate alignment upstream
-/// via [`crate::PhysFrame`] or equivalent.
+/// `pa` must be 2 MiB-aligned (bottom 21 bits zero). **Unaligned inputs
+/// are silently truncated** into the OA field: the low bits below bit 21
+/// are dropped, so an unaligned `pa` encodes a descriptor pointing at a
+/// *different* physical frame than the caller intended, with **no
+/// diagnostic at all** (this `const fn` deliberately performs no
+/// runtime check — the `block_descriptor_drops_low_bits_for_unaligned_pa`
+/// test pins the truncation as the boundary contract). This is a
+/// memory-safety-adjacent hazard (it maps the wrong physical page), so
+/// callers MUST validate 2 MiB alignment upstream — e.g. via a typed
+/// 2 MiB-block-frame newtype or an explicit check before calling. The
+/// in-tree bootstrap caller relies on its 2 MiB-strided loop arithmetic
+/// for alignment (C6-004).
 #[must_use]
 pub const fn block_descriptor(pa: u64, bits: DescriptorBits) -> u64 {
     DESC_VALID_BIT
@@ -338,6 +365,14 @@ pub const fn block_descriptor(pa: u64, bits: DescriptorBits) -> u64 {
 /// `pa` must be 4 KiB-aligned. The encoding is identical to
 /// [`block_descriptor`] except for bit 1 (which is 1 for an L3 page,
 /// 0 for an L2 block) and the OA mask (which uses bits `[47:12]`).
+///
+/// As with [`block_descriptor`], an unaligned `pa` is **silently
+/// truncated** into the OA field (low 12 bits dropped) with no runtime
+/// check, encoding the wrong frame
+/// (`page_descriptor_drops_low_bits_for_unaligned_pa` pins this). The BSP
+/// feeds this a [`crate::PhysFrame`] (alignment-guaranteed by the
+/// newtype) so the in-tree call site is safe; any future raw-`u64`
+/// caller must validate 4 KiB alignment before calling (C6-004).
 #[must_use]
 pub const fn page_descriptor(pa: u64, bits: DescriptorBits) -> u64 {
     DESC_VALID_BIT
@@ -422,6 +457,24 @@ mod tests {
     }
 
     // ── flags_to_descriptor_bits ───────────────────────────────────────────────
+
+    #[test]
+    fn flags_to_descriptor_bits_ignores_bits_above_four() {
+        // Unknown bits (≥ 5), set via `from_raw`, must not perturb the
+        // descriptor — only bits 0–4 (the five named flags) are meaningful,
+        // and an unrecognised bit can never grant a permission. Compare a
+        // known flag set against the same set OR'd with stray high bits.
+        let known = MappingFlags::WRITE | MappingFlags::EXECUTE;
+        let with_stray = MappingFlags::from_raw(known.raw() | (1 << 5) | (1 << 17) | (1 << 31));
+        let a = flags_to_descriptor_bits(known);
+        let b = flags_to_descriptor_bits(with_stray);
+        assert_eq!(a.attr_idx, b.attr_idx);
+        assert_eq!(a.ap, b.ap);
+        assert_eq!(a.sh, b.sh);
+        assert_eq!(a.pxn, b.pxn);
+        assert_eq!(a.uxn, b.uxn);
+        assert_eq!(a.ng, b.ng);
+    }
 
     #[test]
     fn empty_flags_kernel_ro_normal_no_execute_global_inverted() {

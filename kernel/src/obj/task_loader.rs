@@ -60,9 +60,9 @@
 //! and B6 (first userspace "hello") per
 //! [phase-b §B4 §Revision-notes][phase-b-b4-rider].
 //!
-//! [adr-0029]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
-//! [t-019]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
-//! [phase-b-b4-rider]: https://github.com/cemililik/Tyrne/blob/main/docs/roadmap/phases/phase-b.md#milestone-b4--task-loader
+//! [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
+//! [t-019]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
+//! [phase-b-b4-rider]: https://github.com/HodeTech/Tyrne/blob/main/docs/roadmap/phases/phase-b.md#milestone-b4--task-loader
 
 use crate::cap::{CapError, CapHandle, CapKind, CapRights, CapabilityTable};
 use crate::mm::{
@@ -94,6 +94,20 @@ use tyrne_hal::{MappingFlags, Mmu, VirtAddr, PAGE_SIZE};
 /// aggressively would observe this count as a lower bound. v1 has
 /// the single aarch64 BSP, so the count is exact in practice.
 ///
+/// FORWARD (C4-004): this is a kernel-core module encoding both a
+/// page-table-format constant (the 21/30/39 shifts) **and** a BSP
+/// allocation-policy assumption (lazy allocation). A second BSP — Pi 4 /
+/// Jetson, or a RISC-V `Sv39` port — that pre-allocates more, or uses a
+/// different index decomposition, would make this an **undercount**: the
+/// [`FrameBudgetExceeded`][LoadError::FrameBudgetExceeded] preflight would
+/// pass, then `cap_map` would fail mid-loop with
+/// [`MapFailed`][LoadError::MapFailed]`(MmuMapError(OutOfFrames))` — the
+/// exact path the new MR-018 test pins — turning the preflight (whose whole
+/// purpose is to make that mid-loop failure structurally unreachable)
+/// ineffective. Before a second BSP / translation regime lands, move the
+/// exact-budget contract to a HAL method (`Mmu::intermediate_frames_for_span`)
+/// or re-derive it per format.
+///
 /// Returns 0 for an empty span (defensive; row 1 preflight rejects
 /// zero-page requests before this helper is reached).
 ///
@@ -121,8 +135,8 @@ use tyrne_hal::{MappingFlags, Mmu, VirtAddr, PAGE_SIZE};
 /// `Mmu::intermediate_frames_for_span` HAL method. v1's single
 /// aarch64 BSP keeps the constants inline.
 ///
-/// [adr-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 #[must_use]
 pub fn intermediate_frame_count(
     image_base_va: VirtAddr,
@@ -173,7 +187,7 @@ pub fn intermediate_frame_count(
 /// is unusual but not architecturally forbidden); the loader does
 /// not impose a stylistic "no-null-page" policy in v1.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 pub const USERSPACE_VA_LIMIT: usize = 1usize << 48;
 
 /// Metadata describing a freshly populated address space produced by
@@ -211,7 +225,7 @@ pub const USERSPACE_VA_LIMIT: usize = 1usize << 48;
 /// - `stack_bytes == stack_size_pages * PAGE_SIZE` (always a multiple
 ///   of `PAGE_SIZE`).
 ///
-/// [unsafe-26]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [unsafe-26]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct LoadedImage {
     /// Cap handle for the newly-minted address space. Backed by a
@@ -252,7 +266,7 @@ pub struct LoadedImage {
 /// — e.g. a per-section permission failure that lands with ADR-0034
 /// (placeholder; B5+).
 ///
-/// [t-019-rollback]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
+/// [t-019-rollback]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum LoadError {
@@ -292,7 +306,7 @@ pub enum LoadError {
     /// path; non-sentinel `end` values name the offending
     /// saturated-add result for diagnostics.
     ///
-    /// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+    /// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
     InvalidImageBaseVa {
         /// The caller-supplied `image_base_va`.
         base: VirtAddr,
@@ -331,9 +345,13 @@ pub enum LoadError {
 
     /// `cap_create_address_space` returned `Err`. Covers
     /// `CapError::InsufficientRights` if `parent_as_cap` lacks DERIVE,
-    /// plus the T-018-guarded `CapsExhausted` / `DerivationTooDeep` /
-    /// `ArenaFull` paths. No rollback needed at this layer (T-018's
-    /// preflight ensures no committed state on failure).
+    /// `CapError::WidenedRights` if `new_rights ⊄ parent_cap.rights`
+    /// (the no-widening rule enforced by `cap_create_address_space` step
+    /// 2b — asking for rights the parent does not hold is rejected here,
+    /// not in [`InvalidParentCap`][LoadError::InvalidParentCap]), plus the
+    /// T-018-guarded `CapsExhausted` / `DerivationTooDeep` / `ArenaFull`
+    /// paths. No rollback needed at this layer (T-018's preflight ensures
+    /// no committed state on failure).
     AddressSpaceCreationFailed(AddressSpaceError),
 
     /// The `image` byte slice's PA range overlaps a frame
@@ -351,10 +369,13 @@ pub enum LoadError {
     /// retained as a defensive variant so a misconfigured BSP fails
     /// fast with a typed error instead of UB.
     ///
-    /// [unsafe-27]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+    /// [unsafe-27]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
     ImageOverlapsAllocatableMemory,
 
-    /// `pmm.alloc_frame()` returned `None` mid-image-or-stack-loop.
+    /// `pmm.alloc_frame()` (the loader's *own* leaf/root alloc) returned
+    /// `None` mid-image-or-stack-loop. This is distinct from a mid-walk
+    /// `Mmu::map` intermediate-table failure, which surfaces as
+    /// [`MapFailed`][LoadError::MapFailed]`(MmuMapError(OutOfFrames))`.
     /// Structurally unreachable post-[`FrameBudgetExceeded`][LoadError::FrameBudgetExceeded]
     /// preflight under v1's single-thread cooperative model; retained
     /// as a defensive variant for budget-calculation bugs and future-
@@ -362,7 +383,11 @@ pub enum LoadError {
     /// [T-019 §"Rollback contract"][t-019-rollback] (leaf frames +
     /// `cap_unmap` undo + `cap_drop(loaded_as_cap)`).
     ///
-    /// [t-019-rollback]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
+    /// Exercised in tests via `Pmm::force_alloc_failure_after` (the loader's
+    /// leaf-alloc path); the sibling mid-walk `MapFailed(OutOfFrames)` clause
+    /// is exercised via `tyrne_test_hal::OutOfFramesMmu`.
+    ///
+    /// [t-019-rollback]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
     OutOfFrames,
 
     /// `cap_map` returned `Err` mid-loop. Wraps the underlying
@@ -410,7 +435,7 @@ pub enum LoadError {
 /// 7. Stack-page loop under `USER | WRITE` (same).
 /// 8. Construct and return [`LoadedImage`].
 ///
-/// [unsafe-27]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+/// [unsafe-27]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 ///
 /// # Arguments
 ///
@@ -460,9 +485,9 @@ pub enum LoadError {
 /// `cap_drop` `free_slot`s the leaf directly, is rights-agnostic, and
 /// fails only with `HasChildren` (impossible here).
 ///
-/// [adr-0029]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
-/// [t-019]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
-/// [t-019-rollback]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
+/// [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
+/// [t-019]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
+/// [t-019-rollback]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit
 #[allow(
     clippy::too_many_arguments,
     reason = "load_image threads the full kernel-state surface (pmm + mmu + \
@@ -658,9 +683,9 @@ pub fn load_image<M: Mmu, const N: usize, const R: usize>(
         // step; `Mmu::copy_into_frame`-style HAL relocation just moves
         // the audit point without removing it.
         //
-        // [UNSAFE-2026-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
-        // [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-        // [audit]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+        // [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
+        // [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+        // [audit]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
         unsafe {
             let src = chunk.as_ptr();
             let dst = crate::mm::phys_frame_kernel_ptr(frame);
@@ -842,7 +867,7 @@ mod tests {
         FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysAddr, PhysFrame, VirtAddr,
         PAGE_SIZE,
     };
-    use tyrne_test_hal::{FakeAddressSpace, FakeMmu};
+    use tyrne_test_hal::{BlockMappedMmu, FakeAddressSpace, FakeMmu, OutOfFramesMmu};
 
     // ── Pmm-over-backing helper (mirrors kernel/src/mm/pmm.rs::tests) ─────────
     //
@@ -1526,7 +1551,80 @@ mod tests {
         drop(backing); // explicit lifetime extension
     }
 
+    #[test]
+    fn widened_rights_surfaces_via_address_space_creation_failed() {
+        // Pin C4-001/C4-002: the no-widening rule is *also* delegated to
+        // cap_create_address_space (step 2b) and surfaces as
+        // AddressSpaceCreationFailed(CapError::WidenedRights), distinct from
+        // the InsufficientRights (missing-DERIVE) leg. The fixture's parent
+        // cap holds DUPLICATE|DERIVE|REVOKE|TRANSFER but NOT SEND; requesting
+        // `new_rights` containing SEND is a widening request and is rejected
+        // here — not in InvalidParentCap.
+        let (mut table, parent_cap, mmu, mut arena, mut pmm, _b) = fixture(16);
+        let pmm_before = pmm.stats().free_frames;
+
+        let result = load_image::<FakeMmu, TEST_PMM_N, TEST_PMM_R>(
+            &[0xAAu8; 2 * PAGE_SIZE],
+            &mut pmm,
+            &mmu,
+            &mut table,
+            &mut arena,
+            parent_cap,
+            // SEND is not held by the parent (DUPLICATE|DERIVE|REVOKE|TRANSFER).
+            CapRights::SEND,
+            VirtAddr(0x0080_0000),
+            1,
+        );
+
+        assert!(
+            matches!(
+                result,
+                Err(LoadError::AddressSpaceCreationFailed(
+                    AddressSpaceError::CapError(CapError::WidenedRights)
+                ))
+            ),
+            "expected AddressSpaceCreationFailed(WidenedRights), got {result:?}"
+        );
+        // PMM byte-stable — step 2b rejects before any pre-alloc.
+        assert_eq!(pmm.stats().free_frames, pmm_before);
+    }
+
     // ── Happy path: §Simulation rows 6 / 7 / 8 ────────────────────────────────
+
+    #[test]
+    fn mints_address_space_cap_with_requested_non_empty_rights() {
+        // Pin C4-002's happy-path gap: every other happy-path test mints with
+        // `CapRights::empty()`. The realistic B5+ shape mints an AS cap that
+        // actually carries rights — exercise that the requested (non-empty,
+        // parent-held) `new_rights` survive the mint and land on the returned
+        // `as_cap`.
+        let (mut table, parent_cap, mmu, mut arena, mut pmm, _b) = fixture(32);
+        // Subset of the parent's DUPLICATE|DERIVE|REVOKE|TRANSFER → passes the
+        // no-widening check; non-empty so the assertion is meaningful.
+        let requested = CapRights::DUPLICATE | CapRights::DERIVE;
+
+        let loaded = load_image::<FakeMmu, TEST_PMM_N, TEST_PMM_R>(
+            &[0xAAu8; PAGE_SIZE],
+            &mut pmm,
+            &mmu,
+            &mut table,
+            &mut arena,
+            parent_cap,
+            requested,
+            VirtAddr(0x0080_0000),
+            1,
+        )
+        .expect("load_image must succeed minting a non-empty-rights AS cap");
+
+        let minted = table
+            .lookup(loaded.as_cap)
+            .expect("the minted AS cap must resolve in the table");
+        assert_eq!(
+            minted.rights(),
+            requested,
+            "the minted AS cap must carry exactly the requested non-empty rights"
+        );
+    }
 
     #[test]
     fn returns_loaded_image_with_correct_metadata() {
@@ -2001,6 +2099,167 @@ mod tests {
             pmm.stats().free_frames,
             pmm_before - 1,
             "OutOfFrames rollback must free the one committed image leaf; only the root L0 leaks"
+        );
+    }
+
+    // ── MR-018: mid-walk `Mmu::map` failure clauses (OutOfFrames / BlockMapped) ──
+    //
+    // The two tests above (`rolls_back_on_pmm_exhausted_mid_image_loop` and the
+    // `FailingMapMmu` pair) drive the loader's *own* `pmm.alloc_frame() -> None`
+    // path and a fake `AlreadyMapped`. They do **not** exercise the real
+    // `Mmu::map` failure-split for the two variants the flat `FakeMmu` cannot
+    // produce: mid-walk intermediate-table `OutOfFrames` and `BlockMapped`.
+    // These tests use the shared `tyrne_test_hal::{OutOfFramesMmu, BlockMappedMmu}`
+    // decorators (which inject those variants *before* any AS mutation,
+    // honouring the `Mmu::map` failure-semantics contract clause 2: `pa` not
+    // consumed) and assert the loader's rollback frees the leaf frame and
+    // installs no mapping (master-review MR-018 / X4c-003).
+
+    /// Generic fixture for any `Mmu` whose `AddressSpace` is the shared
+    /// [`FakeAddressSpace`] (covers `FakeMmu`, `OutOfFramesMmu`,
+    /// `BlockMappedMmu`). Mirrors [`fixture`] but takes the MMU instance so a
+    /// failure-injecting decorator can be supplied by the caller.
+    fn fixture_with_mmu<M: Mmu<AddressSpace = FakeAddressSpace>>(
+        mmu: M,
+        frames: usize,
+    ) -> (
+        CapabilityTable,
+        crate::cap::CapHandle,
+        M,
+        AddressSpaceArena<M>,
+        TestPmm,
+        Vec<u8>,
+    ) {
+        let mut arena: AddressSpaceArena<M> = AddressSpaceArena::new();
+        let mut table = CapabilityTable::new();
+
+        // SAFETY: same (a)/(b)/(c) argument as the `fixture` helper's
+        // `mmu.create_address_space` call — every `M` here delegates the
+        // body to `FakeMmu`'s pure host code (or stores the frame without
+        // dereferencing it); the frame is page-aligned by construction;
+        // single-threaded test. See the `fixture` helper's full SAFETY
+        // discipline for the complete argument.
+        let bootstrap_inner = unsafe { mmu.create_address_space(frame(0x4000_0000)) };
+        let bootstrap_handle = crate::mm::create_address_space(
+            &mut arena,
+            crate::mm::AddressSpace::wrap_bootstrap(bootstrap_inner),
+        )
+        .unwrap();
+
+        let parent_cap = Capability::new(
+            CapRights::DUPLICATE | CapRights::DERIVE | CapRights::REVOKE | CapRights::TRANSFER,
+            CapObject::AddressSpace(bootstrap_handle),
+        );
+        let parent_cap_handle = table.insert_root(parent_cap).unwrap();
+
+        let (backing, ptr) = aligned_backing(frames);
+        let pmm = pmm_over_backing(ptr, frames);
+
+        (table, parent_cap_handle, mmu, arena, pmm, backing)
+    }
+
+    #[test]
+    fn rolls_back_on_intermediate_out_of_frames_mid_image_loop() {
+        // Pin the mid-walk `Mmu::map` -> `OutOfFrames` clause (intermediate
+        // page-table allocation failure), distinct from the loader's own
+        // `pmm.alloc_frame() -> None` path. `OutOfFramesMmu::map` pulls one
+        // frame from its `FrameProvider` (here the loader's `pmm`) per call,
+        // standing in for an intermediate table; when the provider is empty it
+        // returns `OutOfFrames` BEFORE mutating the AS and WITHOUT consuming
+        // `pa`. The loader surfaces this as
+        // `MapFailed(MmuMapError(OutOfFrames))` and frees the leaf frame.
+        let (mut table, parent_cap, mmu, mut arena, mut pmm, _b) =
+            fixture_with_mmu(OutOfFramesMmu::new(), 32);
+        let pmm_before = pmm.stats().free_frames;
+        let image_base = VirtAddr(0x0080_0000);
+
+        // alloc sequence (single image page, single stack page):
+        //   alloc #1: cap_create_address_space root L0 — succeeds.
+        //   alloc #2: image-page idx 0 leaf — succeeds.
+        //   alloc #3: intermediate table inside OutOfFramesMmu::map —
+        //             returns None → OutOfFrames (mid-walk).
+        pmm.force_alloc_failure_after(2);
+
+        let result = load_image::<OutOfFramesMmu, TEST_PMM_N, TEST_PMM_R>(
+            &[0xAAu8; PAGE_SIZE],
+            &mut pmm,
+            &mmu,
+            &mut table,
+            &mut arena,
+            parent_cap,
+            CapRights::empty(),
+            image_base,
+            1,
+        );
+
+        assert_eq!(
+            result,
+            Err(LoadError::MapFailed(AddressSpaceError::MmuMapError(
+                MmuError::OutOfFrames
+            ))),
+            "mid-walk intermediate alloc failure must surface as MapFailed(OutOfFrames), got {result:?}"
+        );
+
+        // Rollback accounting: the failing iteration's leaf frame (alloc #2)
+        // is freed directly via the MapFailed clause's `pmm.free_frame(frame)`
+        // (clause 2: `pa` not consumed by the failed map). No mapping was
+        // committed before the failure, so the cap_unmap loop frees nothing.
+        // Only the root L0 (alloc #1) leaks per the v1 baseline.
+        //
+        // NOTE on the count: `force_alloc_failure_after` permanently fails
+        // alloc once tripped, but it leaves the bitmap byte-stable, so the
+        // freed leaf (alloc #2) is reflected in `free_frames`. Net result is
+        // `pmm_before - 1` (only the leaked root L0). The AS-level state was
+        // never mutated — the decorator failed before the inner FakeMmu insert
+        // — so this PMM byte-stability minus the root leak is the load-bearing
+        // "no mapping committed" signal, matching the sibling `rolls_back_on_*`
+        // tests.
+        assert_eq!(
+            pmm.stats().free_frames,
+            pmm_before - 1,
+            "rollback must free the failing iteration's leaf; only the root L0 leaks in v1"
+        );
+    }
+
+    #[test]
+    fn rolls_back_on_block_mapped_mid_image_loop() {
+        // Pin the `Mmu::map` -> `BlockMapped` clause (the walk hits a 2 MiB
+        // block descriptor). `BlockMappedMmu` injects `BlockMapped` for a
+        // configured VA *before* any AS mutation and without consuming `pa`,
+        // so the loader rolls back and frees the leaf frame, surfacing
+        // `MapFailed(MmuMapError(BlockMapped))`.
+        let image_base = VirtAddr(0x0080_0000);
+        let (mut table, parent_cap, mmu, mut arena, mut pmm, _b) =
+            fixture_with_mmu(BlockMappedMmu::with_blocked([image_base]), 32);
+        let pmm_before = pmm.stats().free_frames;
+
+        let result = load_image::<BlockMappedMmu, TEST_PMM_N, TEST_PMM_R>(
+            &[0xAAu8; PAGE_SIZE],
+            &mut pmm,
+            &mmu,
+            &mut table,
+            &mut arena,
+            parent_cap,
+            CapRights::empty(),
+            image_base,
+            1,
+        );
+
+        assert_eq!(
+            result,
+            Err(LoadError::MapFailed(AddressSpaceError::MmuMapError(
+                MmuError::BlockMapped
+            ))),
+            "blocked VA must surface as MapFailed(BlockMapped), got {result:?}"
+        );
+
+        // Rollback accounting: the failing iteration's image-page leaf frame
+        // is freed directly via the MapFailed clause (clause 2: `pa` not
+        // consumed). No mapping was committed; only the root L0 leaks.
+        assert_eq!(
+            pmm.stats().free_frames,
+            pmm_before - 1,
+            "rollback must free the failing iteration's leaf; only the root L0 leaks in v1"
         );
     }
 

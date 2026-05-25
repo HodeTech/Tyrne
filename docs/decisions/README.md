@@ -60,11 +60,17 @@ Each ADR contains:
 | 0029 | [Initial userspace image format (B4 — raw flat binary)](0029-initial-userspace-image-format.md) | Accepted | 2026-05-14 |
 | 0032 | [Endpoint state rollback on `ipc_recv_and_yield` Deadlock + `ipc_cancel_recv` primitive](0032-endpoint-rollback-and-cancel-recv.md) | Accepted | 2026-05-07 |
 | 0035 | [Physical Memory Manager (B3 prerequisite — bitmap allocator)](0035-physical-memory-manager.md) | Accepted | 2026-05-09 |
+| 0036 | [QEMU virt is GICv2 / no-IOMMU in v1; corrects GICv3/SMMUv3 in ADR-0004/0006/0012](0036-qemu-virt-gicv2-no-iommu-v1.md) | Accepted | 2026-05-22 |
+
+> **Numbering gaps.** Slots **0030**, **0031**, **0033**, **0034** are intentionally reserved, not missing: 0030 (syscall ABI) and 0031 (initial syscall set / MMU follow-ups) are reserved for B5 per the `phase-b.md` §B5 ADR ledger; 0033 (high-half migration) and 0034 (kernel-image section permissions) are named-but-unallocated placeholders forward-flagged in ADR-0027/0028/0029. No files exist for these yet; they open when the corresponding work surfaces. ADR numbers are stable history and are never renumbered.
 
 ## Creating a new ADR
 
+The authoritative, step-by-step procedure is the [`write-adr` skill](../../.agents/skills/write-adr/SKILL.md) (and [`supersede-adr`](../../.agents/skills/supersede-adr/SKILL.md) when overriding an old ADR). Read it in full before drafting; the summary below is a reminder, not a substitute.
+
 1. Copy [template.md](template.md) to the next available number: `NNNN-your-slug.md`.
 2. Fill it in. Start with status `Proposed`.
-3. Open a PR (once the PR process is established) or, in the solo phase, commit directly with a descriptive commit message referencing the ADR number.
-4. When the decision is settled, change the status to `Accepted`.
-5. If a later ADR overrides this one, mark the old one `Superseded by NNNN` and link forward to the new record. Do **not** delete or rewrite the old ADR — the historical reasoning is the point.
+3. For an ADR whose subject is a multi-step state machine (capability flows, IPC handshakes, scheduler dispatch, exception/IRQ entry, MMU/TLB transitions, syscall ABI handshakes), include a **§Simulation** table (3–5 rows walking the worst-case interaction) per [ADR-0025](0025-adr-governance-amendments.md) and the `write-adr` skill; other ADR subjects use the one-line "Not applicable" note. Every ADR's §Decision outcome must also include a **§Dependency chain** grounding each forward-reference in a real `T-NNN` (per ADR-0025 §Rule 1).
+4. Open a PR (once the PR process is established) or, in the solo phase, commit directly with a descriptive commit message referencing the ADR number.
+5. When the decision is settled, re-read end-to-end (per `write-adr` skill §10) and change the status to `Accepted` in a separate commit from the initial `Proposed` draft.
+6. If a later ADR overrides this one, mark the old one `Superseded by NNNN` and link forward to the new record. Do **not** delete or rewrite the old ADR — the historical reasoning is the point.

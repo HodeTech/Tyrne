@@ -251,6 +251,10 @@ Explicit subtree walk, iterative using a small local stack buffer sized for `MAX
 - **Raising `CAP_TABLE_CAPACITY` and `MAX_DERIVATION_DEPTH`.** Both are revisited when a concrete use-case demands more. For now, both are `const` and documented.
 - **Adopting the `bitflags` crate.** `CapRights` is hand-rolled to keep the kernel dependency-free. [ADR-0009](0009-mmu-trait.md) has the same open question for `MappingFlags`; both may migrate together in a future ADR.
 
+## Revision notes
+
+- **2026-05-22 — `CapError` carries seven variants, not the five sketched above.** The §Decision-outcome `CapError` sketch lists five variants (`CapsExhausted`, `InvalidHandle`, `WidenedRights`, `InsufficientRights`, `DerivationTooDeep`). The shipped enum in [`kernel/src/cap/mod.rs`](../../kernel/src/cap/mod.rs) adds two more: **`HasChildren`** (a `revoke`/operation refused because the capability still has live derivations) and **`WrongKind`** (a typed-accessor wrapper rejected because the slot holds a different `CapKind`). Both additions are append-only-safe by design: the enum is declared `#[non_exhaustive]` precisely so future ADRs can add variants without it being a breaking change (the sketch's own doc-comment says so). The five-variant sketch is preserved as the historical record; this rider records that the contract grew to seven by additive, `#[non_exhaustive]`-protected extension. The capability-representation decision (typed handle + rights bitfield + derivation tree) is unchanged.
+
 ## References
 
 - [ADR-0001 — Capability-based microkernel architecture](0001-microkernel-architecture.md).

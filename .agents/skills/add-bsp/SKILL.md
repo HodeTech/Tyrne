@@ -6,6 +6,8 @@ when-to-use: When adding support for a new hardware target (e.g. Raspberry Pi 4,
 
 # Add BSP
 
+> **Length note.** This skill intentionally exceeds the ~200-line soft limit in [the skills README](../README.md). Bringing up a new board is irreducibly long — the `boot.s` template (step 4) and the smoke-test diagnostic table (step 10) are load-bearing checklist content, not padding, and a partial procedure here would be more dangerous than a long one. Kept whole rather than split or moved to a guide.
+
 ## Inputs
 
 Before starting, the agent must have:

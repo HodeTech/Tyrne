@@ -24,10 +24,10 @@
 //!   (`TLBI VMALLE1` / `IC IALLU` / `DSB ISH` / `ISB`). Same scope-
 //!   extension Amendment pattern.
 //!
-//! [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-//! [UNSAFE-2026-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
-//! [UNSAFE-2026-0023]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
-//! [UNSAFE-2026-0024]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+//! [UNSAFE-2026-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [UNSAFE-2026-0023]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [UNSAFE-2026-0024]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 
 use core::arch::asm;
 
@@ -83,8 +83,8 @@ const BLOCK_2MIB: u64 = 2 * 1024 * 1024;
 ///   instruction-fetch after `SCTLR.M = 1` faults (per ADR-0027
 ///   §Simulation §Step 3).
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [linker]: https://github.com/cemililik/Tyrne/blob/main/bsp-qemu-virt/linker.ld
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [linker]: https://github.com/HodeTech/Tyrne/blob/main/bsp-qemu-virt/linker.ld
 pub unsafe fn mmu_bootstrap() {
     // `addr_of!` of an `extern "C" static` is itself safe — it does
     // not dereference the symbol; it just yields the linker-resolved

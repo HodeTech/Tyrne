@@ -180,6 +180,10 @@ Forward-flag (not blocking Accept, per [ADR-0025 §Rule 1](0025-adr-governance-a
 - Con: Either heap-allocation (rejected; kernel has no heap) or a typed-arena-of-trait-objects pattern that [ADR-0016](0016-kernel-object-storage.md) doesn't have today. The typed-arena variant would require either `Box<dyn MmuObject>` boxed-into-arena-slot (heap) or non-trivial dyn-trait-arena infrastructure (new audit weight).
 - Con: The trait-object design premise — "the implementation set is open and runtime-variable" — is wrong for the kernel: exactly one `Mmu` impl is statically linked per BSP. Trait objects are the wrong tool for the static-dispatch use case.
 
+## Revision notes
+
+- **2026-05-22 — activation TLB-flush behaviour: read §Simulation row 3 *together with* §Consequences→Negative.** The implementation landed strictly more conservative than the original "no auto-flush" sketch: `QemuVirtMmu::activate` issues `MSR TTBR0_EL1; ISB; DSB ISHST; TLBI VMALLE1; DSB ISH; ISB` on every address-space switch (a full TLB flush), because single-core v1 runs with `TCR_EL1.AS = 0` (no per-task ASID isolation), so a global invalidate is the safe choice. This correction is **already captured** in the §Simulation row 3 "State post" cell ("TLB **flushed** … more conservative than the 'no auto-flush' note in the original design") and in the §Negative bullet ("the original ADR description called this row 'activation-without-TLB-flush', which was advisory; the implementation landed strictly more conservative in T-018 commit 2"). This rider exists only to make the correction discoverable from a single place: the two passages must be read together. [ADR-0033](0027-kernel-virtual-memory-layout.md#decision-outcome) (high-half migration placeholder) will revisit when B5+ introduces ASID-based isolation.
+
 ## References
 
 - [ADR-0009 — `Mmu` HAL trait signature (v1)](0009-mmu-trait.md) — the trait this ADR consumes; defines the [`AddressSpace`](../../hal/src/mmu/mod.rs) associated type and the `create_address_space` / `address_space_root` / `activate` / `map` / `unmap` surface.

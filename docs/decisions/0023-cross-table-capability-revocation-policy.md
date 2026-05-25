@@ -35,7 +35,7 @@ When the trigger fires, the replacement ADR will need a Decision outcome that pi
 - **Option C — Explicit `revoke_transferred(token)` syscall.** Sender records a transfer token at transfer time; cancel-token primitive walks every table and revokes any entry matching the token. Lightweight per-transfer; expensive at revoke time (linear scan over all tables).
 - **Option D — Defer indefinitely with userspace responsibility** (what v1 implements). Userspace patterns that need post-transfer revocation must implement it in protocol (e.g., periodic re-authentication; supervisor-mediated indirection).
 
-A real ADR-0023 will need a *Simulation* table per the [Decision outcome](#decision-outcome-not-applicable-deferred) discipline introduced by [ADR-0026](0026-idle-dispatch-fallback.md) and codified in the [write-adr skill](../../.claude/skills/write-adr/SKILL.md): walk the worst-case (sender transfers cap to receiver A → A re-derives a sub-cap to B → sender revokes original → both A's copy and B's sub-derivation must die under the chosen Option). The Simulation is what surfaces the cross-table-CDT-vs-back-pointer-vs-token tradeoff that prose alone hides.
+A real ADR-0023 will need a *Simulation* table per the [Decision outcome](#decision-outcome-not-applicable--deferred) discipline introduced by [ADR-0026](0026-idle-dispatch-fallback.md) and codified in the [write-adr skill](../../.agents/skills/write-adr/SKILL.md): walk the worst-case (sender transfers cap to receiver A → A re-derives a sub-cap to B → sender revokes original → both A's copy and B's sub-derivation must die under the chosen Option). The Simulation is what surfaces the cross-table-CDT-vs-back-pointer-vs-token tradeoff that prose alone hides.
 
 ## Decision drivers
 
@@ -48,7 +48,7 @@ These are the drivers a real ADR-0023 will need to weigh; recorded here so the p
 
 ## Decision outcome (not applicable — Deferred)
 
-No decision today. The ADR is a placeholder; when a trigger fires (see *Why deferred* above), a real ADR-0023 supersedes this body via the [supersede-adr skill](../../.claude/skills/supersede-adr/SKILL.md), or — preferred for placeholders — this body is rewritten in place with a Status flip from `Deferred` to `Proposed` (then `Accepted`). The Status flip is not subject to the append-only rule that protects original Accepted bodies, because a `Deferred` placeholder is not a load-bearing decision artefact.
+No decision today. The ADR is a placeholder; when a trigger fires (see *Why deferred* above), a real ADR-0023 supersedes this body via the [supersede-adr skill](../../.agents/skills/supersede-adr/SKILL.md), or — preferred for placeholders — this body is rewritten in place with a Status flip from `Deferred` to `Proposed` (then `Accepted`). The Status flip is not subject to the append-only rule that protects original Accepted bodies, because a `Deferred` placeholder is not a load-bearing decision artefact.
 
 ### Simulation
 

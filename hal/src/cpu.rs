@@ -2,7 +2,7 @@
 //!
 //! See [ADR-0008] for the trait-signature rationale.
 //!
-//! [ADR-0008]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0008-cpu-trait.md
+//! [ADR-0008]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0008-cpu-trait.md
 
 /// Identifier for a CPU core.
 ///
@@ -14,10 +14,21 @@ pub type CoreId = u32;
 /// The state of the CPU's interrupt mask, as saved by
 /// [`Cpu::disable_irqs`] and consumed by [`Cpu::restore_irq_state`].
 ///
-/// Callers should treat the inner value as opaque — pass it back
-/// unmodified to `restore_irq_state`. The inner field is `pub` so that BSP
-/// implementations can construct the value from raw architecture bits;
-/// it is not an invitation for callers to inspect or synthesize bits.
+/// A value returned by `disable_irqs` is otherwise opaque: pass it back
+/// unmodified to `restore_irq_state` and do not inspect or recombine its
+/// bits. The inner field is `pub` so that BSP implementations can construct
+/// the value from raw architecture bits.
+///
+/// # Canonical zero value
+///
+/// `IrqState(0)` is the one value callers may legitimately synthesize: it
+/// is defined as the **IRQs-enabled (unmasked)** state, and every [`Cpu`]
+/// implementor must honour `restore_irq_state(IrqState(0))` as "enable
+/// interrupts." This is the natural aarch64 encoding (a zero `DAIF` mask
+/// leaves IRQs unmasked); the scheduler relies on it when dispatching a
+/// freshly-created task that must begin with interrupts enabled. Test
+/// doubles (`tyrne_test_hal::FakeCpu`) follow the same polarity, so a
+/// shared fake cannot invert production interrupt semantics.
 #[derive(Copy, Clone)]
 pub struct IrqState(pub usize);
 
@@ -55,9 +66,11 @@ pub trait Cpu: Send + Sync {
     /// Restore the CPU interrupt mask to the given saved state.
     ///
     /// `state` must be a value previously returned by
-    /// [`Cpu::disable_irqs`]; passing any other value is a violation of
-    /// the calling contract and the resulting behaviour is
-    /// implementation-defined.
+    /// [`Cpu::disable_irqs`], with one canonical exception: callers may
+    /// synthesize `IrqState(0)`, which every implementation must treat as
+    /// "enable interrupts" (see [`IrqState`] § Canonical zero value).
+    /// Passing any other unsynthesized value is a violation of the calling
+    /// contract and the resulting behaviour is implementation-defined.
     fn restore_irq_state(&self, state: IrqState);
 
     /// Halt the CPU until the next interrupt wakes it.

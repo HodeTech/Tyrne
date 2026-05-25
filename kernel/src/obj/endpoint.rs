@@ -6,7 +6,7 @@
 //! Milestone A4 populates them with real waiter lists when `send` /
 //! `recv` / `reply_recv` arrive.
 //!
-//! [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+//! [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
 
 use super::arena::{Arena, SlotId};
 use super::{ObjError, ENDPOINT_ARENA_CAPACITY};
@@ -77,9 +77,35 @@ pub fn create_endpoint(
 
 /// Free the endpoint at `handle`.
 ///
+/// # In-flight capability hazard (C3-001 — deliberate v1 deferral)
+///
+/// `destroy_endpoint` is **cap-blind**: it frees the arena slot and bumps
+/// the generation but does **not** consult [`IpcQueues`][crate::ipc::IpcQueues].
+/// If an endpoint is destroyed while its queue slot holds a
+/// `SendPending { cap: Some(_) }` or `RecvComplete { cap: Some(_) }`, the
+/// parked move-only [`Capability`][crate::cap::Capability] is owned solely by
+/// that state. On the next IPC op against a *new* endpoint allocated in the
+/// same slot, `IpcQueues::reset_if_stale_generation` overwrites the state with
+/// `Idle` and the parked cap is dropped on the floor — a silently leaked
+/// authority. In **debug** builds the `debug_assert!` in
+/// `reset_if_stale_generation` fires on exactly this case; in **release** it
+/// is compiled out, so the leak is silent.
+///
+/// This is *currently benign and intentional*, not unhandled: no production
+/// code calls `destroy_endpoint` on a cap-bearing pending state, and the
+/// destroy-drain primitive (which must *return* the parked cap to its origin
+/// or destroy it) is deferred to the Phase B2+ endpoint-destroy ADR per
+/// [ADR-0032] §Consequences. The conservative future improvement is to have
+/// this (or a thin IPC-layer wrapper) take `&mut IpcQueues` and return a typed
+/// `ObjError::HasPendingTransfer` when the slot is cap-bearing — converting the
+/// debug-only assert into a release-safe refusal. Until that ADR lands, a
+/// caller that frees a cap-bearing endpoint is the one path to the leak.
+///
 /// # Errors
 ///
 /// [`ObjError::InvalidHandle`] when `handle` is stale or already freed.
+///
+/// [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
 pub fn destroy_endpoint(
     arena: &mut EndpointArena,
     handle: EndpointHandle,

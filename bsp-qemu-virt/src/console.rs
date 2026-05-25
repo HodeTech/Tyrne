@@ -69,11 +69,17 @@ impl Console for Pl011Uart {
             // accesses.
             // Audit: UNSAFE-2026-0005.
             unsafe {
-                let fr = (self.base + UARTFR) as *const u32;
+                // `saturating_add` for the base + register-offset
+                // arithmetic, matching the MMIO idiom in `gic.rs` and
+                // `main.rs` (C7-004 consistency). Overflow is impossible
+                // here — `base` is the fixed `0x0900_0000` and the offsets
+                // are tiny compile-time constants — but a uniform idiom
+                // keeps the MMIO-arithmetic audit surface small.
+                let fr = self.base.saturating_add(UARTFR) as *const u32;
                 while read_volatile(fr) & UARTFR_TXFF != 0 {
                     core::hint::spin_loop();
                 }
-                let dr = (self.base + UARTDR) as *mut u32;
+                let dr = self.base.saturating_add(UARTDR) as *mut u32;
                 write_volatile(dr, u32::from(byte));
             }
         }

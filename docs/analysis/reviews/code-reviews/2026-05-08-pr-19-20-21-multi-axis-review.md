@@ -1,6 +1,6 @@
 # Code review 2026-05-08 — PR #19 / #20 / #21 multi-axis pre-merge sweep
 
-- **Change:** PRs [#19](https://github.com/cemililik/Tyrne/pull/19) (path-drift sweep), [#20](https://github.com/cemililik/Tyrne/pull/20) (ADR-0027 + T-016 open), [#21](https://github.com/cemililik/Tyrne/pull/21) (P10 perf-harness + first measured baseline).
+- **Change:** PRs [#19](https://github.com/HodeTech/Tyrne/pull/19) (path-drift sweep), [#20](https://github.com/HodeTech/Tyrne/pull/20) (ADR-0027 + T-016 open), [#21](https://github.com/HodeTech/Tyrne/pull/21) (P10 perf-harness + first measured baseline).
 - **Branches:** `doc-hygiene-2026-05-06-path-drift-sweep` / `adr-0027-kernel-virtual-memory-layout` / `p10-wall-clock-bench-harness`.
 - **Reviewer:** @cemililik (+ Claude Opus 4.7 multi-agent fan-out — 4 parallel track agents).
 - **Type:** **Pre-merge** multi-axis sweep — these PRs together open the B2 milestone; quality is load-bearing for the T-016 implementation arc that follows. "Block" reserved for genuine regression / discipline violation; "Approve-with-followups" means a one-line same-branch fixup or a hygiene-PR rider closes the finding.
@@ -122,7 +122,7 @@ A hygiene PR after #20 merges captures items 2–11; the perf-harness follow-ups
 - Track 2 (design): [track-2-pr-20-design.md](2026-05-08-pr-19-20-21-multi-axis-review/track-2-pr-20-design.md)
 - Track 3 (governance): [track-3-pr-20-governance.md](2026-05-08-pr-19-20-21-multi-axis-review/track-3-pr-20-governance.md)
 - Track 4 (perf-harness): [track-4-pr-21-perf-harness.md](2026-05-08-pr-19-20-21-multi-axis-review/track-4-pr-21-perf-harness.md)
-- PR diffs: [`gh pr view 19`](https://github.com/cemililik/Tyrne/pull/19) / [`gh pr view 20`](https://github.com/cemililik/Tyrne/pull/20) / [`gh pr view 21`](https://github.com/cemililik/Tyrne/pull/21)
+- PR diffs: [`gh pr view 19`](https://github.com/HodeTech/Tyrne/pull/19) / [`gh pr view 20`](https://github.com/HodeTech/Tyrne/pull/20) / [`gh pr view 21`](https://github.com/HodeTech/Tyrne/pull/21)
 - ADR-0027 (kernel virtual memory layout): [`docs/decisions/0027-kernel-virtual-memory-layout.md`](../../../decisions/0027-kernel-virtual-memory-layout.md)
 - T-016 (MMU activation): [`docs/analysis/tasks/phase-b/T-016-mmu-activation.md`](../../tasks/phase-b/T-016-mmu-activation.md)
 - ADR-0009 §Revision rider, ADR-0012 §Open questions resolution

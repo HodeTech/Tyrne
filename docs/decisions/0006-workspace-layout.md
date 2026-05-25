@@ -4,6 +4,8 @@
 - **Date:** 2026-04-20
 - **Deciders:** @cemililik
 
+> **Correction (2026-05-22).** This ADR's "GICv3 + PL011 + SMMUv3" BSP-role line (§Decision outcome) is stale: QEMU virt is GICv2 / no IOMMU in v1; the `Iommu` trait is a stub reserved for a future SMMUv3 ADR. See [ADR-0036](0036-qemu-virt-gicv2-no-iommu-v1.md). The original body below is preserved unchanged for the historical record (append-only).
+
 ## Context
 
 Phase 4 of the project begins implementation. The architecture documents ([overview.md](../architecture/overview.md), [hal.md](../architecture/hal.md), [security-model.md](../architecture/security-model.md)) have settled that Tyrne is a narrow kernel core, a trait-based HAL, and per-board BSPs that implement the HAL. The Cargo workspace must reflect that decomposition concretely: the set of crates, their boundaries, and their roles.

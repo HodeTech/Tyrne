@@ -18,9 +18,9 @@
 //! [`Arena`][arena::Arena] is the audited pattern generalised and
 //! instantiated three times.
 //!
-//! [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
-//! [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
-//! [adr-0029]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
+//! [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+//! [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+//! [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
 //!
 //! ## Public surface (v1)
 //!
@@ -57,7 +57,7 @@
 //!   [UNSAFE-2026-0027][unsafe-27]. No other `unsafe` lives in this
 //!   subsystem.
 //!
-//! [unsafe-27]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+//! [unsafe-27]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 
 pub mod arena;
 pub mod endpoint;

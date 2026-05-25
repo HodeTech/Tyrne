@@ -16,5 +16,9 @@ path = "src/main.rs"
 tyrne-hal = { path = "../hal" }
 tyrne-kernel = { path = "../kernel" }
 
+# Inherits the workspace `[lints]` table, which sets the deny-heavy posture
+# the BSP's `unsafe`-audit discipline relies on — notably
+# `clippy::undocumented_unsafe_blocks` and `clippy::missing_safety_doc`
+# (deny) per docs/standards/unsafe-policy.md §Tooling. (C7-013)
 [lints]
 workspace = true

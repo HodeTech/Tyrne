@@ -169,6 +169,8 @@ When introducing a new `Error` enum, ask:
 - `clippy::result_large_err` is `warn` — error types larger than ~128 bytes bloat the `Result` return value.
 - `clippy::missing_errors_doc` is `warn` — every public `fn -> Result` should document its errors.
 
+> Both of the above are active workspace-wide through `clippy::pedantic = "warn"` (root `Cargo.toml`, `[workspace.lints.clippy]`) and clippy's default lint groups — not as standalone per-lint entries. A grep of `Cargo.toml` for the literal lint names will therefore not find them; this is expected, not a missing configuration.
+
 ## References
 
 - Rust API Guidelines, Error types: https://rust-lang.github.io/api-guidelines/interoperability.html#error-types

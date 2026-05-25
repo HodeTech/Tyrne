@@ -4,21 +4,30 @@
 # Usage:
 #   tools/run-qemu.sh                                         — debug build
 #   tools/run-qemu.sh --release                               — release build
-#   tools/run-qemu.sh --int-log                               — log exceptions to /tmp/qemu_int.log
+#   tools/run-qemu.sh --int-log                               — log exceptions (PID-suffixed temp file)
 #   tools/run-qemu.sh <path/to/elf>                           — explicit ELF path
+#   tools/run-qemu.sh -h | --help                             — show this usage
 #
-# --int-log adds -d int -D /tmp/qemu_int.log to the QEMU invocation.
+# --int-log adds `-d int -D <logfile>` to the QEMU invocation, where
+# <logfile> is ${TMPDIR:-/tmp}/qemu_int.<pid>.log (printed at startup).
 # Use it when the kernel hangs silently to see what exception fired.
-# After the run: grep "Taking exception" /tmp/qemu_int.log
+# After the run: grep "Taking exception" <logfile>
 #
 # See docs/guides/run-under-qemu.md for the full walkthrough and the
-# manual invocation used under the hood.
+# manual invocation used under the hood. The QEMU invocation below is
+# kept in sync with the `runner` line in .cargo/config.toml.
 
 set -euo pipefail
 
 BUILD_PROFILE="debug"
 KERNEL=""
 INT_LOG=""
+
+usage() {
+    # Echo the usage block above (lines after the shebang up to the first
+    # blank line), stripping the leading "# ".
+    sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+}
 
 for arg in "$@"; do
     case "$arg" in
@@ -28,7 +37,22 @@ for arg in "$@"; do
         --int-log)
             INT_LOG="yes"
             ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --*)
+            echo "error: unknown flag: $arg" >&2
+            usage
+            exit 2
+            ;;
         *)
+            if [[ -n "$KERNEL" ]]; then
+                echo "error: unexpected extra argument: $arg" >&2
+                echo "       (the kernel path was already set to: $KERNEL)" >&2
+                usage
+                exit 2
+            fi
             KERNEL="$arg"
             ;;
     esac
@@ -53,8 +77,12 @@ fi
 
 INT_LOG_FLAGS=()
 if [[ -n "$INT_LOG" ]]; then
-    INT_LOG_FLAGS=(-d int -D /tmp/qemu_int.log)
-    echo "exception log → /tmp/qemu_int.log  (grep 'Taking exception' to inspect)" >&2
+    # PID-suffix the log so concurrent runs (or two users on a shared host)
+    # do not clobber each other's exception traces. ${TMPDIR:-/tmp} honours a
+    # per-user temp dir when one is set.
+    INT_LOG_PATH="${TMPDIR:-/tmp}/qemu_int.$$.log"
+    INT_LOG_FLAGS=(-d int -D "$INT_LOG_PATH")
+    echo "exception log → ${INT_LOG_PATH}  (grep 'Taking exception' to inspect)" >&2
 fi
 
 exec qemu-system-aarch64 \

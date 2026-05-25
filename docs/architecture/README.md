@@ -17,7 +17,8 @@ The architecture is being written in phases. Many documents listed below are pla
 | [`scheduler.md`](scheduler.md) | Cooperative FIFO scheduler: ready queue, idle task, raw-pointer IPC bridge, ContextSwitch trait. | Accepted (v0.0.1 — single-core, no preemption) |
 | [`ipc.md`](ipc.md) | Inter-process communication: synchronous send/recv, endpoint state machine, capability transfer, scheduler-bridge wrappers. | Accepted (v0.0.1 — depth-1 endpoints) |
 | [`exceptions.md`](exceptions.md) | Exception vector table, IRQ dispatch, GIC v2 driver, generic-timer IRQ wiring, idle WFI activation. | Accepted (v0.0.1 — T-012 Done 2026-04-28 via PR #10 merge; design + implementation match; maintainer-side QEMU smoke verification of the deliberate-deadline path remains pre-B1-closure work) |
-| `memory-management.md` | Physical + virtual memory, MMU/paging, allocators. | Planned — B2 |
+| [`memory-management.md`](memory-management.md) | Physical + virtual memory, MMU/paging, allocators, address-space objects, task loader. | Accepted (v0.0.1 — MMU/PMM/AddressSpace/loader; T-016..T-019) |
+| [`task-loader.md`](task-loader.md) | Task loader: raw-flat image → populated address space; rollback contract; audit-log surface. | Accepted (v0.0.1 — T-019) |
 | `drivers.md` | Userspace driver model, capability grants, driver API. | Planned |
 | `userspace.md` | Init process, system services, shell, root of trust. | Planned |
 

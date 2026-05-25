@@ -4,6 +4,8 @@
 - **Date:** 2026-04-20
 - **Deciders:** @cemililik
 
+> **Correction (2026-05-22).** This ADR's "GICv3" reference (§Decision outcome) is stale: QEMU virt is GICv2 / no IOMMU in v1; the `Iommu` trait is a stub reserved for a future SMMUv3 ADR. See [ADR-0036](0036-qemu-virt-gicv2-no-iommu-v1.md). The original body below is preserved unchanged for the historical record (append-only).
+
 ## Context
 
 Tyrne needs a concrete first hardware target to make implementation choices — architecture-specific code, HAL surfaces, toolchain pinning — possible. The long-term vision spans constrained smart-home devices, single-board computers, and eventually mobile-class aarch64 SoCs. The short-term question is: *which platform do we bring up first, and what is the roadmap for the rest?*

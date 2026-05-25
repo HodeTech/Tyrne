@@ -56,7 +56,7 @@ A single reviewer can cover all roles sequentially; the benefit of naming them i
 
 **Task:** translate the learnings into concrete adjustments.
 
-- For each learning that implies action, propose: a new task (to be opened via [`start-task`](../../../../.claude/skills/start-task/SKILL.md)), an ADR to write (via [`write-adr`](../../../../.claude/skills/write-adr/SKILL.md)), or a standard/guide update.
+- For each learning that implies action, propose: a new task (to be opened via [`start-task`](../../../../.agents/skills/start-task/SKILL.md)), an ADR to write (via [`write-adr`](../../../../.agents/skills/write-adr/SKILL.md)), or a standard/guide update.
 - For each adjustment, name the trigger (the next thing to do to act on it).
 - Do not execute the adjustments here — just record them. Execution happens after the review is committed.
 

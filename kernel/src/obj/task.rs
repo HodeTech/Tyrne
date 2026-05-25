@@ -6,7 +6,7 @@
 //! state and the context-save frame arrive in Milestone A5 as layered
 //! additions.
 //!
-//! [adr-0016]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
+//! [adr-0016]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0016-kernel-object-storage.md
 
 use super::arena::{Arena, SlotId};
 use super::{ObjError, TASK_ARENA_CAPACITY};
@@ -20,7 +20,7 @@ use crate::mm::AddressSpaceHandle;
 /// [`Mmu::activate`][tyrne_hal::Mmu::activate] before the
 /// architectural context switch.
 ///
-/// [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
+/// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
 #[derive(Debug)]
 pub struct Task {
     id: u32,

@@ -66,7 +66,8 @@ The HAL is the trait boundary between the kernel's portable core and any one boa
 
 HAL trait surface (final form documented in [`hal.md`](hal.md), Accepted):
 
-- `Cpu` — disable / enable interrupts at the CPU level, halt / wait-for-interrupt, context-switch primitives.
+- `Cpu` — mask / restore interrupts at the CPU level, halt / wait-for-interrupt, instruction barriers, current-core identity.
+- `ContextSwitch` — register save/restore for cooperative task switching (a separate trait from `Cpu` per [ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md)).
 - `Mmu` — translation-table layout, entry installation, TLB invalidation.
 - `IrqController` — IRQ mask / unmask, acknowledge, end-of-interrupt.
 - `Timer` — monotonic clock, one-shot deadline arming.
@@ -138,9 +139,9 @@ From that point, no code runs inside the kernel except in response to syscalls, 
 IPC is the central operation of a microkernel. Tyrne will offer two IPC flavours, both mediated by the kernel, both capability-controlled.
 
 - **Synchronous rendezvous.** A sender issues `send(endpoint_cap, msg)` and blocks until a receiver pairs with the endpoint. Used for request-response. Inspired by seL4.
-- **Asynchronous notification.** A sender fires a one-bit (or small-bit-field) notification that accumulates on the receiver's endpoint. Used for interrupts and low-rate signals. No block on the sender side.
+- **Asynchronous notification.** A sender fires a one-bit (or small-bit-field) notification that accumulates in a notification object. Used for interrupts and low-rate signals. No block on the sender side.
 
-Both flavours use the same `EndpointCap` kernel object, discriminated by capability rights at send/receive time.
+The two flavours use **independent** kernel objects. Synchronous rendezvous uses `EndpointCap` (kernel object `Endpoint`). Asynchronous notification uses `NotificationCap` (kernel object `Notification`); a notification accumulates bits in the `Notification` object — no endpoint is involved. The full state machine for both is in [`ipc.md`](ipc.md).
 
 ```mermaid
 sequenceDiagram

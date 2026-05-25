@@ -58,7 +58,8 @@ Before a version is tagged, **every one of these must be true**. A gate failure 
 
 ### Process gates
 
-- [ ] All CI gates green on the commit being released (format, clippy, tests, build, QEMU smoke, `cargo-audit`, `cargo-vet`).
+- [ ] **All enforced CI gates green** on the commit being released: `cargo fmt --check`, clippy (`host-clippy` + `kernel-clippy`), host tests, `kernel-build`, host crates on stable (`host-stable-check`), and Miri.
+- [ ] **Manual verification gates passed** — these are listed in the release standard but are **not yet CI jobs**, so they must be checked manually until they are wired up (see [infrastructure.md](infrastructure.md) §"Planned gates"): QEMU smoke *(maintainer-launched; no CI job yet)*, `cargo-audit` *(dormant until the first external dependency lands)*, `cargo-vet` *(same dormant conditional)*.
 - [ ] Hardware smoke tests passed on every Tier 2+ target that this release claims to support.
 - [ ] No `#[ignore]`d tests without a tracking issue.
 - [ ] No open `Security` advisories that this release does not fix.

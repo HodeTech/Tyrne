@@ -16,10 +16,12 @@ How Tyrne is built, how its dependencies are managed, what its CI gates are, and
 
 - **Pinned nightly Rust via `rust-toolchain.toml`** at the repository root. The file specifies the exact nightly date and the components required (`rust-src`, `rustfmt`, `clippy`, `llvm-tools-preview` as needed).
 - The pinned nightly is bumped deliberately, via a dedicated PR, with a commit message explaining the upgrade. Do not update the toolchain as a side effect of other changes.
-- CI runs against the pinned toolchain only. Multiple-toolchain matrices are not currently useful for a `no_std` kernel.
+- `Cargo.lock` is format `version = 4`, which requires a reasonably recent Cargo (Rust 1.78+). The pinned nightly is far newer than that floor, so this is not a constraint today; it is recorded here only so that, should an external contributor on an older Cargo ever appear, the minimum is known.
+- The kernel jobs run against the pinned nightly only — the same toolchain `rust-toolchain.toml` selects for every in-repo `cargo` invocation (its override beats `rustup default`). The `lint-and-host-test`, `kernel-build`, `miri`, and `coverage` jobs all select the pin explicitly. Multiple-toolchain matrices are not useful for a `no_std` kernel that requires nightly.
+- One additional job, `host-stable-check`, runs `cargo +stable build` and `cargo +stable host-test` over the host-buildable crates (workspace `default-members`: kernel, hal, test-hal; the bare-metal BSP is excluded because it needs nightly). It is a deliberate "host crates compile and pass tests on stable Rust" gate, not a kernel build. It deliberately does **not** run clippy/fmt with `-D warnings`: `clippy::pedantic` is `warn` workspace-wide and stable is a rolling toolchain, so a future stable release could add a pedantic lint that reddens the gate with no code change of ours — lint/format enforcement therefore lives only on the pinned-nightly jobs. See [ci.md](../guides/ci.md).
 - Cross-compile targets are installed with `rustup target add` per CI job:
-  - `aarch64-unknown-none` (primary kernel target).
-  - `aarch64-unknown-none-softfloat` (variants where needed).
+  - `aarch64-unknown-none` (primary kernel target; the only target pinned in `rust-toolchain.toml`).
+  - `aarch64-unknown-none-softfloat` (added on demand if FP-trap behaviour ever requires it; not pinned and not used by any current job).
   - Additional targets added as tiers 2+ come online.
 
 ## Dependency policy
@@ -60,28 +62,44 @@ Removing a dependency (replacing with in-tree code or dropping the feature it en
 
 ## Continuous integration
 
-CI is expected to be set up early in Phase 4 (Rust toolchain + workspace skeleton). The gates below define the bar.
+CI was set up in Phase 4 (completed 2026-04-23); the gates below define the bar. The list distinguishes gates that are **enforced today** from gates that are **planned but not yet enforced** so a reader can tell what actually blocks a merge.
 
-### Required gates (block merge)
+### Required gates (enforced today, block merge)
 
-- `cargo fmt --all -- --check`
-- `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test --workspace` — host-runnable unit and integration tests.
-- `cargo build --workspace --target aarch64-unknown-none` — kernel builds clean.
-- QEMU smoke — kernel boots under `qemu-system-aarch64 -machine virt` and reaches the success marker. *(As of 2026-05: maintainer-launched only; no `qemu-smoke` CI job yet — tracked as a B2-or-later roadmap follow-up.)*
-- `cargo audit` — fails on known advisories. `cargo-audit` database is updated weekly in CI. *(Conditional — currently dormant: `Cargo.lock` carries zero external dependencies, so the gate would be a no-op. The job is wired in once the first external dependency lands per [add-dependency](../../.claude/skills/add-dependency/SKILL.md).)*
-- `cargo vet check` — fails if any dependency is not audited. *(Same conditional — see `cargo audit` above.)*
+These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml):
+
+- `cargo fmt --all -- --check` (`lint-and-host-test`).
+- Clippy with `-D warnings`, run as the two aliases CI executes: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates and `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP. The two aliases together cover the whole workspace; their combination is the executed equivalent of `cargo clippy --workspace --all-targets -- -D warnings`.
+- `cargo test` — host-runnable unit and integration tests over `default-members` (`lint-and-host-test`; re-run on stable by `host-stable-check`).
+- `cargo kernel-build` — the kernel ELF builds clean for `aarch64-unknown-none` (`kernel-build`).
+- Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
+- Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
+
+### Planned gates (not yet enforced)
+
+These appear in the release/standards prose but have **no CI job yet**; do not assume a green CI exercised them.
+
+- QEMU smoke — kernel boots under `qemu-system-aarch64 -machine virt` and reaches the success marker. *(As of 2026-05: maintainer-launched only; no `qemu-smoke` CI job yet — tracked as a B2-or-later roadmap follow-up. A behavioural gate, not a no-op — its absence means boot behaviour is verified by the maintainer, not by CI.)*
+- `cargo audit` — fails on known advisories; `cargo-audit` database refreshed weekly in CI. *(Currently dormant: `Cargo.lock` carries zero external dependencies, so the gate would be a no-op today. Wired in once the first external dependency lands per [add-dependency](../../.agents/skills/add-dependency/SKILL.md).)*
+- `cargo vet check` — fails if any dependency is not audited. *(Same dormant conditional as `cargo audit` above — zero external deps today.)*
 
 ### Advisory gates (warn, do not block)
 
 - `cargo-geiger` report — records `unsafe` counts, compared against the audit log.
-- Coverage delta (via `cargo llvm-cov`) — not a gate yet; informational.
+- Coverage delta (via `cargo llvm-cov`) — **informational, not a gate.** The `coverage` job runs with `continue-on-error: true`, so a coverage drop never blocks a merge today; the job exists to make trends visible. The plan is to flip it to enforce a floor after T-011 settles the workspace shape — at which point `continue-on-error` is removed first and only then is the job added to branch protection (see [ci.md](../guides/ci.md) §"Branch protection"). Until then it must **not** be in the required-checks list (a `continue-on-error` job reports a neutral verdict that never satisfies `required == passing`).
 - Binary size delta (`cargo bloat`) — informational; large increases prompt a question.
+
+### Miri as a blocking gate
+
+The `miri` job runs the host-test suite under Stacked Borrows on the pinned nightly and does **not** set `continue-on-error` — a Miri regression is a hard stop. It is intended as a blocking gate, with particular weight on changes under `kernel/src/sched/**` and `kernel/src/ipc/**`, where aliasing and `unsafe` invariants are densest (see ADR-0021 / UNSAFE-2026-0014). Ideally a lightweight `unsafe`-audit-log reconciliation (every `unsafe` block has a current `SAFETY:` comment, no undocumented `unsafe`) runs alongside it; that reconciliation is not yet a CI job and is performed at review time per [unsafe-policy.md](unsafe-policy.md).
+
+**Required-status enforcement lives in GitHub branch protection (a UI setting), not in this repository.** The in-tree workflow makes the `miri` job correct and gating-by-construction; whether a green Miri is actually *required* to merge is configured in the repository settings and is outside version control. The branch-protection checklist in §"Branch protection and merge rules" below names the jobs that must be marked required.
 
 ### CI platform
 
 - GitHub Actions is the default. Workflows live under `.github/workflows/`.
 - Jobs are reusable — shared setup (install toolchain, cache cargo registry) is a composite action.
+- A top-level `permissions: contents: read` block applies least privilege to the auto-provisioned `GITHUB_TOKEN`: the pipeline only reads the repo and runs builds, so it gets read scope and nothing more. Any future job that genuinely needs a wider scope (e.g. publishing artifacts) declares its own `permissions:` block at the job level rather than widening the workflow default.
 - CI caches `~/.cargo/registry` and `target/` keyed by the toolchain hash.
 - Secrets never enter CI. If a future workflow needs a secret (e.g. publishing artifacts), it is scoped and rotated.
 
@@ -106,7 +124,7 @@ tools/perf-harness.sh --report=CONTEXT                          # also emit a ma
                                                                 # docs/analysis/reports/perf-baseline-YYYY-MM-DD-CONTEXT.md
 ```
 
-A run aborts non-zero if fewer than 50 % of iterations produced a valid sample — that threshold is treated as environmental (kernel image missing, QEMU not in PATH, host under heavy load) rather than a measurement worth aggregating.
+A run aborts non-zero if fewer than ⌈n/2⌉ of the `n` iterations produced a valid sample (i.e. the valid count must be at least half, rounding up — for odd `n` the threshold rounds up, so e.g. `n=5` requires ≥3 valid runs). Falling below that is treated as environmental (kernel image missing, QEMU not in PATH, host under heavy load) rather than a measurement worth aggregating.
 
 ### Reporting discipline
 
@@ -120,6 +138,15 @@ A run aborts non-zero if fewer than 50 % of iterations produced a valid sample �
 The harness measures the kernel's `now_ns()` delta. Under QEMU TCG that counter advances based on emulated instructions, so the band reflects translation-cache variance plus host-scheduler jitter rather than wall-clock time on real hardware. The numbers are useful for *relative* regression detection across a tight window of commits on the same host; they are not predictive of boot-time on real ARM silicon. When that question becomes load-bearing the harness gains a `--hardware` mode or the measurement moves to a self-hosted Pi runner — neither is in scope for v1.
 
 ## Supply-chain security
+
+### GitHub Actions pinning
+
+The dependency graph in `Cargo.lock` is the obvious supply-chain surface, but the CI pipeline itself runs third-party code on every push, so it gets the same discipline.
+
+- **Every third-party action is pinned to a full 40-character commit SHA**, with the human-readable version in a trailing comment, e.g. `uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`. Tags (`@v4`, `@v2`) are mutable — a tag repoint silently changes what runs without any commit in this repo. A SHA cannot be moved.
+- This matters most for actions that **download and execute a binary** into the build. `taiki-e/install-action` (used to install the pinned `cargo-llvm-cov`) is the load-bearing case: a tag repoint there would be arbitrary code execution in CI. SHA-pinning closes that gap, mirroring the `NIGHTLY_PIN` / `cargo-llvm-cov` version-pin discipline already applied to the tools those actions wrap.
+- **Refresh path.** Action SHAs are bumped deliberately, not silently — the same posture as the toolchain pin. Bump them via Dependabot for GitHub Actions (planned — see [`.github/dependabot.yml`](#planned-when-first-external-dependency-lands) below) or a `pinact`-style tool that re-resolves each pinned tag to its current SHA in a reviewable PR. Each bump moves the SHA and updates the trailing `# vX.Y.Z` comment together, so the comment never drifts from the pinned commit.
+- **No `permissions:` widening to satisfy an action.** If a third-party action asks for write scope, that is a signal to scrutinise it, not to widen the workflow token (see §"CI platform").
 
 ### `cargo-vet`
 
@@ -156,7 +183,7 @@ When the project moves out of solo phase:
 
 - `main` is protected.
 - PRs to `main` require at least one approval (two for security-sensitive changes — see [security-review.md](security-review.md)).
-- Required status checks: the CI gates listed under "Required gates" above.
+- Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), and `miri (Stacked Borrows)` (job `miri`). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
 - Force-push to `main` disabled.
 - Force-push to protected `release/*` branches disabled.
 
@@ -179,7 +206,7 @@ The lint set is canonical at [`code-style.md` §Lints](code-style.md#lints); eve
 | `rustfmt.toml` | Formatter config. |
 | `clippy.toml` | Linter thresholds and allowed lints. |
 | `.cargo/config.toml` | Target triples, linker flags per target. |
-| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `miri`, `coverage`. |
+| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `host-stable-check`, `miri`, `coverage`. Third-party actions are SHA-pinned (see §"GitHub Actions pinning"). |
 
 ### Planned (when first external dependency lands)
 
@@ -187,9 +214,9 @@ The lint set is canonical at [`code-style.md` §Lints](code-style.md#lints); eve
 |------|---------|
 | `supply-chain/config.toml` | `cargo-vet` trust imports and thresholds. |
 | `supply-chain/audits.toml` | Local audits. |
-| `.github/dependabot.yml` | Dependency PR automation (to be enabled once standards are enforced in CI). |
+| `.github/dependabot.yml` | Dependency PR automation. Covers two ecosystems: `cargo` (enabled once the first external crate lands) and `github-actions` (refreshes the SHA pins described in §"GitHub Actions pinning"). |
 
-The `supply-chain/` directory does not exist at HEAD — see [add-dependency](../../.claude/skills/add-dependency/SKILL.md) for the trigger that creates it.
+The `supply-chain/` directory does not exist at HEAD — see [add-dependency](../../.agents/skills/add-dependency/SKILL.md) for the trigger that creates it.
 
 ## Anti-patterns to reject
 

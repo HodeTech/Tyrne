@@ -154,7 +154,7 @@ T-017's `Done` flip gates only on its own DoD (host-tests + miri + clippy + kern
 - **No change to ADR-0017's IPC primitive set.** The PMM is internal infrastructure; user-observable IPC primitives (`send` / `recv` / `notify`) are untouched.
 - **No change to `SchedError` / `IpcError` taxonomies.** PMM failures surface as `MmuError::OutOfFrames` (already in the enum) when called via `FrameProvider`; direct PMM API failures surface as `PmmError` (a new enum, scoped to PMM-internal callers).
 - **The `FrameProvider` trait is unchanged.** v1's ADR-0009 surface accepts the new PMM impl without any Revision rider. The PMM is the first real `FrameProvider` impl outside the host-test `VecFrameProvider`; integration is via the existing trait method, no new HAL surface.
-- **No new ADR governance burden.** This ADR follows the [`write-adr` skill §Simulation](../../.claude/skills/write-adr/SKILL.md) discipline (codified in commit `77a578a`); the §Dependency chain section satisfies [ADR-0025 §Rule 1](0025-adr-governance-amendments.md) (every forward-reference is grounded in T-017 which opens with this ADR's Propose commit).
+- **No new ADR governance burden.** This ADR follows the [`write-adr` skill §Simulation](../../.agents/skills/write-adr/SKILL.md) discipline (codified in commit `77a578a`); the §Dependency chain section satisfies [ADR-0025 §Rule 1](0025-adr-governance-amendments.md) (every forward-reference is grounded in T-017 which opens with this ADR's Propose commit).
 
 ## Pros and cons of the options
 
@@ -205,4 +205,8 @@ T-017's `Done` flip gates only on its own DoD (host-tests + miri + clippy + kern
 - xv6 PMM (in-frame linked-list of free frames) — prior art for Option C; rejected for forward-compat reasons above.
 - Linux's `bootmem` allocator (`mm/bootmem.c` / `mm/memblock.c`) — direct prior art for the bitmap shape Option A adopts; Linux replaces bootmem with `buddy` post-init, which is the natural future ADR slot if v1's bitmap surfaces a fragmentation hot path.
 - seL4's untyped-region model (`src/object/untyped.c`) — capability-mediated frame ownership; forward-flag for B5+ `MemoryRegionCap` work that sits on top of this PMM.
+
+## Revision notes
+
+- **2026-05-22 — the "ADR-0028 … no file today" §Context parenthetical is now stale.** §Context says the ADR-0028 slot "is reserved for the address-space data structure … no file today, opens with the second B3 ADR." That was true when this ADR was accepted (2026-05-09); [ADR-0028 (Address-space data structure)](0028-address-space-data-structure.md) was subsequently authored and **Accepted 2026-05-11**. The §Context narrative is preserved (append-only); this rider records that ADR-0028 now exists and is the second B3 ADR the parenthetical anticipated.
 - Hubris's allocator-less stance (`hubris/lib/userlib/src/lib.rs`) — Cortex-M target with no MMU; direct comparison shows that the PMM only matters when the architecture has an MMU active, which Tyrne does post-T-016.

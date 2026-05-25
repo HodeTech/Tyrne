@@ -3,7 +3,7 @@
 //! Hand-rolled rather than using the `bitflags` crate to keep the kernel
 //! dependency-free for now; see the open question in [ADR-0014][adr-0014].
 //!
-//! [adr-0014]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+//! [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
 
 use core::ops::{BitAnd, BitOr, BitOrAssign};
 
@@ -40,6 +40,16 @@ impl CapRights {
     /// through [`from_raw`][Self::from_raw], which silently masks reserved
     /// bits away so an untrusted caller cannot smuggle unknown rights past
     /// `contains` / subset checks.
+    ///
+    /// **Forward-API note (C1-007).** `KNOWN_BITS`, [`from_raw`][Self::from_raw],
+    /// [`raw`][Self::raw], [`difference`][Self::difference], and
+    /// [`is_empty`][Self::is_empty] are exercised only by the rights unit
+    /// tests today — they are *intended* surface for the future
+    /// syscall / userspace ABI boundary (where untrusted raw bits cross
+    /// into the kernel), not accidental dead code. A future dead-code
+    /// audit should not strip them; removing and re-adding at the ABI
+    /// boundary would be churn, and the masking behaviour is the right
+    /// design to land now (pinned by `from_raw_masks_unknown_bits`).
     pub const KNOWN_BITS: Self = Self(
         Self::DUPLICATE.0
             | Self::DERIVE.0
@@ -105,6 +115,16 @@ impl CapRights {
         self.0 == 0
     }
 }
+
+// Operator surface (C1-006): `BitOr` / `BitAnd` provide the by-value
+// union / intersection sugar; the only in-place operator is
+// `BitOrAssign` (widening). The narrowing directions are deliberately
+// **method-only** — [`intersection`][CapRights::intersection] and
+// [`difference`][CapRights::difference] — rather than `BitAndAssign` /
+// `SubAssign`. Narrowing is the security-relevant direction for a rights
+// bitfield, so keeping it as a named call (not operator sugar) makes
+// every rights-reduction explicit and grep-able at the call site. The
+// asymmetry is intentional, not an oversight.
 
 impl BitOr for CapRights {
     type Output = Self;

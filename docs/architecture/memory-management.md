@@ -6,7 +6,7 @@ It synthesises [ADR-0009](../decisions/0009-mmu-trait.md) (the `Mmu` HAL trait),
 
 ## Why a memory-management chapter
 
-The MMU is the architectural surface where capability semantics meet hardware. A `MemoryRegionCap` grant becomes a sequence of [`Mmu::map`](../../hal/src/mmu.rs) calls; a revocation becomes [`Mmu::unmap`](../../hal/src/mmu.rs) plus a TLB invalidation; a page fault from userspace becomes a synchronous exception that the capability system routes back to the offending task. None of that is reachable while translation is off, which is why B2's first commitment is to turn the MMU on.
+The MMU is the architectural surface where capability semantics meet hardware. A `MemoryRegionCap` grant becomes a sequence of [`Mmu::map`](../../hal/src/mmu/mod.rs) calls; a revocation becomes [`Mmu::unmap`](../../hal/src/mmu/mod.rs) plus a TLB invalidation; a page fault from userspace becomes a synchronous exception that the capability system routes back to the offending task. None of that is reachable while translation is off, which is why B2's first commitment is to turn the MMU on.
 
 Activating the MMU is also the project's first architectural state-machine transition that *cannot fail gracefully on the first instruction after the flip*: a typo in any of the page-table entries, the `MAIR_EL1` encoding, the `TCR_EL1` configuration, or the `SCTLR_EL1` write produces a translation fault on the very next instruction-fetch. The simulation table in [ADR-0027 §Decision outcome / §Simulation](../decisions/0027-kernel-virtual-memory-layout.md#simulation) walks the worst-case interaction step-by-step — read it before changing anything in `bsp-qemu-virt/src/mmu.rs` or `bsp-qemu-virt/linker.ld`.
 
@@ -129,7 +129,7 @@ for region in regions {
 mmu.invalidate_tlb_all();
 ```
 
-Forgetting both `.flush()` and `.ignore()` is a compile error. This is the type-system-side encoding of the discipline the [2026-05-07 B1 closure retro §"What we learned"](../analysis/reviews/business-reviews/2026-05-07-B1-closure.md) codified into the [`write-adr` skill](../../.claude/skills/write-adr/SKILL.md) §Simulation rule: when reviewer attention is the only thing standing between a class of bug and shipping, prefer to encode the discipline in the type system.
+Forgetting both `.flush()` and `.ignore()` is a compile error. This is the type-system-side encoding of the discipline the [2026-05-07 B1 closure retro §"What we learned"](../analysis/reviews/business-reviews/2026-05-07-B1-closure.md) codified into the [`write-adr` skill](../../.agents/skills/write-adr/SKILL.md) §Simulation rule: when reviewer attention is the only thing standing between a class of bug and shipping, prefer to encode the discipline in the type system.
 
 The token does not carry a `&Mmu` reference (which would require a lifetime parameter and complicate the return signature); the caller passes the `Mmu` reference at `.flush()` time. Mirrors the `x86_64` crate's `MapperFlush` shape — Rust ecosystem prior art for the same problem.
 

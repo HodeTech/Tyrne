@@ -153,6 +153,10 @@ The closure form (Option A) was rejected because the kernel has several places w
 - Pro: guard can be extended or replaced without touching the `Cpu` trait.
 - Con: callers write one extra line for RAII. Accepted.
 
+## Revision notes
+
+- **2026-05-22 — `IrqGuard` changed from `&'a dyn Cpu` to generic `<C: Cpu>`.** The §Decision-outcome sketch shows `IrqGuard<'a>` holding `cpu: &'a dyn Cpu` (dynamic dispatch). The shipped type in [`hal/src/cpu.rs`](../../hal/src/cpu.rs) is `pub struct IrqGuard<'a, C: Cpu>` holding `cpu: &'a C` — a concrete generic, not a trait object. **Rationale (safety-relevant):** coercing a concrete CPU type to a trait object at certain inlining depths can produce vtable references that alias unrelated data in `.rodata`; using a concrete type parameter eliminates the coercion site entirely and also avoids fat-pointer vtable dispatch on critical-section paths. The rationale is documented at the type's rustdoc in `hal/src/cpu.rs`. **The `Cpu` trait itself remains object-safe** — `&dyn Cpu` is still the kernel's canonical handle for calling individual `Cpu` trait methods (the explicit-pair-plus-free-guard decision, Option C, is unchanged); only the `IrqGuard` wrapper switched to a concrete type parameter. This rider corrects the type signature only; the decision (RAII via a free-standing guard layered on an object-safe `Cpu`) stands.
+
 ## References
 
 - [ADR-0006: Workspace layout](0006-workspace-layout.md).

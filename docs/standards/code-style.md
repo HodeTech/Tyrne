@@ -55,7 +55,7 @@ Unforgeable capability types should be named with a `Cap` suffix when the bearer
 
 ## Documentation comments
 
-- Every `pub` and `pub(crate)` item has a doc-comment. CI runs `#![deny(missing_docs)]` on public kernel crates.
+- Every `pub` and `pub(crate)` item has a doc-comment. The workspace currently sets `missing_docs = "warn"` (see `Cargo.toml` `[workspace.lints.rust]`): undocumented public items produce a warning, not a hard CI failure. Tightening this to `deny` is a future option once every public item in the kernel crates is documented; until then a missing doc-comment is a review-rejection reason even though the lint does not block the build.
 - Doc-comments follow the standard Rust shape:
   - First line is a **one-sentence summary**.
   - Blank line.
@@ -94,7 +94,7 @@ pub fn send(&self, msg: Message) -> Result<(), IpcError> { /* ... */ }
 ## `no_std` discipline
 
 - Kernel and HAL crates are `#![no_std]`. Do not depend, transitively or directly, on anything that pulls `std`.
-- Heap allocation is **not** available in the kernel by default. When the allocator is added (see ADR-0006 when written), it will be a distinct crate and kernel code will opt in explicitly.
+- Heap allocation is **not** available in the kernel by default. When the allocator is added (see the allocator ADR, to be written when the allocator is introduced — no existing ADR covers it), it will be a distinct crate and kernel code will opt in explicitly.
 - No `println!`, `print!`, `eprintln!`. Use the logging facade (see [logging-and-observability.md](logging-and-observability.md)).
 
 ## Capability type conventions
@@ -117,17 +117,18 @@ See [unsafe-policy.md](unsafe-policy.md). Summary: every `unsafe` block and ever
 
 ## Lints
 
-The project's `clippy.toml` / `#![deny]` set includes, at minimum:
+The workspace lint set (in `Cargo.toml` `[workspace.lints.*]`) plus the per-crate `#![deny(...)]` attributes in each `lib.rs` includes, at minimum:
 
-- `unsafe_op_in_unsafe_fn`
-- `missing_docs` (on public crates)
+- `unsafe_op_in_unsafe_fn` (deny, workspace)
+- `missing_docs` (warn, workspace — see the documentation-comments section above)
 - `clippy::pedantic` (warn, not deny — reviewed case-by-case)
-- `clippy::alloc_instead_of_core`
+- `clippy::alloc_instead_of_core` (deny, workspace)
+- `clippy::undocumented_unsafe_blocks`, `clippy::missing_safety_doc` (deny, workspace)
 - `clippy::arithmetic_side_effects` (deny in kernel; explicit wrapping math required)
 - `clippy::float_arithmetic` (deny in kernel)
 - `clippy::panic`, `clippy::unwrap_used`, `clippy::expect_used` (deny in kernel paths)
 
-The full list is codified in `clippy.toml` once the workspace is created.
+Lint **levels** are configured in `Cargo.toml` `[workspace.lints.clippy]` / `[workspace.lints.rust]` and in per-crate `#![deny(...)]` attributes in `lib.rs`. `clippy.toml` holds only numeric thresholds (e.g. `avoid-breaking-exported-api`), not lint levels — do not look there for the authoritative list.
 
 ## Tooling
 

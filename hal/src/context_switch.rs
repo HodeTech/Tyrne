@@ -5,7 +5,7 @@
 //! the scheduler is generic over `C: ContextSwitch` and does not use
 //! dynamic dispatch.
 //!
-//! [ADR-0020]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0020-cpu-trait-v2-context-switch.md
+//! [ADR-0020]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0020-cpu-trait-v2-context-switch.md
 
 /// Context-switch extension for BSPs that support cooperative task switching.
 ///
@@ -17,11 +17,18 @@
 ///
 /// Implementations must ensure that `context_switch` atomically saves
 /// all callee-saved registers of the current execution context and
-/// restores all callee-saved registers of the next context. On aarch64
-/// that is `x19`–`x28`, `x29` (fp), `x30` (lr), and `sp`. From the
-/// perspective of both call sites, `context_switch` appears to return
-/// normally — the saving side resumes here when it is later selected as
-/// `next`.
+/// restores all callee-saved registers of the next context — i.e. the
+/// target ABI's full callee-saved register set. On aarch64 (AAPCS64)
+/// that is the general-purpose callee-saved registers `x19`–`x28`,
+/// `x29` (fp), `x30` (lr), `sp`, **and the SIMD/FP callee-saved
+/// registers `d8`–`d15` (the lower 64 bits of `v8`–`v15`) whenever FP
+/// is enabled (`CPACR_EL1.FPEN ≠ 0`)**. Omitting `d8`–`d15` silently
+/// corrupts FP state across a yield: the compiler may allocate those
+/// registers for any task and does not emit callee-save spills across a
+/// cooperative `context_switch` call, so the corruption is
+/// data-dependent and survives smoke testing. From the perspective of
+/// both call sites, `context_switch` appears to return normally — the
+/// saving side resumes here when it is later selected as `next`.
 pub trait ContextSwitch: Send + Sync {
     /// The saved register state for one cooperative task.
     ///
@@ -47,6 +54,12 @@ pub trait ContextSwitch: Send + Sync {
     /// - `next` must contain a context previously written by
     ///   `context_switch` or fully initialised by `init_context`.
     ///   Restoring an uninitialised context is undefined behaviour.
+    /// - The implementation must save and restore the **full** callee-
+    ///   saved register set for the target ABI — see the trait-level
+    ///   `# Safety contract`. On aarch64 this includes the SIMD/FP
+    ///   callee-saved registers `d8`–`d15` (lower 64 bits of `v8`–`v15`)
+    ///   whenever FP is enabled (`CPACR_EL1.FPEN ≠ 0`), not only the
+    ///   general-purpose `x19`–`x28` / `x29` / `x30` / `sp`.
     unsafe fn context_switch(&self, current: &mut Self::TaskContext, next: &Self::TaskContext);
 
     /// Write an initial register state into `ctx` so that the first

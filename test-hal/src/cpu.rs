@@ -98,13 +98,20 @@ impl Cpu for FakeCpu {
 
     fn disable_irqs(&self) -> IrqState {
         let mut state = self.locked();
-        let prev = IrqState(usize::from(state.irqs_enabled));
+        // DAIF-compatible polarity (matches the BSP `QemuVirtCpu`): the
+        // saved `IrqState.0` mirrors the DAIF mask convention where a
+        // *set* bit means IRQs are *masked*. So `IrqState(0)` = IRQs were
+        // ENABLED, non-zero = IRQs were DISABLED. Using boolean polarity
+        // here (0 = disabled) would make a shared fake invert production
+        // IRQ semantics — see master-review MR-017 / X4c-002.
+        let prev = IrqState(usize::from(!state.irqs_enabled));
         state.irqs_enabled = false;
         prev
     }
 
     fn restore_irq_state(&self, state: IrqState) {
-        self.locked().irqs_enabled = state.0 != 0;
+        // DAIF polarity: `IrqState(0)` means IRQs enabled.
+        self.locked().irqs_enabled = state.0 == 0;
     }
 
     fn wait_for_interrupt(&self) {
@@ -119,13 +126,33 @@ impl Cpu for FakeCpu {
 #[cfg(test)]
 mod tests {
     use super::FakeCpu;
-    use tyrne_hal::{Cpu, IrqGuard};
+    use tyrne_hal::{Cpu, IrqGuard, IrqState};
 
     #[test]
     fn default_cpu_reports_core_zero_with_irqs_enabled() {
         let cpu = FakeCpu::new();
         assert_eq!(cpu.current_core_id(), 0);
         assert!(cpu.irqs_enabled());
+    }
+
+    #[test]
+    fn irq_state_uses_daif_polarity_zero_means_enabled() {
+        // Canonical convention (matches the BSP `QemuVirtCpu`):
+        // `IrqState(0)` == IRQs enabled; non-zero == IRQs disabled.
+        let cpu = FakeCpu::new();
+        // Starts enabled → disable_irqs saves "was enabled" as IrqState(0).
+        let prev = cpu.disable_irqs();
+        assert_eq!(prev.0, 0, "saved state for previously-enabled IRQs is 0");
+        assert!(!cpu.irqs_enabled());
+
+        // Restoring IrqState(0) re-enables; a non-zero token disables.
+        cpu.restore_irq_state(IrqState(0));
+        assert!(cpu.irqs_enabled(), "IrqState(0) restores IRQs to enabled");
+        cpu.restore_irq_state(IrqState(1));
+        assert!(
+            !cpu.irqs_enabled(),
+            "non-zero IrqState restores to disabled"
+        );
     }
 
     #[test]

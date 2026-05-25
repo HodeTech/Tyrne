@@ -13,24 +13,34 @@
 //! `#![cfg_attr(not(test), no_std)]` disables `std` for production builds
 //! while allowing the standard test harness in host-side `cargo test` runs.
 //!
-//! [adr-0006]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0006-workspace-layout.md
-//! [p6]: https://github.com/cemililik/Tyrne/blob/main/docs/standards/architectural-principles.md#p6--hal-separation
+//! [adr-0006]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0006-workspace-layout.md
+//! [p6]: https://github.com/HodeTech/Tyrne/blob/main/docs/standards/architectural-principles.md#p6--hal-separation
 //!
 //! ## Subsystems
 //!
 //! - [`obj`] — kernel-object subsystem (Phase A3 / [T-002]): per-type
-//!   arenas holding the concrete entities that capabilities name.
+//!   arenas holding the concrete entities that capabilities name. Also
+//!   the home of the Phase-B4 task loader ([`obj::task_loader`] /
+//!   [T-019]), which composes [`mm`] + [`cap`] to stage and map a task
+//!   image.
 //! - [`cap`] — capability subsystem (Phase A2 / [T-001]), the substrate every
 //!   later subsystem refers through for authority.
 //! - [`ipc`] — IPC subsystem (Phase A4 / [T-003]): `send` / `recv` / `notify`
 //!   primitives over the A3 kernel objects, gated by capabilities.
+//! - [`mm`] — memory-management subsystem (Phase B / [T-017] + [T-018]):
+//!   the bitmap physical-memory manager ([`mm::Pmm`], ADR-0035) and the
+//!   cap-gated `AddressSpace<M>` kernel object ([`mm::AddressSpace`],
+//!   ADR-0028) with its `cap_map` / `cap_unmap` wrappers.
 //! - [`sched`] — cooperative scheduler (Phase A5 / [T-004]): bounded FIFO
 //!   ready queue, per-task state, and IPC bridge.
 //!
-//! [T-001]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-001-capability-table-foundation.md
-//! [T-002]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-002-kernel-object-storage.md
-//! [T-003]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-003-ipc-primitives.md
-//! [T-004]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md
+//! [T-001]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-001-capability-table-foundation.md
+//! [T-002]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-002-kernel-object-storage.md
+//! [T-003]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-003-ipc-primitives.md
+//! [T-004]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md
+//! [T-017]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-017-physical-memory-manager.md
+//! [T-018]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-018-address-space-kernel-object.md
+//! [T-019]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
 
 #![cfg_attr(not(test), no_std)]
 // Kernel-specific stricter lints — these layer onto `[workspace.lints]`

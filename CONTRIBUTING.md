@@ -1,6 +1,6 @@
 # Contributing to Tyrne
 
-Thank you for your interest. Tyrne is currently in the **architecture phase** — the foundational design documents are being written and the codebase is not yet open for code contributions.
+Thank you for your interest. Tyrne is **pre-alpha** and mid-way through Phase B: the Rust workspace exists, the kernel boots end-to-end on QEMU `virt` aarch64, and it runs a two-task IPC demo. Implementation is active, but the codebase is not yet open for unsolicited code contributions — each subsystem is being grown along the phased roadmap, and changes outside the active milestone's scope force premature rewrites. Issues, references, and ADR review are very welcome (see below).
 
 ## What is useful right now
 
@@ -11,7 +11,7 @@ Thank you for your interest. Tyrne is currently in the **architecture phase** �
 
 ## What is not useful yet
 
-- Pull requests against source code outside the active milestone scope. The Rust workspace exists and the kernel boots end-to-end on QEMU virt (Phase A + B0/B1 closed), but each subsystem is being grown along the phased roadmap in [`docs/roadmap/`](docs/roadmap/); changes outside the current milestone's scope force premature rewrites and are usually not merged. Check [`docs/roadmap/current.md`](docs/roadmap/current.md) before opening a non-trivial PR.
+- Pull requests against source code outside the active milestone scope. The Rust workspace exists and the kernel boots end-to-end on QEMU virt (Phase A and milestones B0–B3 closed; B4 active), but each subsystem is being grown along the phased roadmap in [`docs/roadmap/`](docs/roadmap/); changes outside the current milestone's scope force premature rewrites and are usually not merged. Check [`docs/roadmap/current.md`](docs/roadmap/current.md) before opening a non-trivial PR.
 - Feature requests for subsystems that have not yet been designed. File those as discussion issues if you want to influence the design, not as feature requests.
 
 ## When the project enters the implementation phase

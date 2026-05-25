@@ -38,13 +38,13 @@
 //! [`docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md`]
 //! for the incident report and ADR-0026 for the structural fix.
 //!
-//! [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
-//! [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
-//! [`docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md`]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
+//! [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+//! [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+//! [`docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md`]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
 //!
-//! [T-004]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md
-//! [ADR-0019]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0019-scheduler-shape.md
-//! [ADR-0020]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0020-cpu-trait-v2-context-switch.md
+//! [T-004]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md
+//! [ADR-0019]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0019-scheduler-shape.md
+//! [ADR-0020]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0020-cpu-trait-v2-context-switch.md
 
 use tyrne_hal::{ContextSwitch, Cpu, IrqGuard};
 
@@ -173,6 +173,15 @@ pub enum SchedError {
     /// No task is currently running; the operation requires a current task.
     NoCurrentTask,
     /// The ready queue is full.
+    ///
+    /// Produced **only** by [`add_task`] at registration time, where the
+    /// enqueue runs before dispatch and is not invariant-guaranteed (a BSP
+    /// can register more tasks than fit). The bridge entry points
+    /// ([`yield_now`] / [`ipc_send_and_yield`] / [`ipc_recv_and_yield`])
+    /// never surface this: their re-enqueues are infallible by the
+    /// no-double-enqueue invariant and route through
+    /// [`Scheduler::enqueue_ready`], which `panic!`s on the impossible full
+    /// case rather than returning a typed error.
     QueueFull,
     /// IPC operation failed.
     Ipc(IpcError),
@@ -217,9 +226,9 @@ pub enum SchedError {
     /// land, this symmetric rollback keeps the recovery path
     /// well-defined.
     ///
-    /// [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
-    /// [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
-    /// [ADR-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+    /// [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+    /// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+    /// [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
     Deadlock,
 }
 
@@ -255,7 +264,7 @@ pub struct Scheduler<C: ContextSwitch + Cpu> {
     /// every registered task so B5+ multi-AS tasks slot in
     /// additively.
     ///
-    /// [ADR-0028 §Simulation row 3]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
+    /// [ADR-0028 §Simulation row 3]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
     /// [`Mmu::activate`]: tyrne_hal::Mmu::activate
     task_address_space_handles: [Option<AddressSpaceHandle>; TASK_ARENA_CAPACITY],
     current: Option<TaskHandle>,
@@ -270,13 +279,23 @@ pub struct Scheduler<C: ContextSwitch + Cpu> {
     /// dispatching idle is mechanically identical to dispatching any
     /// other task once the handle is selected.
     ///
-    /// [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+    /// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
     idle: Option<TaskHandle>,
     /// Saved register contexts, one per task arena slot.
     ///
     /// Invariant: `contexts[i]` is valid for every slot `i` that has
-    /// `task_states[i] != Idle` — either zero-initialised by `Default` and
-    /// then filled by `init_context`, or saved by a prior `context_switch`.
+    /// `task_states[i] != Idle` — either default-initialised by
+    /// `C::TaskContext::default()` and then filled by `init_context`, or
+    /// saved by a prior `context_switch`.
+    ///
+    /// Note: [`ContextSwitch::TaskContext`] is bound only by `Default + Send`;
+    /// `Default` is not contractually all-zero. The QEMU BSP's
+    /// `Aarch64TaskContext` derives an all-zero `Default` *and its
+    /// `init_context` relies on that* (it writes only `lr`/`sp`, leaving the
+    /// other callee-saved slots zero), so a second BSP whose
+    /// `TaskContext::default()` left garbage in those slots would have its
+    /// first restore load that garbage. That coupling lives on the BSP side
+    /// (X4c-013); the scheduler only requires "valid after `init_context`".
     contexts: [C::TaskContext; TASK_ARENA_CAPACITY],
 }
 
@@ -287,7 +306,9 @@ impl<C: ContextSwitch + Cpu> Default for Scheduler<C> {
 }
 
 impl<C: ContextSwitch + Cpu> Scheduler<C> {
-    /// Construct an empty scheduler with all contexts zero-initialised.
+    /// Construct an empty scheduler with all contexts default-initialised
+    /// (via `C::TaskContext::default()`; see the `contexts` field doc for why
+    /// "default" is stated rather than "zero").
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -359,6 +380,45 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         }
     }
 
+    /// Enqueue `handle` onto the ready queue, treating a full queue as an
+    /// unreachable invariant violation rather than a recoverable error.
+    ///
+    /// This centralises the "infallible enqueue" pattern shared by the two
+    /// bridge paths that re-enqueue a task they have just removed from the
+    /// running slot ([`unblock_receiver_on`] when waking a receiver, and
+    /// [`yield_now`] when re-enqueueing the yielding task). In both cases the
+    /// load-bearing invariant is the same: the ready-queue capacity equals
+    /// [`TASK_ARENA_CAPACITY`], and the task being enqueued is **not already
+    /// in the ready queue** (it was the running task, or it was `Blocked`), so
+    /// at most `TASK_ARENA_CAPACITY - 1` other tasks are queued and a free slot
+    /// always exists. A full queue here is therefore a kernel-programming-error,
+    /// handled by `panic!` exactly as the two original call sites did — this is
+    /// a behaviour-preserving centralisation, not a semantic change.
+    ///
+    /// Distinct from [`add_task`]'s enqueue, which runs **before** dispatch and
+    /// is *not* invariant-guaranteed (a BSP can register more tasks than fit);
+    /// that path maps the failure to a typed [`SchedError::QueueFull`] and is
+    /// deliberately left as-is.
+    ///
+    /// FORWARD: a future preemption / multi-waiter / SMP change can violate the
+    /// no-double-enqueue invariant this panic rests on (e.g. re-enqueueing a
+    /// preempted task that is still queued, or waking several waiters at once).
+    /// Such a change must revisit this helper and the [`unblock_receiver_on`]
+    /// O(N) scan together — and should prefer an endpoint-indexed waiter list
+    /// over widening the linear scan.
+    #[allow(
+        clippy::panic,
+        reason = "ready-queue capacity equals task-arena capacity; the enqueued \
+                  task is not already in the ready queue, so at least one free \
+                  slot always exists — a full queue here is a kernel-programming \
+                  error, not a recoverable condition (see fn doc)"
+    )]
+    fn enqueue_ready(&mut self, handle: TaskHandle) {
+        let Ok(()) = self.ready.enqueue(handle) else {
+            panic!("scheduler invariant: ready queue full on infallible enqueue");
+        };
+    }
+
     /// Scan `task_states` for a task blocked on `ep` and re-enqueue it.
     ///
     /// **Single-waiter semantics.** Only the first blocked task found is
@@ -366,22 +426,29 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
     /// most one task waits per endpoint at a time (ADR-0019), so this is
     /// correct. Multi-waiter wake-up is deferred to a future ADR.
     ///
-    /// O(N) scan — acceptable at `TASK_ARENA_CAPACITY ≤ 16` (ADR-0019).
+    /// O(N) scan over all [`TASK_ARENA_CAPACITY`] slots — bounded and
+    /// acceptable at `N ≤ 16` (ADR-0019). It runs on the IPC send hot path
+    /// ([`ipc_send_and_yield`] → `unblock_receiver_on`), so it is the
+    /// scheduler's per-delivered-message cost. FORWARD: when
+    /// `TASK_ARENA_CAPACITY` grows or multi-waiter endpoints land, prefer an
+    /// endpoint-indexed waiter list over widening this scan (see
+    /// [`enqueue_ready`]'s forward note, which the same future change must
+    /// revisit in lockstep).
     fn unblock_receiver_on(&mut self, ep: EndpointHandle) {
         for idx in 0..TASK_ARENA_CAPACITY {
             if let TaskState::Blocked { on } = self.task_states[idx] {
                 if on == ep {
+                    // A `Blocked` slot is always occupied, so `task_handles[idx]`
+                    // is `Some` by the add_task / register_idle write-together
+                    // invariant. The `if let` is defensive; assert the invariant
+                    // loudly in debug to match this file's loud-on-violation style.
+                    debug_assert!(
+                        self.task_handles[idx].is_some(),
+                        "scheduler invariant: a Blocked slot must have a stored TaskHandle"
+                    );
                     if let Some(handle) = self.task_handles[idx] {
                         self.task_states[idx] = TaskState::Ready;
-                        #[allow(
-                            clippy::panic,
-                            reason = "ready-queue capacity equals task-arena capacity; \
-                                      the running task is not enqueued, so at least one \
-                                      free slot always exists when unblocking a receiver"
-                        )]
-                        let Ok(()) = self.ready.enqueue(handle) else {
-                            panic!("scheduler invariant: ready queue full on unblock");
-                        };
+                        self.enqueue_ready(handle);
                         return;
                     }
                 }
@@ -469,8 +536,8 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
 // shared rationale for the "why not safer Rust" half of its justification,
 // alongside the block-local invariants it states inline.
 //
-// [ADR-0021]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
-// [UNSAFE-2026-0012]: https://github.com/cemililik/Tyrne/blob/main/docs/audits/unsafe-log.md
+// [ADR-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
+// [UNSAFE-2026-0012]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 
 /// Register the BSP-owned idle task in the dispatcher's fallback slot.
 ///
@@ -512,7 +579,7 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
 /// 16-byte aligned, at least 512 bytes of backing memory, valid for the
 /// idle task's entire lifetime.
 ///
-/// [ADR-0026]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+/// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
 pub unsafe fn register_idle<C: ContextSwitch + Cpu>(
     sched: *mut Scheduler<C>,
     cpu: &C,
@@ -638,6 +705,27 @@ unsafe fn start_prelude<C: ContextSwitch + Cpu>(sched: *mut Scheduler<C>) -> usi
 /// `cpu.restore_irq_state(IrqState(0))` explicitly. Revisited when Phase B
 /// introduces a timer or other interrupt source.
 ///
+/// Note (WFI vs mask): the idle task's body parks the CPU with
+/// `Cpu::wait_for_interrupt` (WFI) even though it boots masked. WFI exits on
+/// a *pending* IRQ regardless of the DAIF mask — the mask only gates whether
+/// the *handler* runs, not whether WFI wakes — and idle is reached via a
+/// `context_switch` whose own `IrqGuard` *does* drop on return, restoring the
+/// prior IRQ state. So a masked-on-entry idle still wakes correctly.
+///
+/// **`IrqState(0)` convention (DAIF polarity).** The synthesised
+/// `IrqState(0)` token means **IRQs ENABLED**. This is the canonical
+/// project convention — the BSP `QemuVirtCpu` stores the raw DAIF mask in
+/// `IrqState.0` (a *set* DAIF bit means *masked*, so all-zero means
+/// unmasked / enabled), and `tyrne_test_hal::FakeCpu` was reconciled to the
+/// same polarity (master-review MR-017 / X4c-002). Both `Cpu` implementors
+/// therefore agree on `IrqState(0)`, so the synthesised token is no longer
+/// ambiguous: a freshly-dispatched task that calls
+/// `cpu.restore_irq_state(IrqState(0))` ends up with IRQs enabled under the
+/// BSP and under the host test fake alike. (Synthesising other `IrqState`
+/// literals remains out-of-contract: the value is otherwise opaque per
+/// [`Cpu`]'s trait doc; only `0`-means-enabled is a guaranteed cross-impl
+/// invariant.)
+///
 /// # Panics
 ///
 /// Panics if no task **and** no idle has been registered — see
@@ -693,7 +781,7 @@ pub unsafe fn start<C: ContextSwitch + Cpu>(
     // per-task AS without the kernel mapping would translation-fault
     // any IRQ taken in this window.
     //
-    // [adr-0028]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
+    // [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
     if let Some(target) = first_as {
         activate_address_space(target);
     } else {
@@ -777,16 +865,11 @@ pub unsafe fn yield_now<C: ContextSwitch + Cpu>(
         // running, it returns to the fallback slot via `s.idle`, not
         // through `ready.enqueue`. Cannot be full: the running task was
         // not in the ready queue (it was dequeued when it started running),
-        // so at most TASK_ARENA_CAPACITY-1 other tasks are queued.
+        // so at most TASK_ARENA_CAPACITY-1 other tasks are queued — the
+        // exact invariant `enqueue_ready` encapsulates (shared with
+        // `unblock_receiver_on`; see its doc for the panic rationale).
         if !current_is_idle {
-            #[allow(
-                clippy::panic,
-                reason = "the running task is not in the ready queue, so at most \
-                          TASK_ARENA_CAPACITY-1 tasks are enqueued; enqueue cannot fail"
-            )]
-            let Ok(()) = s.ready.enqueue(current_handle) else {
-                panic!("scheduler invariant: ready queue full on yield re-enqueue");
-            };
+            s.enqueue_ready(current_handle);
         }
 
         // Pick next: head of ready queue, or fall back to idle when empty.
@@ -931,9 +1014,14 @@ pub unsafe fn ipc_send_and_yield<C: ContextSwitch + Cpu>(
 ) -> Result<SendOutcome, SchedError> {
     // Pre-switch work — momentary &muts, dropped before the switch.
     // SAFETY: caller contract — all four pointers are valid, distinct, and
-    // exclusively-owned for the duration of this inner block. Each `&mut`
-    // materialised in the tuple below lives only inside this block and is
-    // dropped before the `yield_now` call site. Rejected alternatives: see
+    // exclusively-owned for the duration of this inner block. Distinctness is
+    // load-bearing here: this block is the one site that holds *four* live
+    // `&mut` referents at once (`s`/`arena_ref`/`queues_ref`/`table_ref`), so
+    // soundness requires `sched`, `ep_arena`, `queues`, and `caller_table` to
+    // point at four DISJOINT objects (the Shared safety contract's "must not
+    // alias each other" clause) — otherwise two of these `&mut`s would alias.
+    // Each `&mut` materialised in the tuple below lives only inside this block
+    // and is dropped before the `yield_now` call site. Rejected alternatives: see
     // §Rejected safer alternatives in the Shared safety contract above —
     // `&mut` parameter receivers would pin the borrow across the switch
     // (reproducing UNSAFE-2026-0012); ADR-0021 §Decision outcome enumerates
@@ -1015,8 +1103,8 @@ pub unsafe fn ipc_send_and_yield<C: ContextSwitch + Cpu>(
 /// *Pointer validity*. The four pointers must not alias each other or any
 /// live `&mut` in the caller's scope.
 ///
-/// [ADR-0022]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
-/// [ADR-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+/// [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
+/// [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
 #[allow(
     clippy::too_many_arguments,
     reason = "IPC bridge must forward all parameters that ipc_recv requires \
@@ -1084,7 +1172,7 @@ pub unsafe fn ipc_recv_and_yield<C: ContextSwitch + Cpu>(
     // any instant. With idle registered (the v1 expected configuration),
     // Deadlock is structurally unreachable.
     //
-    // [ADR-0032]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
+    // [ADR-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
     let dispatch = {
         // SAFETY: caller contract — `sched` valid and exclusive for this
         // block; `&mut` does not cross the switch below. Rejected
@@ -1246,51 +1334,96 @@ mod tests {
     use crate::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE;
     use crate::obj::arena::SlotId;
     use crate::obj::endpoint::EndpointHandle;
+    use tyrne_test_hal::{FakeContextSwitch, FakeTaskContext};
 
     // ── FakeCpu ───────────────────────────────────────────────────────────────
+    //
+    // The scheduler's `C: ContextSwitch + Cpu` bound requires a single type
+    // implementing both traits. `tyrne_test_hal` deliberately splits these into
+    // `FakeCpu` (Cpu) and `FakeContextSwitch` (ContextSwitch) — matching the
+    // production ADR-0020 split — so this module composes them into one type
+    // and delegates each trait to the matching shared fake. This replaces the
+    // former hand-rolled inline `FakeCpu`/`FakeCtx` doubles that had drifted
+    // from the shared ones (master-review X4c-005 "no shared ContextSwitch
+    // fake" + X4c-002 "IrqState polarity drift"): the IRQ-mask state is now the
+    // shared, DAIF-polarity `tyrne_test_hal::FakeCpu` (`IrqState(0)` = enabled),
+    // so scheduler tests can observe IRQ-mask transitions across a switch, and
+    // the context-switch counter is the shared `FakeContextSwitch`. Both inner
+    // fakes use `std::sync::Mutex` for their interior state, so `FakeCpu` is
+    // `Send + Sync` automatically — no test-only `unsafe impl Send/Sync` is
+    // needed (closing X3-004 for this type).
 
-    struct FakeCpu;
+    /// Task context modelled by the shared fakes. Carries a `switched` flag
+    /// (set by `FakeContextSwitch::context_switch`) plus the recorded
+    /// init-context arguments; the scheduler stores one per slot in
+    /// `Scheduler::contexts`.
+    type FakeCtx = FakeTaskContext;
 
-    #[derive(Default, Debug, PartialEq)]
-    struct FakeCtx {
-        switched: bool,
+    /// Composite test `Cpu` + `ContextSwitch`, delegating to the shared
+    /// `tyrne_test_hal` fakes (see the module-section comment above).
+    #[derive(Default)]
+    struct FakeCpu {
+        cpu: tyrne_test_hal::FakeCpu,
+        cs: FakeContextSwitch,
     }
 
-    // SAFETY: FakeCpu is a zero-size marker with no interior mutability
-    // and no shared mutable state. Send + Sync are safe.
-    unsafe impl Send for FakeCpu {}
-    // SAFETY: same reasoning as Send impl above.
-    unsafe impl Sync for FakeCpu {}
+    impl FakeCpu {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        /// Whether IRQs are currently enabled on the underlying shared fake.
+        /// Lets a test assert IRQ-mask transitions across a `context_switch`.
+        fn irqs_enabled(&self) -> bool {
+            self.cpu.irqs_enabled()
+        }
+
+        /// Number of `context_switch` calls recorded by the shared fake.
+        fn switch_count(&self) -> u64 {
+            self.cs.switch_count()
+        }
+    }
 
     impl Cpu for FakeCpu {
         fn current_core_id(&self) -> tyrne_hal::CoreId {
-            0
+            self.cpu.current_core_id()
         }
         fn disable_irqs(&self) -> tyrne_hal::IrqState {
-            tyrne_hal::IrqState(0)
+            self.cpu.disable_irqs()
         }
-        fn restore_irq_state(&self, _: tyrne_hal::IrqState) {}
-        fn wait_for_interrupt(&self) {}
-        fn instruction_barrier(&self) {}
+        fn restore_irq_state(&self, state: tyrne_hal::IrqState) {
+            self.cpu.restore_irq_state(state);
+        }
+        fn wait_for_interrupt(&self) {
+            self.cpu.wait_for_interrupt();
+        }
+        fn instruction_barrier(&self) {
+            self.cpu.instruction_barrier();
+        }
     }
 
     impl ContextSwitch for FakeCpu {
         type TaskContext = FakeCtx;
 
-        unsafe fn context_switch(
-            &self,
-            current: &mut Self::TaskContext,
-            _next: &Self::TaskContext,
-        ) {
-            current.switched = true;
+        unsafe fn context_switch(&self, current: &mut Self::TaskContext, next: &Self::TaskContext) {
+            // SAFETY: delegates to the shared `FakeContextSwitch`, which
+            // performs no real register save/restore — it only records. The
+            // trait contract is inherited; the fake never dereferences a real
+            // context. (Test-only; exempt from audit-log entries per
+            // unsafe-policy §3 / X3-003.)
+            unsafe { self.cs.context_switch(current, next) };
         }
 
         unsafe fn init_context(
             &self,
-            _ctx: &mut Self::TaskContext,
-            _entry: fn() -> !,
-            _stack_top: *mut u8,
+            ctx: &mut Self::TaskContext,
+            entry: fn() -> !,
+            stack_top: *mut u8,
         ) {
+            // SAFETY: delegates to the shared `FakeContextSwitch::init_context`,
+            // which records the requested entry/stack and never dereferences
+            // `stack_top` or calls `entry`. (Test-only; see above.)
+            unsafe { self.cs.init_context(ctx, entry, stack_top) };
         }
     }
 
@@ -1378,7 +1511,7 @@ mod tests {
 
     #[test]
     fn add_task_sets_ready_state_and_stores_handle() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let h = task_handle(0);
         let mut stack = AlignedStack::<512>::new();
@@ -1402,7 +1535,7 @@ mod tests {
 
     #[test]
     fn yield_now_switches_context_and_updates_current() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let h0 = task_handle(0);
         let h1 = task_handle(1);
@@ -1451,9 +1584,73 @@ mod tests {
         assert!(sched.contexts[0].switched);
     }
 
+    /// `yield_now` masks IRQs across the `context_switch` (via the `IrqGuard`
+    /// it constructs in the switch window) and restores them on return. This
+    /// is only observable now that the scheduler tests use the shared
+    /// DAIF-polarity `tyrne_test_hal::FakeCpu` (master-review MR-017): the old
+    /// inline `FakeCpu` made `disable_irqs`/`restore_irq_state` no-ops, so the
+    /// bridge's critical-section discipline could not be asserted at the host
+    /// level. The bridge's whole soundness rests on IRQs actually being masked
+    /// across the switch (ADR-0021), so pinning the round-trip here closes the
+    /// "no host fake verifies IRQ state across the switch" gap (X4c-002).
+    #[test]
+    fn yield_now_masks_irqs_across_switch_and_restores_on_return() {
+        let cpu = FakeCpu::new();
+        let mut sched: Scheduler<FakeCpu> = Scheduler::new();
+        let h0 = task_handle(0);
+        let h1 = task_handle(1);
+        let mut s0 = AlignedStack::<512>::new();
+        let mut s1 = AlignedStack::<512>::new();
+        // SAFETY: 16-byte aligned 512-byte stacks; init_context only records.
+        unsafe {
+            sched
+                .add_task(
+                    &cpu,
+                    h0,
+                    BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    spin_entry(),
+                    s0.top(),
+                )
+                .unwrap();
+            sched
+                .add_task(
+                    &cpu,
+                    h1,
+                    BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    spin_entry(),
+                    s1.top(),
+                )
+                .unwrap();
+        }
+        sched.ready.dequeue(); // h0 starts running
+        sched.current = Some(h0);
+
+        // Pre-condition: the shared fake boots with IRQs enabled.
+        assert!(cpu.irqs_enabled(), "FakeCpu starts with IRQs enabled");
+        assert_eq!(cpu.switch_count(), 0);
+
+        // SAFETY: stack-local `sched`; single-threaded test, no aliasing. The
+        // shared `FakeContextSwitch` only records, so the switch never alters
+        // host control flow.
+        unsafe {
+            yield_now(core::ptr::from_mut(&mut sched), &cpu, |_| {}).unwrap();
+        }
+
+        // A switch happened, and the `IrqGuard` that masked IRQs across it has
+        // dropped — IRQs are enabled again. With DAIF polarity, the guard's
+        // `disable_irqs` returns `IrqState(0)` (was-enabled) and its `Drop`
+        // restores `IrqState(0)` → re-enabled. Under the old no-op inline fake
+        // both halves were vacuous; here the round-trip is real and asserted.
+        assert_eq!(cpu.switch_count(), 1, "exactly one context_switch occurred");
+        assert!(
+            cpu.irqs_enabled(),
+            "IrqGuard restored IRQs to enabled after the switch window"
+        );
+    }
+
     #[test]
     fn yield_now_with_no_current_returns_error() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         // SAFETY: same reasoning as the test above — `sched` is stack-local,
         // single-threaded test; no aliasing.
@@ -1468,7 +1665,7 @@ mod tests {
         // Pin ADR-0028 §Simulation row 3's same-AS short-circuit: when
         // current and next tasks have the same `AddressSpaceHandle`, the
         // activation closure must not fire.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
 
         let h0 = task_handle(0);
@@ -1522,7 +1719,7 @@ mod tests {
         // Pin ADR-0028 §Simulation row 3's switch-AS path: when current
         // and next tasks have distinct `AddressSpaceHandle`s, the
         // activation closure fires with the next task's handle.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
 
         let h0 = task_handle(0);
@@ -1627,7 +1824,7 @@ mod tests {
         task: TaskHandle,
         stack: &mut AlignedStack<512>,
     ) -> CapHandle {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         // SAFETY: 16-byte aligned, 512-byte stack; FakeCpu::init_context is
         // a no-op — stack is never actually used.
         unsafe {
@@ -1656,7 +1853,7 @@ mod tests {
         // T-007 / ADR-0022: without an idle task, blocking the sole ready
         // task on IPC must return Err(SchedError::Deadlock) — not panic —
         // and the scheduler state must be restored to its pre-call shape.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -1723,7 +1920,7 @@ mod tests {
     /// ADR-0032's Simulation table row 3b.
     #[test]
     fn ipc_recv_and_yield_deadlock_rolls_back_endpoint_state() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -1777,7 +1974,7 @@ mod tests {
     /// with no rollback path.
     #[test]
     fn ipc_recv_and_yield_with_no_current_task_leaves_endpoint_idle() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -1830,7 +2027,7 @@ mod tests {
     /// the self-dispatch and falls back to the Deadlock rollback.
     #[test]
     fn ipc_recv_and_yield_with_idle_as_current_returns_deadlock() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -1899,29 +2096,54 @@ mod tests {
         );
     }
 
-    /// `FakeCpu` variant that resets the `IpcQueues` state to `Idle` during
-    /// `context_switch`, simulating the pathological "resumed without a
-    /// delivery" scenario that `SchedError::Ipc(IpcError::PendingAfterResume)`
-    /// is designed to catch.
+    /// `Cpu` + `ContextSwitch` test double that resets the `IpcQueues` state
+    /// to `Idle` during `context_switch`, simulating the pathological
+    /// "resumed without a delivery" scenario that
+    /// `SchedError::Ipc(IpcError::PendingAfterResume)` is designed to catch.
+    ///
+    /// Like [`FakeCpu`], the [`Cpu`] surface delegates to the shared
+    /// `tyrne_test_hal::FakeCpu` (DAIF-polarity IRQ state); only the
+    /// `context_switch` body is bespoke (it must zero the queues, which the
+    /// shared `FakeContextSwitch` cannot do).
     struct ResetQueuesCpu {
+        cpu: tyrne_test_hal::FakeCpu,
         queues: *mut IpcQueues,
     }
-    // SAFETY: test-only; the pointer refers to a stack-local IpcQueues the
-    // test thread exclusively owns. No cross-thread sharing.
+    // SAFETY: test-only; the raw `*mut IpcQueues` refers to a stack-local
+    // `IpcQueues` the single test thread exclusively owns, so transferring
+    // `ResetQueuesCpu` is safe. The raw pointer is the only non-`Send`/`Sync`
+    // field — `tyrne_test_hal::FakeCpu` is already `Send + Sync` via its
+    // `Mutex`. (Test-only `unsafe impl`: per the unsafe-policy §3 test-only
+    // exemption it needs a `// SAFETY:` but no `Audit:` tag — X3-003 / X3-004.)
     unsafe impl Send for ResetQueuesCpu {}
-    // SAFETY: same reasoning as Send.
+    // SAFETY: same reasoning as the Send impl above.
     unsafe impl Sync for ResetQueuesCpu {}
+
+    impl ResetQueuesCpu {
+        fn new(queues: *mut IpcQueues) -> Self {
+            Self {
+                cpu: tyrne_test_hal::FakeCpu::new(),
+                queues,
+            }
+        }
+    }
 
     impl Cpu for ResetQueuesCpu {
         fn current_core_id(&self) -> tyrne_hal::CoreId {
-            0
+            self.cpu.current_core_id()
         }
         fn disable_irqs(&self) -> tyrne_hal::IrqState {
-            tyrne_hal::IrqState(0)
+            self.cpu.disable_irqs()
         }
-        fn restore_irq_state(&self, _: tyrne_hal::IrqState) {}
-        fn wait_for_interrupt(&self) {}
-        fn instruction_barrier(&self) {}
+        fn restore_irq_state(&self, state: tyrne_hal::IrqState) {
+            self.cpu.restore_irq_state(state);
+        }
+        fn wait_for_interrupt(&self) {
+            self.cpu.wait_for_interrupt();
+        }
+        fn instruction_barrier(&self) {
+            self.cpu.instruction_barrier();
+        }
     }
 
     impl ContextSwitch for ResetQueuesCpu {
@@ -1936,7 +2158,8 @@ mod tests {
             // ipc_recv observes Pending (RecvWaiting would yield QueueFull
             // instead, which is covered by the existing IPC tests).
             // SAFETY: `queues` is valid per the test's construction and
-            // not concurrently accessed.
+            // not concurrently accessed. (Test-only; exempt from audit-log
+            // entries per unsafe-policy §3 / X3-003.)
             unsafe {
                 let q = &mut *self.queues;
                 *q = IpcQueues::new();
@@ -1995,7 +2218,7 @@ mod tests {
         let queues_ptr = core::ptr::from_mut(&mut queues);
         let table_ptr = core::ptr::from_mut(&mut table);
 
-        let cpu = ResetQueuesCpu { queues: queues_ptr };
+        let cpu = ResetQueuesCpu::new(queues_ptr);
         // SAFETY: 16-byte aligned 512-byte stacks; init_context is a no-op.
         // add_task uses `&mut self` on Scheduler, which temporarily
         // reborrows through `sched_ptr` — fine because the reborrow
@@ -2054,7 +2277,7 @@ mod tests {
 
     #[test]
     fn start_prelude_dispatches_head_and_marks_ready() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let h0 = task_handle(0);
         let h1 = task_handle(1);
@@ -2120,11 +2343,11 @@ mod tests {
     // Option A and verifies the post-fix dispatcher routes correctly.
     // Refs: ADR-0026, T-014, [B1 smoke regression mini-retro].
     //
-    // [B1 smoke regression mini-retro]: https://github.com/cemililik/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
+    // [B1 smoke regression mini-retro]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/reviews/business-reviews/2026-05-06-B1-smoke-regression.md
 
     #[test]
     fn register_idle_stores_handle_in_idle_slot_and_not_in_ready_queue() {
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let h_idle = task_handle(7);
         let mut s_idle = AlignedStack::<512>::new();
@@ -2166,7 +2389,7 @@ mod tests {
         // registered. start_prelude must select A first; after A blocks,
         // the dispatcher (via ipc_recv_and_yield's fallback chain) must
         // select idle.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -2256,7 +2479,7 @@ mod tests {
         // the ready queue), so step 5 selected idle and the kernel hung.
         // ADR-0026's fix removes idle from the FIFO entirely, so even with
         // idle registered, step 5 picks the just-unblocked B.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -2413,7 +2636,7 @@ mod tests {
         // Setup: h0 (sender, current), h1 (receiver, Blocked on ep).
         // The endpoint's IPC queue is in RecvWaiting because h1 already
         // ran ipc_recv before being context-switched out.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -2507,7 +2730,7 @@ mod tests {
         // Setup: h0 alone, no receiver. ipc_send returns Enqueued; the
         // bridge must NOT yield (needs_yield = false), so the scheduler
         // is structurally unchanged after the call.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
@@ -2571,7 +2794,7 @@ mod tests {
         // this typed error and leave the scheduler exactly as it was.
         // Symmetric to T-007's `ipc_recv_and_yield_returns_deadlock_…`
         // state-restore guarantee.
-        let cpu = FakeCpu;
+        let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();

@@ -8,8 +8,8 @@
 //! [ADR-0009 §Revision notes][adr-0009-rev] for the additive-extension
 //! record.
 //!
-//! [ADR-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-//! [adr-0009-rev]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
+//! [ADR-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+//! [adr-0009-rev]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
 
 pub mod vmsav8;
 
@@ -106,6 +106,17 @@ impl MappingFlags {
     ///
     /// Callers should prefer combining the named constants; `from_raw`
     /// exists so BSP implementations can pass bits across ABI boundaries.
+    ///
+    /// **Unknown bits are accepted but ignored by design.** Only bits 0–4
+    /// (the five named flags) carry meaning; any bit ≥ 5 is preserved in
+    /// the raw value (and round-trips through [`Self::raw`]) but is
+    /// silently dropped by every consumer that interprets flags — notably
+    /// [`vmsav8::flags_to_descriptor_bits`], which consults the five named
+    /// flags via [`Self::contains`] and never inspects higher bits. There
+    /// is intentionally no validation here: `from_raw` is the ABI escape
+    /// hatch, and the descriptor encoder is "locked-shut by default" so an
+    /// unknown bit cannot grant permission. Callers that need to reject
+    /// stray bits should mask against the five named constants first.
     #[must_use]
     pub const fn from_raw(bits: u32) -> Self {
         Self(bits)
@@ -227,13 +238,20 @@ pub trait FrameProvider {
 /// [`docs/architecture/memory-management.md` §"The MapperFlush flush-token
 /// discipline"][mm-doc] for the full rationale.
 ///
-/// The token does not bind the minting [`Mmu`] instance — `flush` accepts
-/// any `Mmu` impl. v1 has a single `Mmu` instance so the absence of an
-/// instance-identity check is harmless; future multi-CPU / multi-address-
-/// space topologies may grow the shape (flagged in ADR-0027).
+/// The token does not bind the minting [`Mmu`] instance **or the address
+/// space it was minted for** — `flush` accepts any `Mmu` impl and the
+/// token carries only a [`VirtAddr`]. v1 has a single `Mmu` instance and a
+/// single address space, so the absence of an instance/AS-identity check
+/// is harmless. This is a future-soundness cliff, not just a style note:
+/// once more than one address space exists, flushing a token minted for
+/// AS-A against AS-B would invalidate the wrong TLB entry, and nothing in
+/// the type system prevents it. The multi-AS step (flagged in ADR-0027)
+/// must add an AS/ASID discriminant to `MapperFlush` (e.g. a
+/// `PhantomData` AS-id or a stored ASID) and make `flush` reject a
+/// mismatch.
 ///
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [mm-doc]: https://github.com/cemililik/Tyrne/blob/main/docs/architecture/memory-management.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [mm-doc]: https://github.com/HodeTech/Tyrne/blob/main/docs/architecture/memory-management.md
 #[must_use = "MapperFlush carries a TLB-invalidation responsibility — \
               call .flush(mmu) to invalidate the per-address TLB entry, \
               or .ignore() if a bulk invalidate_tlb_all() will follow"]
@@ -318,9 +336,9 @@ impl MapperFlush {
 /// [ADR-0009 §Revision notes][adr-0009-rev] for the additive-extension
 /// record.
 ///
-/// [ADR-0009]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
-/// [adr-0027]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
-/// [adr-0009-rev]: https://github.com/cemililik/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
+/// [ADR-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
+/// [adr-0009-rev]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md#revision-notes
 pub trait Mmu: Send + Sync {
     /// Per-BSP address-space structure.
     type AddressSpace: Send;
@@ -389,7 +407,13 @@ pub trait Mmu: Send + Sync {
     ///
     /// # Errors
     ///
-    /// - [`MmuError::AlreadyMapped`] if `va` already has a mapping.
+    /// - [`MmuError::AlreadyMapped`] if `va` already has a mapping. Note
+    ///   that a `va` falling inside an existing large block (e.g. a 2 MiB
+    ///   block at L1/L2 from the bootstrap mapping) also returns
+    ///   `AlreadyMapped` on `map` — **not** [`MmuError::BlockMapped`]:
+    ///   the requested 4 KiB slot is structurally occupied, and
+    ///   block-split is deferred to B3+. (`unmap` *does* distinguish the
+    ///   block case as `BlockMapped`; the asymmetry is deliberate.)
     /// - [`MmuError::MisalignedAddress`] if `va` is not
     ///   [`PAGE_SIZE`]-aligned.
     /// - [`MmuError::OutOfFrames`] if an intermediate table needed a frame
@@ -397,8 +421,12 @@ pub trait Mmu: Send + Sync {
     ///   frames already pulled from `frames` may have been installed
     ///   into `as_` and are not returned to the caller; `pa` itself
     ///   (the leaf frame) is unchanged per (2).
-    /// - [`MmuError::InvalidFlags`] if `flags` cannot be applied (for
-    ///   example, user + kernel-only combinations).
+    /// - [`MmuError::InvalidFlags`] if `flags` requests an unrepresentable
+    ///   combination. In v1 the only such case is any mapping with **both
+    ///   [`MappingFlags::DEVICE`] and [`MappingFlags::EXECUTE`]** set,
+    ///   because MMIO is never executable (ADR-0027 §Decision outcome (b);
+    ///   `flags_to_descriptor_bits` forces `PXN = UXN = 1` for DEVICE).
+    ///   Both shipped implementors reject exactly this combination.
     fn map(
         &self,
         as_: &mut Self::AddressSpace,

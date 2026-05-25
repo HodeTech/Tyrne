@@ -17,5 +17,7 @@ Tasks belonging to [Phase B — Real userspace](../../../roadmap/phases/phase-b.
 | [T-015](T-015-endpoint-rollback-cancel-recv.md) | Endpoint state rollback on `ipc_recv_and_yield` Deadlock + `ipc_cancel_recv` primitive (implements ADR-0032) | B2 prep | Done (2026-05-07) |
 | [T-016](T-016-mmu-activation.md) | MMU activation with identity-mapped kernel + `MapperFlush` token discipline (implements ADR-0027) | B2 | Done (2026-05-08; B2 milestone Closed 2026-05-09) |
 | [T-017](T-017-physical-memory-manager.md) | Physical Memory Manager (PMM): bitmap allocator + reservation tracking + `FrameProvider` impl (implements ADR-0035) | B3 | Done (2026-05-10) |
+| [T-018](T-018-address-space-kernel-object.md) | `AddressSpace` kernel object + capability-gated `Mmu::map`/`unmap` wrappers + activation-on-context-switch (implements ADR-0028) | B3 | Done (2026-05-11; live on `main` 2026-05-14 via PR #28) |
+| [T-019](T-019-task-loader.md) | Task loader: embedded raw-flat userspace image → `LoadedImage` metadata (implements ADR-0029) | B4 | Done (2026-05-16 via PR #31 merge) |
 
 Tasks are added here as they become active. See [`../../../roadmap/phases/phase-b.md`](../../../roadmap/phases/phase-b.md) for the full phase plan.

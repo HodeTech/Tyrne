@@ -11,7 +11,7 @@ Three Accepted ADRs and one Phase-A task fix the IPC design:
 - [ADR-0021: Raw-pointer scheduler IPC-bridge API](../decisions/0021-raw-pointer-scheduler-ipc-bridge.md) — the scheduler-side wrapper functions that block / yield / resume around the IPC primitives. The discipline behind the wrappers is summarised in [`scheduler.md`](scheduler.md) §"The raw-pointer bridge".
 - [T-003 (Phase A IPC primitive set)](../analysis/tasks/phase-a/T-003-ipc-primitives.md) and [T-005 (two-task IPC demo)](../analysis/tasks/phase-a/T-005-two-task-ipc-demo.md) shipped the implementation; [T-006](../analysis/tasks/phase-b/T-006-raw-pointer-scheduler-api.md) refactored the scheduler-side wrapper.
 
-Why a custom IPC layer rather than reusing a port from another microkernel? ADR-0017 §"Decision drivers" enumerates: capability-system interaction (capabilities must move atomically with messages, which most ports do not), tight kernel-object coupling (endpoints share their state machine with the scheduler's wake path), and audit-friendliness (the entire IPC surface fits in one ~990-line file under `unsafe-policy.md` review).
+Why a custom IPC layer rather than reusing a port from another microkernel? ADR-0017 §"Decision drivers" enumerates: capability-system interaction (capabilities must move atomically with messages, which most ports do not), tight kernel-object coupling (endpoints share their state machine with the scheduler's wake path), and audit-friendliness (the entire IPC surface fits in one ~1425-line file under `unsafe-policy.md` review).
 
 ## Design
 
@@ -62,7 +62,7 @@ Depth is **one** — at most one sender or receiver waits per endpoint at a time
 
 The `RecvWaiting → Idle` reverse arc is the recovery primitive [`ipc_cancel_recv`][cancel-recv] added by [ADR-0032](../decisions/0032-endpoint-rollback-and-cancel-recv.md). It is consumed exclusively by `ipc_recv_and_yield`'s Phase 2 Deadlock branch in v1 (kernel-internal — no userspace caller exists), keeping the symmetric "error path leaves observable state unchanged" invariant: when the bridge returns `SchedError::Deadlock`, both the scheduler state *and* the endpoint state are restored to their pre-call shape, so a subsequent retry observes a clean `Idle` slot rather than `QueueFull`. Userspace-driven endpoint destroy (Phase B2+) and a future preemption-rollback path (B5+) will reuse the same primitive.
 
-[cancel-recv]: https://github.com/cemililik/Tyrne/blob/main/kernel/src/ipc/mod.rs
+[cancel-recv]: https://github.com/HodeTech/Tyrne/blob/main/kernel/src/ipc/mod.rs
 
 ### `IpcQueues`: states + slot generations
 
