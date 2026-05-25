@@ -1,10 +1,17 @@
 # Tyrne
 
-> A capability-based microkernel written in Rust, designed to scale from constrained smart-home devices to mobile-class hardware while never compromising on isolation or authority discipline.
+[![CI](https://github.com/HodeTech/Tyrne/actions/workflows/ci.yml/badge.svg)](https://github.com/HodeTech/Tyrne/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
 
-Tyrne is built around a single idea: **no ambient authority**. Every action a component takes is authorised by a capability it was explicitly granted, and the kernel is small enough that the entire trusted computing base can be audited line by line. Drivers, filesystems, and network stacks live in userspace; the kernel concerns itself only with capabilities, IPC, scheduling, memory, and interrupt dispatch.
+> A capability-based microkernel written in Rust, designed to scale from constrained smart-home devices to mobile-class hardware while carrying the same isolation and capability discipline to every tier.
 
-The project is pre-alpha. The kernel boots end-to-end on QEMU `virt` aarch64 today, runs a capability-gated IPC demo, and is mid-way through the Phase B work that lifts it from a single privileged address space into per-task userspace.
+Tyrne is built around a single idea: **no ambient authority**.
+Every action a component takes is authorised by a capability it was explicitly granted, and the kernel is small enough that the entire trusted computing base can be audited line by line.
+Drivers, filesystems, and network stacks live in userspace; the kernel concerns itself only with capabilities, IPC, scheduling, memory, and interrupt dispatch.
+
+The project is pre-alpha.
+The kernel boots end-to-end on QEMU `virt` aarch64 today, runs a capability-gated IPC demo, and is mid-way through the Phase B work that lifts it from a single privileged address space into per-task userspace.
 
 ---
 
@@ -22,29 +29,49 @@ The project is pre-alpha. The kernel boots end-to-end on QEMU `virt` aarch64 tod
 | Syscall ABI + EL0 entry | **Next** — Phase B5; will turn `LoadedImage` into a runnable `Task`. |
 | First userspace "hello" | **Planned** — Phase B6. |
 
-The active task and its current state live in [`docs/roadmap/current.md`](docs/roadmap/current.md). Full phase plans are under [`docs/roadmap/phases/`](docs/roadmap/phases/).
+The active task and its current state live in [`docs/roadmap/current.md`](docs/roadmap/current.md).
+Full phase plans are under [`docs/roadmap/phases/`](docs/roadmap/phases/).
 
 ---
 
 ## What makes Tyrne different
 
-**Capability discipline, end to end.** Every privileged operation requires the caller to hold a capability that names it. Capabilities are unforgeable kernel-held tokens with explicit derivation trees; revoking a parent cascades to its children. There is no equivalent of a UNIX root, an admin override, or an ambient `CAP_SYS_ADMIN`. The discipline is documented in [ADR-0014](docs/decisions/0014-capability-representation.md) and surfaces in every wrapper — `cap_map(cap, …)`, `cap_create_address_space(parent_cap, …)`, etc.
+**Capability discipline, end to end.**
+Every privileged operation requires the caller to hold a capability that names it.
+Capabilities are unforgeable kernel-held tokens with explicit derivation trees; revoking a parent cascades to its children.
+There is no equivalent of a UNIX root, an admin override, or an ambient `CAP_SYS_ADMIN`.
+The discipline is documented in [ADR-0014](docs/decisions/0014-capability-representation.md) and surfaces in every wrapper — `cap_map(cap, …)`, `cap_create_address_space(parent_cap, …)`, etc.
 
-**Microkernel by construction, not by branding.** The kernel runs exclusively in privileged mode and contains five subsystems: capabilities, IPC, scheduling, memory management, and interrupt dispatch. Drivers, filesystems, and network stacks land in userspace compartments — see [`docs/architecture/overview.md`](docs/architecture/overview.md) for the layer diagram. Adding a feature does not enlarge the trusted computing base unless it strictly has to.
+**Microkernel by construction, not by branding.**
+The kernel runs exclusively in privileged mode and contains five subsystems: capabilities, IPC, scheduling, memory management, and interrupt dispatch.
+Drivers, filesystems, and network stacks land in userspace compartments — see [`docs/architecture/overview.md`](docs/architecture/overview.md) for the layer diagram.
+Adding a feature does not enlarge the trusted computing base unless it strictly has to.
 
-**Memory safety through Rust + audited `unsafe`.** All kernel, HAL, and userspace code is Rust. Every `unsafe` block carries a SAFETY comment explaining (a) why it is needed, (b) the invariants it upholds, and (c) why safer alternatives were rejected, and is tracked in [`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md) with a numbered ID, a reviewed-by line, and a status field. The audit log is the source of truth for the current set of `unsafe` blocks; in the kernel crate, production `unsafe` is a small audited set — the PMM frame-zeroing, the task-loader byte-copy, and the scheduler/IPC raw-pointer bridge — each carrying an audit-log entry.
+**Memory safety through Rust + audited `unsafe`.**
+All kernel, HAL, and userspace code is Rust.
+Every `unsafe` block carries a SAFETY comment explaining (a) why it is needed, (b) the invariants it upholds, and (c) why safer alternatives were rejected, and is tracked in [`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md) with a numbered ID, a reviewed-by line, and a status field.
+The audit log is the source of truth for the current set of `unsafe` blocks; in the kernel crate, production `unsafe` is a small audited set — the PMM frame-zeroing, the task-loader byte-copy, and the scheduler/IPC raw-pointer bridge — each carrying an audit-log entry.
 
-**HAL separation as a hard architectural rule.** Hardware-specific code lives behind a small set of traits — `Console`, `Cpu`, `Mmu`, `Timer`, `IrqController`, `ContextSwitch` — defined in the `tyrne-hal` crate. Each Board Support Package implements those traits for one board. Bringing up a new aarch64 SoC means writing a new BSP, not editing the kernel.
+**HAL separation as a hard architectural rule.**
+Hardware-specific code lives behind a small set of traits — `Console`, `Cpu`, `Mmu`, `Timer`, `IrqController`, `ContextSwitch` — defined in the `tyrne-hal` crate.
+Each Board Support Package implements those traits for one board.
+Bringing up a new aarch64 SoC means writing a new BSP, not editing the kernel.
 
-**Heterogeneous hardware as a stated goal.** The same kernel is intended to scale from microcontroller-class smart-home devices to single-board computers and eventually to mobile-class SoCs. Hardware tiers (below) make the level of support explicit per target.
+**Heterogeneous hardware as a stated goal.**
+The same kernel is intended to scale from microcontroller-class smart-home devices to single-board computers and eventually to mobile-class SoCs.
+Hardware tiers (below) make the level of support explicit per target.
 
-**Documented decisions, append-only.** Every non-trivial architectural choice is captured as an Architecture Decision Record under [`docs/decisions/`](docs/decisions/). ADRs are append-only: corrections land as revision notes, supersessions write a new ADR. See the [ADR index](docs/decisions/README.md) for the full list with each ADR's title, status, and date.
+**Documented decisions, append-only.**
+Every non-trivial architectural choice is captured as an Architecture Decision Record under [`docs/decisions/`](docs/decisions/).
+ADRs are append-only: corrections land as revision notes, supersessions write a new ADR.
+See the [ADR index](docs/decisions/README.md) for the full list with each ADR's title, status, and date.
 
 ---
 
 ## Quick start
 
-The primary development target is QEMU's `virt` machine. Boot the kernel end-to-end with two commands:
+The primary development target is QEMU's `virt` machine.
+Boot the kernel end-to-end with two commands:
 
 ```sh
 # 1. Build the kernel image (aarch64-unknown-none target).
@@ -72,7 +99,8 @@ tyrne: all tasks complete
 tyrne: boot-to-end elapsed = ... ns
 ```
 
-Exit QEMU with `Ctrl-A x`. Full prerequisites, troubleshooting, and a line-by-line trace breakdown live in [`docs/guides/run-under-qemu.md`](docs/guides/run-under-qemu.md).
+Exit QEMU with `Ctrl-A x`.
+Full prerequisites, troubleshooting, and a line-by-line trace breakdown live in [`docs/guides/run-under-qemu.md`](docs/guides/run-under-qemu.md).
 
 **Host-side tests** (no QEMU required):
 
@@ -87,7 +115,8 @@ cargo fmt --check
 
 ## Architecture at a glance
 
-Three layers. The kernel runs at EL1; userspace will run at EL0 once the syscall ABI lands.
+Three layers.
+The kernel runs at EL1; userspace will run at EL0 once the syscall ABI lands.
 
 ```mermaid
 flowchart TB
@@ -110,7 +139,9 @@ flowchart TB
     Services <-->|IPC| Apps
 ```
 
-The kernel sees only the HAL trait surface. The BSP supplies the concrete implementations (`QemuVirtMmu`, `Pl011Uart`, `QemuVirtGic`, etc.). Hardware-specific assembly — the reset vector, the EL2→EL1 drop, the exception trampolines — lives in the BSP, never in the portable kernel crate.
+The kernel sees only the HAL trait surface.
+The BSP supplies the concrete implementations (`QemuVirtMmu`, `Pl011Uart`, `QemuVirtGic`, etc.).
+Hardware-specific assembly — the reset vector, the EL2→EL1 drop, the exception trampolines — lives in the BSP, never in the portable kernel crate.
 
 For a deeper read, start with [`docs/architecture/overview.md`](docs/architecture/overview.md) and follow its cross-links.
 
@@ -129,9 +160,15 @@ Tiers describe the level of support committed to a target, not the quality of th
 | 3 | RISC-V embedded SoCs (e.g. ESP32-C3/C6, SiFive) | Roadmap — smart-home class |
 | 4 | Mobile-class aarch64 SoCs | Long-term vision |
 
-**Jetson caveat.** Jetson devices are aarch64, so their CPU side is portable. Their GPU and Tensor cores require proprietary NVIDIA userspace blobs with no open-source driver. Tyrne rejects proprietary kernel-adjacent blobs on principle, so Jetson will be supported only as a plain aarch64 board; on-device AI acceleration on Jetson is explicitly out of scope. Projects that need open NPU acceleration should target Rockchip NPUs, Hailo, or Google Coral instead. See [ADR-0004](docs/decisions/0004-target-platforms.md).
+**Jetson caveat.**
+Jetson devices are aarch64, so their CPU side is portable.
+Their GPU and Tensor cores require proprietary NVIDIA userspace blobs with no open-source driver.
+Tyrne rejects proprietary kernel-adjacent blobs on principle, so Jetson will be supported only as a plain aarch64 board; on-device AI acceleration on Jetson is explicitly out of scope.
+Projects that need open NPU acceleration should target Rockchip NPUs, Hailo, or Google Coral instead.
+See [ADR-0004](docs/decisions/0004-target-platforms.md).
 
-**No proprietary blobs** is a non-negotiable design rule for everything that touches the kernel or its image. It is one of seven rules listed at the top of [`CLAUDE.md`](CLAUDE.md).
+**No proprietary blobs** is a non-negotiable design rule for everything that touches the kernel or its image.
+It is one of seven rules listed at the top of [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -176,17 +213,24 @@ Tiers describe the level of support committed to a target, not the quality of th
 └── NOTICE
 ```
 
-Four Rust crates, one Cargo workspace. The split is pinned in [ADR-0006](docs/decisions/0006-workspace-layout.md).
+Four Rust crates, one Cargo workspace.
+The split is pinned in [ADR-0006](docs/decisions/0006-workspace-layout.md).
 
 ---
 
 ## Documentation map
 
-The repo is documentation-first. Three reading orders depending on what you need.
+The repo is documentation-first.
+Three reading orders depending on what you need.
 
-**Reader who wants the design.** Start at [`docs/architecture/overview.md`](docs/architecture/overview.md), then follow its cross-links to the chapter on the subsystem you care about ([boot](docs/architecture/boot.md), [scheduler](docs/architecture/scheduler.md), [IPC](docs/architecture/ipc.md), [memory-management](docs/architecture/memory-management.md), [task-loader](docs/architecture/task-loader.md), [HAL](docs/architecture/hal.md), [exceptions](docs/architecture/exceptions.md), [security-model](docs/architecture/security-model.md)). Each chapter cites the ADRs it synthesises; the ADR is authoritative when they disagree.
+**Reader who wants the design.**
+Start at [`docs/architecture/overview.md`](docs/architecture/overview.md), then follow its cross-links to the chapter on the subsystem you care about ([boot](docs/architecture/boot.md), [scheduler](docs/architecture/scheduler.md), [IPC](docs/architecture/ipc.md), [memory-management](docs/architecture/memory-management.md), [task-loader](docs/architecture/task-loader.md), [HAL](docs/architecture/hal.md), [exceptions](docs/architecture/exceptions.md), [security-model](docs/architecture/security-model.md)).
+Each chapter cites the ADRs it synthesises; the ADR is authoritative when they disagree.
 
-**Reader who wants the *why*.** Read [`docs/decisions/`](docs/decisions/) in numeric order. The first dozen ADRs establish the project's design language; the rest apply that language to specific subsystems. The index in [`docs/decisions/README.md`](docs/decisions/README.md) lists every ADR with title, status, and date.
+**Reader who wants the *why*.**
+Read [`docs/decisions/`](docs/decisions/) in numeric order.
+The first dozen ADRs establish the project's design language; the rest apply that language to specific subsystems.
+The index in [`docs/decisions/README.md`](docs/decisions/README.md) lists every ADR with title, status, and date.
 
 **Reader who wants to do something concrete.**
 - [`docs/guides/run-under-qemu.md`](docs/guides/run-under-qemu.md) — boot the kernel under QEMU.
@@ -195,13 +239,16 @@ The repo is documentation-first. Three reading orders depending on what you need
 - [`docs/standards/`](docs/standards/) — coding, documentation, review, and security disciplines that every change is held to.
 - [`docs/glossary.md`](docs/glossary.md) — project-specific terminology.
 
-**Reader who wants to track progress.** [`docs/roadmap/current.md`](docs/roadmap/current.md) is the single source of truth for what is active right now, what just closed, and what is next. Full phase plans live alongside it in [`docs/roadmap/phases/`](docs/roadmap/phases/).
+**Reader who wants to track progress.**
+[`docs/roadmap/current.md`](docs/roadmap/current.md) is the single source of truth for what is active right now, what just closed, and what is next.
+Full phase plans live alongside it in [`docs/roadmap/phases/`](docs/roadmap/phases/).
 
 ---
 
 ## Engineering disciplines
 
-A short, opinionated list of the rules every change is held to. The long-form list is in [`CLAUDE.md`](CLAUDE.md) and the standards under [`docs/standards/`](docs/standards/).
+A short, opinionated list of the rules every change is held to.
+The long-form list is in [`CLAUDE.md`](CLAUDE.md) and the standards under [`docs/standards/`](docs/standards/).
 
 - **Security-first.** When in doubt, choose the more conservative option. Never weaken a capability check, never introduce ambient authority, never suppress a failing security test.
 - **Audited `unsafe`.** Every `unsafe` block has an audit-log entry with an Operation / Invariants / Rejected-alternatives section, a reviewer line, and a status field. The kernel crate denies `clippy::panic`, `clippy::unwrap_used`, `clippy::expect_used`, and `clippy::arithmetic_side_effects`.
@@ -215,7 +262,10 @@ A short, opinionated list of the rules every change is held to. The long-form li
 
 ## Contributing
 
-Tyrne is in early bring-up. External code contributions are not yet being accepted while the foundational documents and the kernel's core surface are still being written; accepting code PRs too early would fragment the design. Issues, references, prior-art suggestions, and review of the published ADRs are very welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the current contribution channels.
+Tyrne is in early bring-up.
+External code contributions are not yet being accepted while the foundational documents and the kernel's core surface are still being written; accepting code PRs too early would fragment the design.
+Issues, references, prior-art suggestions, and review of the published ADRs are very welcome.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the current contribution channels.
 
 If you have a security-relevant observation, follow the disclosure process in [`SECURITY.md`](SECURITY.md).
 
@@ -223,10 +273,14 @@ If you have a security-relevant observation, follow the disclosure process in [`
 
 ## Naming
 
-*Tyrne* is a clean-slate invented identifier — no etymology, no guardian / shadow / perimeter motif, no shared trademark surface. The name was selected in April 2026 after the project's previous working name (Umbrix) was retired for a registry conflict; the rename is recorded in the project's git history but is otherwise unremarkable. Use *Tyrne* in writing; the verbal form rhymes with *Berne*.
+*Tyrne* is a clean-slate invented identifier — no etymology, no guardian / shadow / perimeter motif, no shared trademark surface.
+The name was selected in April 2026 after the project's previous working name (Umbrix) was retired for a registry conflict; the rename is recorded in the project's git history but is otherwise unremarkable.
+Use *Tyrne* in writing; the verbal form rhymes with *Berne*.
 
 ---
 
 ## License
 
-Tyrne is licensed under the [Apache License, Version 2.0](LICENSE). Attribution requirements are in [`NOTICE`](NOTICE). Contributions are accepted under the same license under the inbound-equals-outbound rule.
+Tyrne is licensed under the [Apache License, Version 2.0](LICENSE).
+Attribution requirements are in [`NOTICE`](NOTICE).
+Contributions are accepted under the same license under the inbound-equals-outbound rule.
