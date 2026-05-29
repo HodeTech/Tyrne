@@ -49,6 +49,7 @@ mod exceptions;
 mod gic;
 mod mmu;
 mod mmu_bootstrap;
+mod syscall;
 
 use console::Pl011Uart;
 use cpu::QemuVirtCpu;
@@ -384,6 +385,16 @@ static EP_CAP_A: StaticCell<CapHandle> = StaticCell::new();
 /// Task B's endpoint capability handle (index into `TABLE_B`).
 static EP_CAP_B: StaticCell<CapHandle> = StaticCell::new();
 
+// ─── T-021 syscall-boundary smoke ─────────────────────────────────────────────
+
+/// The EL1 kernel-stub's capability table — the `caller_table` the syscall
+/// dispatcher resolves capabilities in for the B5 `SVC` smoke (see
+/// [`syscall::syscall_entry`]). In B5 the only `SVC` comes from a kernel-stub,
+/// so it has a dedicated table holding a single debug-console capability;
+/// B6 replaces this with the scheduler's current-task table once a real EL0
+/// task exists. Distinct from `TABLE_A` / `TABLE_B` (the IPC-demo tables).
+static SYSCALL_STUB_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
+
 /// Task kernel-object arena — global per [ADR-0016]. Although the v1 demo
 /// never reads this arena after `create_task` has returned the two
 /// `TaskHandle`s, global storage is the uniform pattern established by
@@ -651,6 +662,109 @@ fn task_a() -> ! {
     loop {
         core::hint::spin_loop();
     }
+}
+
+// ─── T-021 syscall-boundary smoke ──────────────────────────────────────────────
+
+/// EL1 kernel-stub `SVC` smoke for the B5 syscall boundary ([T-021]).
+///
+/// Issues two `SVC #0` traps **from EL1** — exercising the current-EL
+/// `VBAR_EL1 + 0x200` sync vector and the full save → decode → dispatch →
+/// `ERET` round-trip (an `SVC` issued at EL1 cannot take the lower-EL `+0x400`
+/// vector; that real-EL0 path is B6's smoke per [ADR-0030 §Simulation]):
+///
+/// 1. **`console_write`** (number `5`) through a granted debug-console
+///    capability — the dispatcher's capability check passes, `copy_from_user`
+///    validates the buffer against the active address space, and the bytes are
+///    emitted on the serial console (the round-trip + emitted-bytes half of B5
+///    acceptance criterion #7).
+/// 2. a **reserved-invalid number** (`0`) — the panic-free error path returns
+///    `SyscallError::BadSyscallNumber` (status `0x1`) without touching any
+///    capability.
+///
+/// Runs after the IPC statics are published (the dispatcher's
+/// [`SyscallContext`][tyrne_kernel::syscall::SyscallContext] borrows
+/// `EP_ARENA` / `IPC_QUEUES`) and before `start()`. `task_yield` / `task_exit`
+/// are not driven here — their dispatcher routing is host-tested; their real
+/// EL0 semantics land in B6.
+///
+/// [T-021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
+/// [ADR-0030 §Simulation]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0030-syscall-abi.md
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Tyrne's BSP target is 64-bit aarch64; pointer/usize → u64 \
+              register-word casts are lossless"
+)]
+fn syscall_boundary_smoke(console: &Pl011Uart) {
+    // Mint a debug-console capability into the kernel-stub's table.
+    //
+    // SAFETY: `SYSCALL_STUB_TABLE` lives in `.bss`; this is its single write,
+    // performed before any `SVC` issues. The momentary `&mut` for the
+    // `insert_root` drops before the trap. Audit: UNSAFE-2026-0010 (StaticCell)
+    // + UNSAFE-2026-0014 (momentary `&mut`).
+    let cons_cap = unsafe {
+        (*SYSCALL_STUB_TABLE.0.get()).write(CapabilityTable::new());
+        let table = (*SYSCALL_STUB_TABLE.0.get()).assume_init_mut();
+        table
+            .insert_root(Capability::new(
+                CapRights::CONSOLE_WRITE,
+                CapObject::DebugConsole,
+            ))
+            .expect("debug-console cap mint in empty table cannot fail")
+    };
+    let cons_cap_word = tyrne_kernel::syscall::encode_cap_handle(Some(cons_cap));
+
+    // (1) console_write via SVC: x8 = 5, x0 = cap, x1 = buffer VA, x2 = length.
+    let greeting: &[u8] = b"tyrne: hello from the syscall boundary (console_write via SVC)\n";
+    let ptr = greeting.as_ptr() as u64;
+    let len = greeting.len() as u64;
+    let status: u64;
+    let written: u64;
+    // SAFETY: `SVC #0` traps to the EL1 current-EL sync vector (+0x200), runs
+    // the panic-free dispatcher, and `ERET`s back here. The convention is
+    // x8 = number, x0..x2 = args; the handler writes x0 = status, x1 = bytes
+    // written, clobbers x0..x7, and preserves x8..x30 + SP_EL0. The emitted
+    // greeting bytes are the observable round-trip proof. Audit: UNSAFE-2026-0029.
+    unsafe {
+        core::arch::asm!(
+            "svc #0",
+            in("x8") 5u64,
+            inout("x0") cons_cap_word => status,
+            inout("x1") ptr => written,
+            in("x2") len,
+            out("x3") _,
+            out("x4") _,
+            out("x5") _,
+            out("x6") _,
+            out("x7") _,
+        );
+    }
+
+    // (2) reserved-invalid number 0 → BadSyscallNumber, panic-free.
+    let bad_status: u64;
+    // SAFETY: same `SVC` trap mechanism; number 0 is reserved-invalid, so the
+    // dispatcher returns a typed `SyscallError::BadSyscallNumber` in x0 without
+    // touching any capability or panicking. Audit: UNSAFE-2026-0029.
+    unsafe {
+        core::arch::asm!(
+            "svc #0",
+            in("x8") 0u64,
+            out("x0") bad_status,
+            out("x1") _,
+            out("x2") _,
+            out("x3") _,
+            out("x4") _,
+            out("x5") _,
+            out("x6") _,
+            out("x7") _,
+        );
+    }
+
+    let mut w = FmtWriter(console);
+    let _ = writeln!(
+        w,
+        "tyrne: syscall smoke ok (console_write status={status:#x}, bytes={written}; bad-number status={bad_status:#x})"
+    );
 }
 
 // ─── Boot entry ───────────────────────────────────────────────────────────────
@@ -1215,6 +1329,15 @@ pub extern "C" fn kernel_entry() -> ! {
         (*EP_CAP_A.0.get()).write(ep_cap_a);
         (*EP_CAP_B.0.get()).write(ep_cap_b);
     }
+
+    // ── Syscall-boundary smoke — T-021 ────────────────────────────────────────
+    //
+    // Exercise the EL0→EL1 `SVC` trap → panic-free dispatcher → `ERET`
+    // round-trip via an EL1 kernel-stub (the current-EL `+0x200` vector). Runs
+    // here, after the IPC statics the dispatcher's context borrows are live, and
+    // before `start()` hands control to the cooperative demo. The real EL0
+    // (`+0x400`) round-trip is B6's smoke.
+    syscall_boundary_smoke(console);
 
     // ── Scheduler setup ───────────────────────────────────────────────────────
 

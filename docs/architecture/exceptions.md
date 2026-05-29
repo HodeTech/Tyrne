@@ -55,7 +55,7 @@ flowchart TB
     VBAR --> Vectors
 ```
 
-`★` is the only entry that fires in v1. Tyrne runs at EL1 with `SPSel = 1` (per the EL drop's `SPSR_EL2 = 0x3c5` mode field, EL1h means EL1 + SP_EL1), so an IRQ taken from running kernel code lands at offset `+0x280`. The other 15 entries trampoline into a panic-class Rust handler that prints the source class and halts; v1 has no SVC handler (no userspace yet), no FIQ source, and no SError-recoverable scenario.
+`★` marks the entries that fire in v1. Tyrne runs at EL1 with `SPSel = 1` (per the EL drop's `SPSR_EL2 = 0x3c5` mode field, EL1h means EL1 + SP_EL1), so an IRQ taken from running kernel code lands at offset `+0x280`. **Since T-021 (B5), the two *sync* entries also fire:** the current-EL `+0x200` and lower-EL-AArch64 `+0x400` sync slots both route to the SVC sync trampoline (see §"Syscall dispatch" below) — on `ESR_EL1.EC == SVC64` they save the full register frame and call the Rust syscall dispatcher; any other sync cause falls through to the panic handler. In v1 only the `+0x200` path is exercised at runtime (an EL1 kernel-stub `SVC`); the `+0x400` (real EL0) path is wired now and runtime-verified in B6. The remaining entries — FIQ, SError, and sync on the unused SP_EL0 / AArch32 categories — trampoline into a panic-class Rust handler that prints the source class and halts (no FIQ source, no SError-recoverable scenario in v1).
 
 The table itself lives in a dedicated `.text.vectors` linker section; `linker.ld` aligns the section to a 2 KiB boundary so `VBAR_EL1` can address it directly. The asm trampolines are hand-written `naked_asm!`-style — the compiler does not generate prologue/epilogue code that would corrupt the saved register frame before the trampoline routes to Rust.
 
@@ -93,7 +93,46 @@ sequenceDiagram
 
 The trampoline saves the AAPCS64-caller-saved general-purpose registers — `x0..x18` plus the link register `x30` — into a 192-byte `#[repr(C)] TrapFrame` struct, plus `ELR_EL1` and `SPSR_EL1` so `eret` restores the interrupted PSTATE exactly. The callee-saved set (`x19..x29`) is **not** pushed by the trampoline; AAPCS64 makes the Rust callee (`irq_entry`) responsible for preserving any of those registers it touches, so saving them in the trampoline would be redundant work on every IRQ entry. The exact saved set is fixed by the asm `stp` sequence in `vectors.s` and mirrored by the `TrapFrame` field order in `exceptions.rs`; mismatches between asm and `repr(C)` are caught at first IRQ fire (saved values would land in the wrong slots), not at compile time.
 
-The non-IRQ entries (sync exception, FIQ, SError, every Lower-EL entry) all route to a dispatcher that prints `"unhandled exception <class>"` and halts. Sync exceptions become useful in Phase B5 when SVC syscalls land; FIQ remains unused unless a future BSP routes a high-priority interrupt to FIQ specifically; SError is the architecture's "things have gone wrong at the system level" signal and is treated as fatal in v1.
+The remaining non-IRQ entries (FIQ, SError, and sync on the unused categories) route to a dispatcher that prints `"unhandled exception <class>"` and halts. The two **sync** entries (`+0x200` / `+0x400`) became useful in Phase B5 — see §"Syscall dispatch (sync / SVC path)" below — when SVC syscalls landed (T-021); FIQ remains unused unless a future BSP routes a high-priority interrupt to FIQ specifically; SError is the architecture's "things have gone wrong at the system level" signal and is treated as fatal in v1.
+
+### Syscall dispatch (sync / SVC path) — T-021
+
+Phase B5 ([T-021](../analysis/tasks/phase-b/T-021-syscall-dispatch.md)) lit up the synchronous-exception path: an `SVC #0` traps to a sync vector, where the `tyrne_sync_trampoline` saves the caller's registers, routes on `ESR_EL1.EC`, and — for an SVC — hands a pointer to the saved frame to the Rust syscall dispatcher in [`tyrne_kernel::syscall`](../../kernel/src/syscall/). The convention is settled by [ADR-0030](../decisions/0030-syscall-abi.md) (`x8` = number, `x0`–`x5` = args, `x0` = status, `x1`–`x7` = payload, `SVC #0`) and the v1 set by [ADR-0031](../decisions/0031-initial-syscall-set.md).
+
+The trampoline is installed at **both** sync slots because the save → dispatch → `ERET` mechanism is privilege-entry-agnostic — only the vector slot and the mode `SPSR_EL1` restores differ:
+
+- **`+0x200` (current-EL with SP_ELx)** — an `SVC` issued at EL1 (the B5 kernel-stub) takes this slot. This is the path v1 exercises at runtime.
+- **`+0x400` (lower-EL AArch64)** — an `SVC` issued at EL0 (a real userspace task) takes this slot. Installed now; runtime-verified in B6 when the first EL0 task exists (the EL0↔EL1 transition + copy-user against a separate userspace `TTBR0_EL1` are B6's, per [ADR-0030 §Simulation](../decisions/0030-syscall-abi.md#simulation)).
+
+```mermaid
+sequenceDiagram
+    participant Caller as Caller (EL1 stub in B5 / EL0 task in B6)
+    participant Vec as Sync vector (+0x200 / +0x400)
+    participant Tramp as tyrne_sync_trampoline (asm)
+    participant Frame as SyscallTrapFrame (272 B)
+    participant Entry as syscall_entry (BSP Rust)
+    participant Disp as dispatch (kernel, panic-free)
+    Caller->>Vec: SVC #0; x8=nr, x0..x5=args
+    Vec->>Tramp: branch
+    Tramp->>Frame: stp x0..x30; mrs SP_EL0, ELR_EL1, SPSR_EL1
+    Tramp->>Tramp: decode ESR_EL1.EC
+    alt EC == 0x15 (SVC64)
+        Tramp->>Entry: bl syscall_entry(*mut SyscallTrapFrame)
+        Entry->>Disp: dispatch(ctx, {nr, args})
+        Note over Disp: decode nr → cap check → kernel primitive → encode
+        Disp-->>Entry: SyscallEffect (Resume{status,payload} / Reschedule / Terminate)
+        Entry->>Frame: write x0=status, x1..x7=payload
+        Entry-->>Tramp: return
+        Tramp->>Frame: ldp x0..x30; msr SP_EL0, ELR_EL1, SPSR_EL1
+        Tramp-->>Caller: eret
+    else other sync cause
+        Tramp->>Tramp: bl panic_entry (out of scope for T-021)
+    end
+```
+
+**Trap frame.** Unlike the IRQ `TrapFrame` (192 bytes, AAPCS64 caller-saved only), the syscall path saves the **full** register file `x0`–`x30` plus `SP_EL0`, `ELR_EL1`, and `SPSR_EL1` into a 272-byte `#[repr(C)] SyscallTrapFrame` ([`syscall.rs`](../../bsp-qemu-virt/src/syscall.rs)) — a complete snapshot of the trapped context, the shape a real EL0 task (B6) and any future preemption arc require. The asm `stp` offsets mirror the `#[repr(C)]` field order; a `const _: () = assert!(size_of::<SyscallTrapFrame>() == 272)` guard fails the build on drift (the same discipline as the 192-byte IRQ frame). The Rust handler writes only `x0`–`x7` (status + payload) back; the trampoline restores `x8`–`x30` + `SP_EL0` + `ELR_EL1` + `SPSR_EL1` to their trapped values.
+
+**Panic-free dispatch.** The kernel dispatcher is held to one rule: no register-supplied input may drive a `panic!` / `unwrap` / `expect`. A bad number (including `0` and, in release, the debug-gated `console_write`) returns `SyscallError::BadSyscallNumber`; every capability / pointer failure returns a typed `SyscallError` as a value. Every object-naming syscall performs a capability check before any effect ([P1/P4](../standards/architectural-principles.md)). Validated copy-from/to-user (`UserAccessWindow` + `copy_from_user` / `copy_to_user`) never dereferences a raw user pointer outside a range checked against the active address space. The hand-written trampoline asm + the validated byte move carry audit entries [UNSAFE-2026-0029](../audits/unsafe-log.md#unsafe-2026-0029--svc-sync-trap-trampoline--syscall_entry-register-frame-access) and [UNSAFE-2026-0030](../audits/unsafe-log.md#unsafe-2026-0030--validated-copy-fromto-user-byte-move-via-coreptrcopy_nonoverlapping).
 
 ### GIC v2 driver
 

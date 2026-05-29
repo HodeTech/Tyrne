@@ -70,6 +70,18 @@ pub enum CapKind {
     ///
     /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     AddressSpace,
+    /// Refers to the **debug console** — the singleton best-effort serial
+    /// diagnostic sink ([`tyrne_hal::Console`]). Introduced by the
+    /// `console_write` syscall ([T-021][t021] / [ADR-0031][adr-0031]) as the
+    /// smallest object addition that keeps `console_write` capability-gated
+    /// ([P1 / P4][principles]). Unlike the arena-backed kinds above, the
+    /// debug console is a singleton with no per-instance kernel-object
+    /// storage, so [`CapObject::DebugConsole`] carries **no handle**.
+    ///
+    /// [t021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
+    /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
+    /// [principles]: https://github.com/HodeTech/Tyrne/blob/main/docs/standards/architectural-principles.md
+    DebugConsole,
     /// Refers to a physical memory region (Phase B4+).
     MemoryRegion,
 }
@@ -107,6 +119,16 @@ pub enum CapObject {
     ///
     /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     AddressSpace(AddressSpaceHandle),
+    /// Capability naming the singleton **debug console** (per
+    /// [ADR-0031][adr-0031]; [T-021][t021]). Carries no handle — there is
+    /// exactly one debug console and it has no per-instance kernel-object
+    /// storage. The bearer's authority to write is conferred by holding this
+    /// capability with the [`CapRights::CONSOLE_WRITE`] right; the
+    /// `console_write` syscall validates both before emitting any byte.
+    ///
+    /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
+    /// [t021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
+    DebugConsole,
 }
 
 impl CapObject {
@@ -118,6 +140,7 @@ impl CapObject {
             Self::Endpoint(_) => CapKind::Endpoint,
             Self::Notification(_) => CapKind::Notification,
             Self::AddressSpace(_) => CapKind::AddressSpace,
+            Self::DebugConsole => CapKind::DebugConsole,
         }
     }
 }
