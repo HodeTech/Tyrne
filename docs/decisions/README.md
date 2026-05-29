@@ -58,13 +58,13 @@ Each ADR contains:
 | 0027 | [Kernel virtual memory layout (B2 — identity-mapped MMU activation)](0027-kernel-virtual-memory-layout.md) | Accepted | 2026-05-08 |
 | 0028 | [Address-space data structure (B3 — kernel-object + capability-gated `Mmu::map` wrappers + activation-on-context-switch)](0028-address-space-data-structure.md) | Accepted | 2026-05-11 |
 | 0029 | [Initial userspace image format (B4 — raw flat binary)](0029-initial-userspace-image-format.md) | Accepted | 2026-05-14 |
-| 0030 | [Syscall ABI and userspace error taxonomy (B5)](0030-syscall-abi.md) | Proposed | 2026-05-29 |
-| 0031 | [Initial syscall set (B5 — `send`/`recv`/`console_write`/`task_yield`/`task_exit`)](0031-initial-syscall-set.md) | Proposed | 2026-05-29 |
+| 0030 | [Syscall ABI and userspace error taxonomy (B5)](0030-syscall-abi.md) | Accepted | 2026-05-29 |
+| 0031 | [Initial syscall set (B5 — `send`/`recv`/`console_write`/`task_yield`/`task_exit`)](0031-initial-syscall-set.md) | Accepted | 2026-05-29 |
 | 0032 | [Endpoint state rollback on `ipc_recv_and_yield` Deadlock + `ipc_cancel_recv` primitive](0032-endpoint-rollback-and-cancel-recv.md) | Accepted | 2026-05-07 |
 | 0035 | [Physical Memory Manager (B3 prerequisite — bitmap allocator)](0035-physical-memory-manager.md) | Accepted | 2026-05-09 |
 | 0036 | [QEMU virt is GICv2 / no-IOMMU in v1; corrects GICv3/SMMUv3 in ADR-0004/0006/0012](0036-qemu-virt-gicv2-no-iommu-v1.md) | Accepted | 2026-05-22 |
 
-> **Numbering gaps.** Slots **0033** and **0034** are intentionally reserved, not missing: 0033 (high-half migration) and 0034 (kernel-image section permissions) are named-but-unallocated placeholders forward-flagged in ADR-0027/0028/0029. No files exist for these yet; they open when the corresponding work surfaces. (Slots **0030** (syscall ABI) and **0031** (initial syscall set) were filed on 2026-05-29 for B5 — `Proposed`, pending Accept — and are no longer gaps.) ADR numbers are stable history and are never renumbered.
+> **Numbering gaps.** Slots **0033** and **0034** are intentionally reserved, not missing: 0033 (high-half migration) and 0034 (kernel-image section permissions) are named-but-unallocated placeholders forward-flagged in ADR-0027/0028/0029. No files exist for these yet; they open when the corresponding work surfaces. (Slots **0030** (syscall ABI) and **0031** (initial syscall set) were filed and `Accepted` on 2026-05-29 for B5 and are no longer gaps.) ADR numbers are stable history and are never renumbered.
 
 ## Creating a new ADR
 

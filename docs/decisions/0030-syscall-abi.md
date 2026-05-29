@@ -1,6 +1,6 @@
 # 0030 — Syscall ABI and userspace error taxonomy
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-05-29
 - **Deciders:** @cemililik
 

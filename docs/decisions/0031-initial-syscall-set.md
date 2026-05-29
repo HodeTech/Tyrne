@@ -1,6 +1,6 @@
 # 0031 — Initial syscall set (B-phase)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-05-29
 - **Deciders:** @cemililik
 
