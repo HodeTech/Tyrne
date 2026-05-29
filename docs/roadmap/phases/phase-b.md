@@ -2,6 +2,8 @@
 
 **Exit bar:** A userspace task (a real separate binary, not a kernel-level stub) runs in its own address space, with its own capability table, and can make syscalls back into the kernel.
 
+**Exit-quality prerequisite — Miri.** Before Phase B is declared complete, **a green `cargo +nightly miri test` (Stacked Borrows) run over the host-test suite is a Phase-B exit prerequisite**, not merely a per-PR gate — with particular weight on `kernel/src/sched/**` and `kernel/src/ipc/**`, where the raw-pointer scheduler/IPC bridge trades the borrow checker's compile-time non-aliasing guarantee for the documented no-`&mut`-across-`context_switch` invariant (ADR-0021 / [UNSAFE-2026-0014](../../audits/unsafe-log.md)). Miri is the only mechanical verifier of that invariant; the 2026-04-21 security review made the aliasing discipline the #1 Phase-B blocker. The `miri` CI job is blocking-by-construction (no `continue-on-error`) per [`infrastructure.md` §"Miri as a blocking gate"](../../standards/infrastructure.md#miri-as-a-blocking-gate); this line records the milestone-exit requirement. (Closes master-review finding MR-009; recorded at B4 closure, 2026-05-28.)
+
 **Scope:** Land the Phase A exit-hygiene fixes surfaced by the 2026-04-21 reviews, drop to EL1, activate the MMU with a kernel mapping, introduce per-task address spaces, build a task loader, define the syscall entry / dispatch, run the first userspace "hello world" in EL0. Still single-core; Pi 4 is Phase D; drivers are Phase E.
 
 **Out of scope:** Multi-core, real hardware, userspace drivers, network, filesystem, cryptography.
