@@ -1597,6 +1597,38 @@ mod tests {
         assert!(matches!(outcome, RecvOutcome::Pending));
     }
 
+    #[test]
+    fn cancel_recv_with_wrong_object_kind_returns_wrong_object_kind() {
+        // Symmetric to the send/recv wrong-kind tests: a cap that carries
+        // RECV but names a Task (not an endpoint) fails kind-before-rights.
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let cap_h = table
+            .insert_root(Capability::new(CapRights::RECV, task_object(1)))
+            .unwrap();
+        assert_eq!(
+            ipc_cancel_recv(&mut ep_arena, &mut queues, cap_h, &table).unwrap_err(),
+            IpcError::WrongObjectKind
+        );
+    }
+
+    #[test]
+    fn cancel_recv_to_destroyed_endpoint_returns_stale_handle() {
+        // Arena-staleness path for cancel: the cap resolves with RECV, but its
+        // endpoint object was destroyed, so the arena `get` fails.
+        use crate::obj::endpoint::destroy_endpoint;
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let (ep_handle, ep_cap) = setup_ep(&mut table, &mut ep_arena, all_ep_rights());
+        destroy_endpoint(&mut ep_arena, ep_handle).unwrap();
+        assert_eq!(
+            ipc_cancel_recv(&mut ep_arena, &mut queues, ep_cap, &table).unwrap_err(),
+            IpcError::StaleHandle
+        );
+    }
+
     // ── reset_if_stale_generation guard tests (T-011) ─────────────────────────
     //
     // `IpcQueues::reset_if_stale_generation` (used by `state_of` /
