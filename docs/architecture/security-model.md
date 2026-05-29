@@ -146,6 +146,7 @@ Two capability properties are load-bearing:
 
 - **Unforgeability.** Capability tokens are entirely inside the kernel's memory. Userspace never sees raw bits; it references its own table by handle.
 - **Non-transferability without consent.** A capability can be moved (via IPC) or duplicated (via a duplicate authority), but never silently copied or leaked.
+- **Redacted in diagnostics.** A `Capability`'s `Debug` impl shows its rights but **redacts the kernel object it names** (the typed handle's slot index + generation), so a userspace-reachable log path — such as the debug `console_write` syscall — can never disclose kernel-internal object identity. Capabilities follow the same "no unredacted `Debug`/`Display`" discipline cryptographic keys do (see §Cryptography). Per [ADR-0030](../decisions/0030-syscall-abi.md) (K3-9 / security review §6).
 
 #### Capability operations
 
@@ -253,7 +254,7 @@ The kernel has **no cryptographic primitives** in its initial form. This is deli
 - An ADR per primitive or primitive family.
 - No roll-your-own. Only well-known algorithms from audited crates.
 - A [security-review](../standards/security-review.md) pass on every introduction, separately from code review.
-- Keys are first-class types that do not implement unredacted `Debug` or `Display`. See [logging-and-observability.md](../standards/logging-and-observability.md).
+- Keys are first-class types that do not implement unredacted `Debug` or `Display` — the same discipline capabilities follow (see §Capabilities, "Redacted in diagnostics"). See [logging-and-observability.md](../standards/logging-and-observability.md).
 
 ### Supply chain
 
