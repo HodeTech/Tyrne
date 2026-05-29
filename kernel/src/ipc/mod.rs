@@ -955,11 +955,15 @@ mod tests {
     //
     // These pin the two split variants that the pre-existing rights-failure
     // tests above (now `MissingRight`) do not reach. The `WrongObjectKind`
-    // tests deliberately give the cap the operation's right too, proving the
-    // kind check runs *before* the rights check (ADR-0030 ordering: a
-    // wrong-kind cap fails with `WrongObjectKind` even when it carries the
-    // right). `StaleHandle` is exercised on both the table-lookup-miss path
-    // (a dropped cap handle) and the arena-staleness path (a destroyed
+    // tests use a wrong-kind cap that ALSO lacks the operation's right —
+    // the *only* input that discriminates the kind-before-rights ordering
+    // ADR-0030 §K2-5 specifies. Under the chosen order (kind → rights) the
+    // result is `WrongObjectKind`; under a hypothetical rights-first
+    // regression the same cap would return `MissingRight`. So a flip to
+    // rights-first would flip the asserted variant and fail these tests
+    // (a cap that *carries* the right would be ordering-agnostic and prove
+    // nothing). `StaleHandle` is exercised on both the table-lookup-miss
+    // path (a dropped cap handle) and the arena-staleness path (a destroyed
     // endpoint whose cap still resolves in the table).
 
     #[test]
@@ -967,9 +971,11 @@ mod tests {
         let mut table = CapabilityTable::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
-        // A Task cap that even carries SEND — but it is not an endpoint.
+        // A Task cap (wrong kind) that also lacks SEND. Kind-first → the
+        // result is WrongObjectKind; a rights-first order would return
+        // MissingRight, so this discriminates the ADR-0030 ordering.
         let cap_h = table
-            .insert_root(Capability::new(CapRights::SEND, task_object(1)))
+            .insert_root(Capability::new(CapRights::empty(), task_object(1)))
             .unwrap();
         assert_eq!(
             ipc_send(
@@ -990,9 +996,10 @@ mod tests {
         let mut table = CapabilityTable::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
-        // A Task cap that even carries RECV — but it is not an endpoint.
+        // Wrong kind (Task) and lacks RECV → WrongObjectKind under kind-first,
+        // MissingRight under rights-first; the assertion pins kind-first.
         let cap_h = table
-            .insert_root(Capability::new(CapRights::RECV, task_object(1)))
+            .insert_root(Capability::new(CapRights::empty(), task_object(1)))
             .unwrap();
         assert_eq!(
             ipc_recv(&mut ep_arena, &mut queues, cap_h, &mut table).unwrap_err(),
@@ -1004,9 +1011,10 @@ mod tests {
     fn notify_with_wrong_object_kind_returns_wrong_object_kind() {
         let mut table = CapabilityTable::new();
         let mut notif_arena = NotificationArena::default();
-        // A Task cap that even carries NOTIFY — but it is not a notification.
+        // Wrong kind (Task) and lacks NOTIFY → WrongObjectKind under kind-first,
+        // MissingRight under rights-first; the assertion pins kind-first.
         let cap_h = table
-            .insert_root(Capability::new(CapRights::NOTIFY, task_object(2)))
+            .insert_root(Capability::new(CapRights::empty(), task_object(2)))
             .unwrap();
         assert_eq!(
             ipc_notify(&mut notif_arena, cap_h, &table, 0xFF).unwrap_err(),
@@ -1599,13 +1607,14 @@ mod tests {
 
     #[test]
     fn cancel_recv_with_wrong_object_kind_returns_wrong_object_kind() {
-        // Symmetric to the send/recv wrong-kind tests: a cap that carries
-        // RECV but names a Task (not an endpoint) fails kind-before-rights.
+        // Symmetric to the send/recv wrong-kind tests: a Task cap (wrong kind)
+        // that also lacks RECV. Kind-first → WrongObjectKind; a rights-first
+        // order would return MissingRight, so this discriminates the ordering.
         let mut table = CapabilityTable::new();
         let mut ep_arena = EndpointArena::default();
         let mut queues = IpcQueues::new();
         let cap_h = table
-            .insert_root(Capability::new(CapRights::RECV, task_object(1)))
+            .insert_root(Capability::new(CapRights::empty(), task_object(1)))
             .unwrap();
         assert_eq!(
             ipc_cancel_recv(&mut ep_arena, &mut queues, cap_h, &table).unwrap_err(),
