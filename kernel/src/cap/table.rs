@@ -44,18 +44,42 @@ pub struct CapHandle {
 }
 
 impl CapHandle {
-    /// Return the raw index component. Kernel-internal; used by tests.
+    /// Return the raw index component. Kernel-internal; used by tests and by
+    /// the syscall ABI layer ([`crate::syscall`]) to pack a handle into a
+    /// register word.
     #[must_use]
     #[doc(hidden)]
     pub const fn index(self) -> u16 {
         self.index
     }
 
-    /// Return the raw generation component. Kernel-internal; used by tests.
+    /// Return the raw generation component. Kernel-internal; used by tests and
+    /// by the syscall ABI layer ([`crate::syscall`]) to pack a handle into a
+    /// register word.
     #[must_use]
     #[doc(hidden)]
     pub const fn generation(self) -> u32 {
         self.generation
+    }
+
+    /// Reconstruct a handle from raw `(index, generation)` components.
+    ///
+    /// This is the **ABI-decode constructor**: the syscall layer
+    /// ([`crate::syscall`], [T-021][t021]) unpacks a userspace-supplied
+    /// register word into its components and rebuilds the `CapHandle` here.
+    /// The reconstructed handle is **not trusted** — every `CapHandle` is
+    /// validated against the live slot's generation by
+    /// [`CapabilityTable::lookup`] before any use, so a forged, stale, or
+    /// out-of-range `(index, generation)` simply fails lookup with
+    /// [`CapError::InvalidHandle`]; it can never alias a live capability.
+    /// Mirrors [`CapRights::from_raw`][crate::cap::CapRights::from_raw]'s
+    /// "land the ABI-boundary constructor with its first consumer"
+    /// discipline (Forward-API note C1-007).
+    ///
+    /// [t021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
+    #[must_use]
+    pub const fn from_raw(index: u16, generation: u32) -> Self {
+        Self { index, generation }
     }
 }
 

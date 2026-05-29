@@ -32,6 +32,17 @@ impl CapRights {
     pub const RECV: Self = Self(1 << 5);
     /// The bearer may call `ipc_notify` on the notification this capability names.
     pub const NOTIFY: Self = Self(1 << 6);
+    /// The bearer may write bytes to the **debug console** this capability
+    /// names. Carried by a [`super::CapObject::DebugConsole`] capability and
+    /// checked by the `console_write` syscall *before any output* (per
+    /// [ADR-0031][adr-0031] — `console_write` is capability-gated **and**
+    /// debug-gated). This is the first right introduced by a syscall rather
+    /// than by a kernel-object subsystem; it gates the one debug affordance
+    /// the v1 syscall set exposes ([T-021][t021]).
+    ///
+    /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
+    /// [t021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
+    pub const CONSOLE_WRITE: Self = Self(1 << 7);
 
     /// Union of every bit defined by this version of the rights bitfield.
     ///
@@ -57,7 +68,8 @@ impl CapRights {
             | Self::TRANSFER.0
             | Self::SEND.0
             | Self::RECV.0
-            | Self::NOTIFY.0,
+            | Self::NOTIFY.0
+            | Self::CONSOLE_WRITE.0,
     );
 
     /// Construct an empty flag set.

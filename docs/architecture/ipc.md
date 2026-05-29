@@ -93,12 +93,16 @@ The "park in endpoint state" step is what makes the transfer atomic: even if the
 ### `IpcError` taxonomy
 
 ```text
-IpcError::InvalidCapability     // ep_cap stale, wrong kind, or lacks the required right
+IpcError::StaleHandle           // cap did not resolve, or its object was destroyed
+IpcError::WrongObjectKind       // cap resolved but names the wrong kind of object for the op
+IpcError::MissingRight          // cap is the right kind but lacks SEND / RECV / NOTIFY
 IpcError::QueueFull              // a previous sender/receiver still occupies the endpoint
 IpcError::InvalidTransferCap    // transfer-handle stale or lacks TRANSFER
 IpcError::ReceiverTableFull     // pre-flight: receiver's cap table has no free slot
 IpcError::PendingAfterResume    // scheduler-bridge invariant violation; see scheduler.md
 ```
+
+The first three variants — `StaleHandle` / `WrongObjectKind` / `MissingRight` — replace the former single `InvalidCapability` per [ADR-0030](../decisions/0030-syscall-abi.md)'s **K2-5** split, so the syscall error space and the in-kernel error space agree once userspace can call IPC. Capability validation resolves in the order **resolve → type-check → authority-check** (`StaleHandle` → `WrongObjectKind` → `MissingRight`), mirroring [`CapError`](../../kernel/src/cap/mod.rs)'s `InvalidHandle` / `WrongKind` / `InsufficientRights`. Revealing *which* check failed is safe — a capability table is per-subject and unforgeable, so the failure mode is a fact about the caller's own handle, not a forgery aid (see [ADR-0030 §"Security of the taxonomy split"](../decisions/0030-syscall-abi.md)). The companion redaction of `Capability`'s `Debug` (K3-9) keeps the *object identity* hidden even as the failure mode becomes visible.
 
 The enum is annotated `#[non_exhaustive]`, which deliberately *opens* it for future extension: external matches must include a wildcard arm, so new variants can be added without silently breaking callers. `PendingAfterResume` is special among the variants — it is produced *only* by the scheduler bridge's resume path, never by the bare `ipc_recv` primitive, and it indicates a kernel-internal invariant violation rather than a userspace-reachable error. ADR-0022 §Revision notes (second rider) records why the typed return replaces a `debug_assert!` that was untestable.
 

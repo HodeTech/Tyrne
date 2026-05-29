@@ -70,6 +70,18 @@ pub enum CapKind {
     ///
     /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     AddressSpace,
+    /// Refers to the **debug console** — the singleton best-effort serial
+    /// diagnostic sink ([`tyrne_hal::Console`]). Introduced by the
+    /// `console_write` syscall ([T-021][t021] / [ADR-0031][adr-0031]) as the
+    /// smallest object addition that keeps `console_write` capability-gated
+    /// ([P1 / P4][principles]). Unlike the arena-backed kinds above, the
+    /// debug console is a singleton with no per-instance kernel-object
+    /// storage, so [`CapObject::DebugConsole`] carries **no handle**.
+    ///
+    /// [t021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
+    /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
+    /// [principles]: https://github.com/HodeTech/Tyrne/blob/main/docs/standards/architectural-principles.md
+    DebugConsole,
     /// Refers to a physical memory region (Phase B4+).
     MemoryRegion,
 }
@@ -85,7 +97,16 @@ pub enum CapKind {
 /// T-018 (per [ADR-0028][adr-0028]).
 ///
 /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+///
+/// `Debug` is a **hand-written, redacting** impl (not derived): it prints the
+/// object *kind* but redacts the wrapped typed handle (slot index +
+/// generation). This is the same kernel-internal-identity hazard the
+/// [`Capability`] redaction (K3-9 / [ADR-0030][adr-0030cap]) addresses —
+/// closed here at the source so a `CapObject` formatted directly (e.g. into a
+/// future error or a userspace-reachable log) cannot leak the handle either.
+///
+/// [adr-0030cap]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0030-syscall-abi.md
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum CapObject {
     /// Capability naming a [`Task`][crate::obj::Task] kernel object.
     Task(TaskHandle),
@@ -98,6 +119,16 @@ pub enum CapObject {
     ///
     /// [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md
     AddressSpace(AddressSpaceHandle),
+    /// Capability naming the singleton **debug console** (per
+    /// [ADR-0031][adr-0031]; [T-021][t021]). Carries no handle — there is
+    /// exactly one debug console and it has no per-instance kernel-object
+    /// storage. The bearer's authority to write is conferred by holding this
+    /// capability with the [`CapRights::CONSOLE_WRITE`] right; the
+    /// `console_write` syscall validates both before emitting any byte.
+    ///
+    /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
+    /// [t021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
+    DebugConsole,
 }
 
 impl CapObject {
@@ -109,7 +140,23 @@ impl CapObject {
             Self::Endpoint(_) => CapKind::Endpoint,
             Self::Notification(_) => CapKind::Notification,
             Self::AddressSpace(_) => CapKind::AddressSpace,
+            Self::DebugConsole => CapKind::DebugConsole,
         }
+    }
+}
+
+impl core::fmt::Debug for CapObject {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Show the kind (benign, useful for diagnostics) but redact the
+        // wrapped typed handle (slot index + generation) — kernel-internal
+        // identity per K3-9 / ADR-0030. The wrapped handle types keep their
+        // derived `Debug` for kernel-internal traces (scheduler, arena) where
+        // the slot/generation is the useful information and never crosses to
+        // userspace; `CapObject` is redacted because it is the type a
+        // capability (or a future error) carries toward a log boundary.
+        f.debug_struct("CapObject")
+            .field("kind", &self.kind())
+            .finish()
     }
 }
 
@@ -120,12 +167,32 @@ impl CapObject {
 /// to hold the [`CapRights::DUPLICATE`] authority on the source. The
 /// Rust type system enforces the move-only discipline by construction.
 ///
-/// `Debug` is derived so that test assertions can format capabilities;
-/// the derived impl exposes typed handles but no other unforgeable bits.
-#[derive(Debug)]
+/// `Debug` is a **hand-written, redacting** impl (not derived): it prints
+/// the `rights` (authority bits — useful for diagnostics and not
+/// unforgeable) but redacts the named object as `<redacted>`. The object
+/// names a kernel object by typed handle (slot index + generation), which
+/// is kernel-internal identity that must never leak across a
+/// userspace-reachable log path such as the future `console_write` syscall.
+/// Per [ADR-0030][adr-0030] §"Security of the taxonomy split" and B5
+/// sub-item 6 (K3-9 — security review §6).
+///
+/// [adr-0030]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0030-syscall-abi.md
 pub struct Capability {
     rights: CapRights,
     object: CapObject,
+}
+
+impl core::fmt::Debug for Capability {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Redact the named object; keep rights visible. `format_args!`
+        // (rather than a `&str`) emits the placeholder without surrounding
+        // quotes, so the output reads `object: <redacted>`, not
+        // `object: "<redacted>"`.
+        f.debug_struct("Capability")
+            .field("rights", &self.rights)
+            .field("object", &format_args!("<redacted>"))
+            .finish()
+    }
 }
 
 impl Capability {
@@ -191,4 +258,61 @@ pub enum CapError {
     /// `CapError::WrongKind` via the wrapper's
     /// `AddressSpaceError::CapError(_)` passthrough.
     WrongKind,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CapObject, CapRights, Capability};
+    use crate::obj::TaskHandle;
+
+    #[test]
+    fn debug_redacts_named_object_but_keeps_rights() {
+        // K3-9 (ADR-0030 §"Security of the taxonomy split"): a `Capability`'s
+        // `Debug` must not leak the kernel object it names — no kind, no slot
+        // index, no generation — but may show the (non-unforgeable) rights.
+        let cap = Capability::new(
+            CapRights::SEND | CapRights::RECV,
+            CapObject::Task(TaskHandle::test_handle(0xAB, 7)),
+        );
+        let shown = format!("{cap:?}");
+
+        // The named object is redacted.
+        assert!(
+            shown.contains("object: <redacted>"),
+            "object must be redacted, got: {shown}"
+        );
+        assert!(
+            !shown.contains("Task"),
+            "object kind must not leak, got: {shown}"
+        );
+        assert!(
+            !shown.contains("171"),
+            "handle index (0xAB = 171) must not leak, got: {shown}"
+        );
+        // Rights stay visible for diagnostics (`CapRights` derives `Debug`).
+        assert!(
+            shown.contains("rights"),
+            "rights field must be shown, got: {shown}"
+        );
+    }
+
+    #[test]
+    fn capobject_debug_redacts_handle_but_shows_kind() {
+        // Defense-in-depth: even formatting a bare `CapObject` (not wrapped in
+        // a `Capability`) must not leak the handle's slot index / generation.
+        let obj = CapObject::Task(TaskHandle::test_handle(0xAB, 7));
+        let shown = format!("{obj:?}");
+
+        // The kind is shown (benign, useful for diagnostics)...
+        assert!(shown.contains("Task"), "kind should be shown, got: {shown}");
+        // ...but the wrapped handle's identity is redacted.
+        assert!(
+            !shown.contains("171"),
+            "handle index (0xAB = 171) must not leak, got: {shown}"
+        );
+        assert!(
+            !shown.contains("SlotId") && !shown.contains("generation"),
+            "handle internals must not leak, got: {shown}"
+        );
+    }
 }

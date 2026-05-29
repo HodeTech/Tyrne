@@ -36,6 +36,8 @@ Terminology used throughout Tyrne. Entries are alphabetical. If a term appears i
 
 **Cooperative scheduling.** A scheduling model in which the CPU is only taken from a running task when that task voluntarily yields. Tyrne v1 is cooperative and single-core; preemption arrives later in Phase B / Phase C.
 
+**EL0 / EL1 (Exception Levels).** ARM aarch64 privilege levels. EL0 is unprivileged (userspace); EL1 is the kernel/OS level. A task runs application code at EL0 and traps into the kernel at EL1 via an `SVC` (syscall) or an exception/interrupt. Tyrne drops to EL1 at boot ([ADR-0024](decisions/0024-el-drop-policy.md)) and exposes the EL0→EL1 syscall boundary in Phase B5 ([ADR-0030](decisions/0030-syscall-abi.md)). The higher levels (EL2 hypervisor, EL3 secure monitor) are not used by the kernel. See also *Syscall*, *SVC*.
+
 **Endpoint.** In seL4-style IPC, a kernel object used to rendezvous senders and receivers. Possessing a capability to an endpoint is what grants the right to send or receive.
 
 **Generation tag.** The counter stored alongside every arena slot that detects stale handles. When a slot is freed and reused, its generation increments; a handle carries the generation it was issued with, so lookup can distinguish "same slot, new object" from "same slot, same object". See [ADR-0016](decisions/0016-kernel-object-storage.md).
@@ -85,6 +87,12 @@ Terminology used throughout Tyrne. Entries are alphabetical. If a term appears i
 **Stacked Borrows.** A model for Rust's pointer-aliasing rules that tracks a stack of tags per memory location and requires every access to present a valid tag. Violations are UB. Miri enforces Stacked Borrows; Tree Borrows is a stricter successor. Tyrne's raw-pointer bridge ([ADR-0021](decisions/0021-raw-pointer-scheduler-ipc-bridge.md)) is designed to honour Stacked Borrows.
 
 **StaticCell.** A BSP helper in [bsp-qemu-virt](../bsp-qemu-virt/src/main.rs) that wraps `UnsafeCell<MaybeUninit<T>>` to provide write-once-at-boot, share-afterwards static storage for kernel state. It exposes `as_mut_ptr` so callers can derive raw pointers without materialising a `&mut` (see [ADR-0021](decisions/0021-raw-pointer-scheduler-ipc-bridge.md)).
+
+**SVC (Supervisor Call).** The ARM aarch64 instruction a lower exception level uses to synchronously trap into a higher one. An `SVC` from EL0 takes the lower-EL synchronous exception vector at EL1; an `SVC` issued at EL1 takes the *current-EL* vector instead. Tyrne's syscall ABI uses `SVC #0` with the syscall number in `x8` ([ADR-0030](decisions/0030-syscall-abi.md)). See also *Syscall*, *EL0 / EL1*.
+
+**Syscall (system call).** The synchronous kernel entry point from userspace (EL0) into the kernel (EL1), made via an `SVC` instruction. The dispatcher validates the caller's capabilities and performs the operation, returning a typed result — and is panic-free on every untrusted input. Tyrne's v1 set is `send` / `recv` / `console_write` / `task_yield` / `task_exit` ([ADR-0031](decisions/0031-initial-syscall-set.md)). See also *Syscall ABI*, *SVC*.
+
+**Syscall ABI.** The register-level contract for a syscall: which register carries the syscall number (`x8`), which carry arguments (`x0`–`x5`), and how the status + payload return (`x0` = status word with `0` = `Ok`, `x1`–`x7` = payload). Fixed by [ADR-0030](decisions/0030-syscall-abi.md). A hardware-specific instance of an *ABI*.
 
 **TCB (Trusted Computing Base).** The set of components that must be correct for the system's security guarantees to hold — code whose compromise would compromise everything. Tyrne keeps the TCB deliberately small by running drivers, filesystems, and network stacks in userspace rather than in the kernel, so that adding a feature does not enlarge the trusted core unless it strictly must; the README frames this as "the entire trusted computing base can be audited line by line." The boundary of the TCB is drawn in [architecture/security-model.md](architecture/security-model.md). See also *Microkernel* and *Trust boundary*.
 

@@ -80,12 +80,37 @@ pub struct Message {
 }
 
 /// Errors returned by IPC operations.
+///
+/// The capability-validation failure modes are split into three distinct,
+/// handleable variants per [ADR-0030][adr-0030]'s K2-5 bundle (replacing the
+/// former single `InvalidCapability`). Validation resolves in the order
+/// `StaleHandle → WrongObjectKind → MissingRight` (resolve, then type-check,
+/// then authority-check), mirroring [`CapError`][caperr]'s
+/// `InvalidHandle` / `WrongKind` / `InsufficientRights` shape so the in-kernel
+/// and userspace error spaces read the same way. Revealing *which* check
+/// failed is safe for a per-subject, unforgeable capability table — see
+/// [ADR-0030 §"Security of the taxonomy split"][adr-0030].
+///
+/// [adr-0030]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0030-syscall-abi.md
+/// [caperr]: crate::cap::CapError
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum IpcError {
-    /// The endpoint or notification capability is invalid, stale, or the
-    /// caller lacks the required right (`SEND`, `RECV`, or `NOTIFY`).
-    InvalidCapability,
+    /// The capability handle did not resolve in the caller's table, or the
+    /// kernel object it named has been destroyed (the arena slot's
+    /// generation moved past the handle's). The reference is dead — the
+    /// caller should re-acquire it, not retry.
+    StaleHandle,
+    /// The capability resolved but names the wrong kind of object for this
+    /// operation (e.g. a `Notification` capability handed to `ipc_send`, or
+    /// an `Endpoint` capability handed to `ipc_notify`). A programming
+    /// error in the caller: the wrong handle was passed.
+    WrongObjectKind,
+    /// The capability resolved and is the right kind, but does not carry the
+    /// right this operation requires (`SEND` for `ipc_send`, `RECV` for
+    /// `ipc_recv` / `ipc_cancel_recv`, `NOTIFY` for `ipc_notify`). The caller
+    /// holds the object but lacks the authority — it must obtain the right.
+    MissingRight,
     /// The endpoint's waiter queue is at capacity (depth 1 in v1): a second
     /// blocked sender arrived while the first is still pending, or a second
     /// receiver registered before the first was served.
@@ -269,7 +294,9 @@ impl IpcQueues {
 ///
 /// # Errors
 ///
-/// - [`IpcError::InvalidCapability`] — `ep_cap` is stale or lacks `SEND`.
+/// - [`IpcError::StaleHandle`] — `ep_cap` did not resolve, or its endpoint
+///   was destroyed; [`IpcError::WrongObjectKind`] — `ep_cap` does not name an
+///   endpoint; [`IpcError::MissingRight`] — `ep_cap` lacks `SEND`.
 /// - [`IpcError::InvalidTransferCap`] — `transfer` handle is stale.
 /// - [`IpcError::QueueFull`] — a previous send is still pending (or a
 ///   delivery for a waiting receiver is uncollected).
@@ -298,7 +325,7 @@ pub fn ipc_send(
     // Confirm the endpoint handle is still live in the arena.
     ep_arena
         .get(ep_handle.slot())
-        .ok_or(IpcError::InvalidCapability)?;
+        .ok_or(IpcError::StaleHandle)?;
 
     // Pre-flight: queue-full check. Peek state non-destructively before any
     // cap manipulation so that a QueueFull return leaves both the endpoint
@@ -360,7 +387,9 @@ pub fn ipc_send(
 ///
 /// # Errors
 ///
-/// - [`IpcError::InvalidCapability`] — `ep_cap` is stale or lacks `RECV`.
+/// - [`IpcError::StaleHandle`] — `ep_cap` did not resolve, or its endpoint
+///   was destroyed; [`IpcError::WrongObjectKind`] — `ep_cap` does not name an
+///   endpoint; [`IpcError::MissingRight`] — `ep_cap` lacks `RECV`.
 /// - [`IpcError::ReceiverTableFull`] — the receiver's table has no free slot
 ///   for the capability carried with the pending message. Free a slot first.
 /// - [`IpcError::QueueFull`] — a receiver is already registered on this endpoint.
@@ -374,7 +403,7 @@ pub fn ipc_recv(
 
     ep_arena
         .get(ep_handle.slot())
-        .ok_or(IpcError::InvalidCapability)?;
+        .ok_or(IpcError::StaleHandle)?;
 
     // Pre-flight: if the pending state carries a capability, ensure the
     // receiver's table has room before committing the state transition. This
@@ -441,7 +470,10 @@ pub fn ipc_recv(
 ///
 /// # Errors
 ///
-/// [`IpcError::InvalidCapability`] — `notif_cap` is stale or lacks `NOTIFY`.
+/// [`IpcError::StaleHandle`] — `notif_cap` did not resolve, or its
+/// notification was destroyed; [`IpcError::WrongObjectKind`] — `notif_cap`
+/// does not name a notification; [`IpcError::MissingRight`] — `notif_cap`
+/// lacks `NOTIFY`.
 pub fn ipc_notify(
     notif_arena: &mut NotificationArena,
     notif_cap: CapHandle,
@@ -451,7 +483,7 @@ pub fn ipc_notify(
     let notif_handle = validate_notif_cap(caller_table, notif_cap)?;
     let notif = notif_arena
         .get_mut(notif_handle.slot())
-        .ok_or(IpcError::InvalidCapability)?;
+        .ok_or(IpcError::StaleHandle)?;
     notif.set(bits);
     Ok(())
 }
@@ -520,9 +552,10 @@ pub fn ipc_notify(
 ///
 /// # Errors
 ///
-/// [`IpcError::InvalidCapability`] — `ep_cap` is stale, refers to a
-/// non-endpoint object, or lacks `RECV`. The endpoint state is not
-/// touched on this error.
+/// [`IpcError::StaleHandle`] — `ep_cap` did not resolve, or its endpoint
+/// was destroyed; [`IpcError::WrongObjectKind`] — `ep_cap` refers to a
+/// non-endpoint object; [`IpcError::MissingRight`] — `ep_cap` lacks `RECV`.
+/// The endpoint state is not touched on any of these errors.
 ///
 /// [adr-0032]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0032-endpoint-rollback-and-cancel-recv.md
 /// [ADR-0017]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0017-ipc-primitive-set.md
@@ -537,7 +570,7 @@ pub fn ipc_cancel_recv(
 
     ep_arena
         .get(ep_handle.slot())
-        .ok_or(IpcError::InvalidCapability)?;
+        .ok_or(IpcError::StaleHandle)?;
 
     let state = queues.state_of(ep_handle);
     if matches!(state, EndpointState::RecvWaiting) {
@@ -548,37 +581,38 @@ pub fn ipc_cancel_recv(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+// Resolve → type-check → authority-check, in that order, per ADR-0030's
+// `StaleHandle → WrongObjectKind → MissingRight` taxonomy. The order is
+// observable only for a capability that is *both* the wrong kind and
+// missing the right; checking kind first reports the more fundamental
+// error ("you passed the wrong handle") ahead of the authority error.
 fn validate_ep_cap(
     table: &CapabilityTable,
     ep_cap: CapHandle,
     required: CapRights,
 ) -> Result<EndpointHandle, IpcError> {
-    let cap = table
-        .lookup(ep_cap)
-        .map_err(|_| IpcError::InvalidCapability)?;
+    let cap = table.lookup(ep_cap).map_err(|_| IpcError::StaleHandle)?;
+    let CapObject::Endpoint(handle) = cap.object() else {
+        return Err(IpcError::WrongObjectKind);
+    };
     if !cap.rights().contains(required) {
-        return Err(IpcError::InvalidCapability);
+        return Err(IpcError::MissingRight);
     }
-    match cap.object() {
-        CapObject::Endpoint(h) => Ok(h),
-        _ => Err(IpcError::InvalidCapability),
-    }
+    Ok(handle)
 }
 
 fn validate_notif_cap(
     table: &CapabilityTable,
     notif_cap: CapHandle,
 ) -> Result<NotificationHandle, IpcError> {
-    let cap = table
-        .lookup(notif_cap)
-        .map_err(|_| IpcError::InvalidCapability)?;
+    let cap = table.lookup(notif_cap).map_err(|_| IpcError::StaleHandle)?;
+    let CapObject::Notification(handle) = cap.object() else {
+        return Err(IpcError::WrongObjectKind);
+    };
     if !cap.rights().contains(CapRights::NOTIFY) {
-        return Err(IpcError::InvalidCapability);
+        return Err(IpcError::MissingRight);
     }
-    match cap.object() {
-        CapObject::Notification(h) => Ok(h),
-        _ => Err(IpcError::InvalidCapability),
-    }
+    Ok(handle)
 }
 
 /// Take the cap at `handle` (if any) out of `table` for in-flight transfer.
@@ -899,7 +933,8 @@ mod tests {
                 None
             )
             .unwrap_err(),
-            IpcError::InvalidCapability
+            // Correct kind (endpoint), missing the SEND right → MissingRight.
+            IpcError::MissingRight
         );
     }
 
@@ -911,7 +946,125 @@ mod tests {
         let (_, ep_cap) = setup_ep(&mut table, &mut ep_arena, CapRights::SEND);
         assert_eq!(
             ipc_recv(&mut ep_arena, &mut queues, ep_cap, &mut table).unwrap_err(),
-            IpcError::InvalidCapability
+            // Correct kind (endpoint), missing the RECV right → MissingRight.
+            IpcError::MissingRight
+        );
+    }
+
+    // ── error taxonomy: WrongObjectKind + StaleHandle (ADR-0030 K2-5) ─────────
+    //
+    // These pin the two split variants that the pre-existing rights-failure
+    // tests above (now `MissingRight`) do not reach. The `WrongObjectKind`
+    // tests use a wrong-kind cap that ALSO lacks the operation's right —
+    // the *only* input that discriminates the kind-before-rights ordering
+    // ADR-0030 §K2-5 specifies. Under the chosen order (kind → rights) the
+    // result is `WrongObjectKind`; under a hypothetical rights-first
+    // regression the same cap would return `MissingRight`. So a flip to
+    // rights-first would flip the asserted variant and fail these tests
+    // (a cap that *carries* the right would be ordering-agnostic and prove
+    // nothing). `StaleHandle` is exercised on both the table-lookup-miss
+    // path (a dropped cap handle) and the arena-staleness path (a destroyed
+    // endpoint whose cap still resolves in the table).
+
+    #[test]
+    fn send_with_wrong_object_kind_returns_wrong_object_kind() {
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        // A Task cap (wrong kind) that also lacks SEND. Kind-first → the
+        // result is WrongObjectKind; a rights-first order would return
+        // MissingRight, so this discriminates the ADR-0030 ordering.
+        let cap_h = table
+            .insert_root(Capability::new(CapRights::empty(), task_object(1)))
+            .unwrap();
+        assert_eq!(
+            ipc_send(
+                &mut ep_arena,
+                &mut queues,
+                cap_h,
+                &mut table,
+                test_msg(0),
+                None
+            )
+            .unwrap_err(),
+            IpcError::WrongObjectKind
+        );
+    }
+
+    #[test]
+    fn recv_with_wrong_object_kind_returns_wrong_object_kind() {
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        // Wrong kind (Task) and lacks RECV → WrongObjectKind under kind-first,
+        // MissingRight under rights-first; the assertion pins kind-first.
+        let cap_h = table
+            .insert_root(Capability::new(CapRights::empty(), task_object(1)))
+            .unwrap();
+        assert_eq!(
+            ipc_recv(&mut ep_arena, &mut queues, cap_h, &mut table).unwrap_err(),
+            IpcError::WrongObjectKind
+        );
+    }
+
+    #[test]
+    fn notify_with_wrong_object_kind_returns_wrong_object_kind() {
+        let mut table = CapabilityTable::new();
+        let mut notif_arena = NotificationArena::default();
+        // Wrong kind (Task) and lacks NOTIFY → WrongObjectKind under kind-first,
+        // MissingRight under rights-first; the assertion pins kind-first.
+        let cap_h = table
+            .insert_root(Capability::new(CapRights::empty(), task_object(2)))
+            .unwrap();
+        assert_eq!(
+            ipc_notify(&mut notif_arena, cap_h, &table, 0xFF).unwrap_err(),
+            IpcError::WrongObjectKind
+        );
+    }
+
+    #[test]
+    fn send_with_dropped_cap_handle_returns_stale_handle() {
+        // Table-lookup-miss path: the cap handle no longer resolves.
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let (_, ep_cap) = setup_ep(&mut table, &mut ep_arena, all_ep_rights());
+        table.cap_drop(ep_cap).unwrap();
+        assert_eq!(
+            ipc_send(
+                &mut ep_arena,
+                &mut queues,
+                ep_cap,
+                &mut table,
+                test_msg(0),
+                None
+            )
+            .unwrap_err(),
+            IpcError::StaleHandle
+        );
+    }
+
+    #[test]
+    fn send_to_destroyed_endpoint_returns_stale_handle() {
+        // Arena-staleness path: the cap still resolves (right kind + right),
+        // but its endpoint object was destroyed, so the arena `get` fails.
+        use crate::obj::endpoint::destroy_endpoint;
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let (ep_handle, ep_cap) = setup_ep(&mut table, &mut ep_arena, all_ep_rights());
+        destroy_endpoint(&mut ep_arena, ep_handle).unwrap();
+        assert_eq!(
+            ipc_send(
+                &mut ep_arena,
+                &mut queues,
+                ep_cap,
+                &mut table,
+                test_msg(0),
+                None
+            )
+            .unwrap_err(),
+            IpcError::StaleHandle
         );
     }
 
@@ -1098,7 +1251,8 @@ mod tests {
         let cap_h = table.insert_root(cap).unwrap();
         assert_eq!(
             ipc_notify(&mut notif_arena, cap_h, &table, 0xFF).unwrap_err(),
-            IpcError::InvalidCapability
+            // Correct kind (notification), missing the NOTIFY right → MissingRight.
+            IpcError::MissingRight
         );
     }
 
@@ -1108,10 +1262,12 @@ mod tests {
         // `stale_queue_state_reset_on_slot_reuse`. A cap whose underlying
         // notification was destroyed (and a new one re-allocated in the same
         // slot with a bumped generation) must make `ipc_notify` return
-        // `InvalidCapability` via the arena `get_mut(...).ok_or(...)` branch —
-        // the realistic adversarial case where the cap's rights check still
-        // passes but the handle is stale. The endpoint side already pins this;
-        // this closes the notification-side gap at the `ipc_notify` boundary.
+        // `StaleHandle` via the arena `get_mut(...).ok_or(...)` branch —
+        // the realistic adversarial case where the cap's rights/kind checks
+        // still pass but the handle is stale. The endpoint side already pins
+        // this; this closes the notification-side gap at the `ipc_notify`
+        // boundary. (Post-ADR-0030: this path now returns the granular
+        // `StaleHandle` rather than the former collapsed `InvalidCapability`.)
         let mut table = CapabilityTable::new();
         let mut notif_arena = NotificationArena::default();
 
@@ -1125,12 +1281,12 @@ mod tests {
 
         // The cap still satisfies the rights/kind check (it was minted with
         // NOTIFY), so the failure must come from the arena staleness lookup,
-        // not the rights gate — proving the `ok_or(InvalidCapability)` mapping
+        // not the rights gate — proving the `ok_or(StaleHandle)` mapping
         // at the IPC boundary fires. (No cap_drop is even needed to provoke it.)
         assert_eq!(
             ipc_notify(&mut notif_arena, notif_cap, &table, 0xFF).unwrap_err(),
-            IpcError::InvalidCapability,
-            "ipc_notify on a stale notification handle must return InvalidCapability"
+            IpcError::StaleHandle,
+            "ipc_notify on a stale notification handle must return StaleHandle"
         );
 
         // Re-allocating reuses the slot with a bumped generation; the stale
@@ -1138,7 +1294,7 @@ mod tests {
         let _new_handle = create_notification(&mut notif_arena, Notification::new(1)).unwrap();
         assert_eq!(
             ipc_notify(&mut notif_arena, notif_cap, &table, 0xFF).unwrap_err(),
-            IpcError::InvalidCapability,
+            IpcError::StaleHandle,
             "stale cap must still fail after the slot is reused by a new notification"
         );
     }
@@ -1428,7 +1584,8 @@ mod tests {
         let (_, ep_cap) = setup_ep(&mut table, &mut ep_arena, CapRights::SEND);
         assert_eq!(
             ipc_cancel_recv(&mut ep_arena, &mut queues, ep_cap, &table).unwrap_err(),
-            IpcError::InvalidCapability,
+            // Correct kind (endpoint), missing the RECV right → MissingRight.
+            IpcError::MissingRight,
         );
     }
 
@@ -1446,6 +1603,39 @@ mod tests {
 
         let outcome = ipc_recv(&mut ep_arena, &mut queues, ep_cap, &mut table).unwrap();
         assert!(matches!(outcome, RecvOutcome::Pending));
+    }
+
+    #[test]
+    fn cancel_recv_with_wrong_object_kind_returns_wrong_object_kind() {
+        // Symmetric to the send/recv wrong-kind tests: a Task cap (wrong kind)
+        // that also lacks RECV. Kind-first → WrongObjectKind; a rights-first
+        // order would return MissingRight, so this discriminates the ordering.
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let cap_h = table
+            .insert_root(Capability::new(CapRights::empty(), task_object(1)))
+            .unwrap();
+        assert_eq!(
+            ipc_cancel_recv(&mut ep_arena, &mut queues, cap_h, &table).unwrap_err(),
+            IpcError::WrongObjectKind
+        );
+    }
+
+    #[test]
+    fn cancel_recv_to_destroyed_endpoint_returns_stale_handle() {
+        // Arena-staleness path for cancel: the cap resolves with RECV, but its
+        // endpoint object was destroyed, so the arena `get` fails.
+        use crate::obj::endpoint::destroy_endpoint;
+        let mut table = CapabilityTable::new();
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let (ep_handle, ep_cap) = setup_ep(&mut table, &mut ep_arena, all_ep_rights());
+        destroy_endpoint(&mut ep_arena, ep_handle).unwrap();
+        assert_eq!(
+            ipc_cancel_recv(&mut ep_arena, &mut queues, ep_cap, &table).unwrap_err(),
+            IpcError::StaleHandle
+        );
     }
 
     // ── reset_if_stale_generation guard tests (T-011) ─────────────────────────

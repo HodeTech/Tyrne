@@ -201,6 +201,8 @@ Load a userspace binary into an address space. For B4 the binary is statically e
 
 Traps from EL0 into EL1 via `SVC` (or the chosen mechanism). Syscall dispatch validates the caller's capabilities. Establish the initial syscall set and the calling convention.
 
+**Status (2026-05-29): implementation in review.** [ADR-0030](../../decisions/0030-syscall-abi.md) (syscall ABI + the K2-5 `IpcError` taxonomy split) and [ADR-0031](../../decisions/0031-initial-syscall-set.md) (the five-syscall v1 set) are **Accepted**. **[T-020](../../analysis/tasks/phase-b/T-020-syscall-error-taxonomy.md)** (the `IpcError::InvalidCapability` → `StaleHandle`/`MissingRight`/`WrongObjectKind` split + `Capability`/`CapObject` `Debug` redaction — sub-breakdown §6) is **In Review**. **[T-021](../../analysis/tasks/phase-b/T-021-syscall-dispatch.md)** (the EL0→EL1 `SVC` trap trampoline + panic-free dispatcher + copy-from/to-user + the debug-console capability + `SyscallError` — sub-breakdown §§3–5 + 7) is **In Review** on branch `t-021-syscall-dispatch`: a new architecture-agnostic kernel `syscall` module + the BSP `SVC` sync trampoline (installed at `VBAR_EL1+0x200` and `+0x400`), exercised at B5 by an EL1 kernel-stub `SVC` (current-EL `+0x200` path) with all gates green (host tests 236; `test --release`; Miri clean; QEMU smoke shows the round-trip + `console_write` emitted bytes). The **real EL0 `+0x400` round-trip** is carried to B6 per the acceptance criteria below. Remaining after T-020/T-021 merge: the deferred [`task_create_from_image`](#milestone-b4--task-loader) wrapper, then B6.
+
 ### Sub-breakdown
 
 1. **ADR-0030 — Syscall ABI.** Register calling convention (which regs carry syscall number vs. arguments vs. return); maximum arg count; error-return convention (register + flag vs. `Result`-like encoding); asynchronous vs. synchronous semantics. **Bundle K2-5:** design the full userspace error taxonomy as part of this ADR — split `IpcError::InvalidCapability` into `StaleHandle` / `MissingRight` / `WrongObjectKind` (code review §Correctness IPC bullet 4) so the syscall error space and the in-kernel error space agree from the start.
@@ -213,12 +215,12 @@ Traps from EL0 into EL1 via `SVC` (or the chosen mechanism). Syscall dispatch va
 
 ### Acceptance criteria
 
-- ADR-0030 and ADR-0031 Accepted.
-- Syscall entry works from EL0 back to EL1 and back; register state is preserved correctly.
-- Invalid syscalls (bad number, missing capability, out-of-bounds pointer) return typed errors without panicking.
-- Copy-from-user never dereferences raw user pointers outside the validated mapping.
-- `IpcError` variants are split per ADR-0030's taxonomy; all call sites and tests updated.
-- `Capability` `Debug` output redacts security-sensitive fields.
+- ✅ ADR-0030 and ADR-0031 Accepted (2026-05-29).
+- The syscall **dispatch mechanism** works and preserves register state: the dispatcher is installed at both the current-EL (`VBAR_EL1+0x200`) and lower-EL (`+0x400`) sync vectors, and the round-trip is exercised at B5 via an **EL1 kernel-stub `SVC`** that takes the current-EL `0x200` vector (per [ADR-0030 §Simulation](../../decisions/0030-syscall-abi.md#simulation), an `SVC` issued at EL1 cannot take the lower-EL vector). The **real EL0 round-trip through the `0x400` vector** — with the EL0↔EL1 privilege transition and copy-user against a separate userspace `TTBR0_EL1` — requires kernel mappings in the userspace AS + an EL0 context register file (gated on the ADR-0033 high-half placeholder) and is therefore a **B6 acceptance criterion**, not B5. *(Done — T-021; the `0x200` proxy round-trip is QEMU-smoke-verified, the `0x400` handler is installed but its runtime exercise is B6's.)*
+- Invalid syscalls (bad number, missing/stale/wrong-kind capability, out-of-bounds pointer) return typed errors without panicking; every object-naming syscall performs a capability check (P1/P4). *(Done — T-021.)*
+- Copy-from-user never dereferences raw user pointers outside the validated mapping. *(Done — T-021.)*
+- `IpcError` variants are split per ADR-0030's taxonomy (`StaleHandle` / `WrongObjectKind` / `MissingRight`); all call sites and tests updated. *(Done — T-020.)*
+- `Capability` (and `CapObject`) `Debug` output redacts the named kernel object. *(Done — T-020.)*
 
 ### Flags to resolve during B5
 
@@ -244,10 +246,21 @@ A real userspace task, loaded by B4, running in EL0 in its own address space, ma
 ### Acceptance criteria
 
 - Userspace "hello from userspace" appears on the serial console after the kernel's greeting.
+- **The real EL0→EL1 syscall round-trip is exercised at runtime** (carried over from B5): a true EL0 task takes the lower-EL sync vector (`VBAR_EL1+0x400`), the dispatcher copies the `console_write` buffer from the userspace `TTBR0_EL1` address space, and `ERET` returns to EL0 — the half B5's EL1 kernel-stub proxy could not prove (see [ADR-0030 §Simulation](../../decisions/0030-syscall-abi.md#simulation)).
 - Userspace can call `task_exit` cleanly; the kernel reports task termination.
 - Guide: `docs/guides/first-userspace.md` committed.
 - Performance review recording IPC round-trip and context-switch numbers against the A6 baseline.
 - Business review recording Phase B retrospective.
+
+### T-021 carry-forward gates (must close *before* a real EL0 task runs)
+
+The [T-021](../../analysis/tasks/phase-b/T-021-syscall-dispatch.md) review-round (2026-05-29) confirmed **no live B5 defect** but identified three forward-gates that the B5 EL1-kernel-stub proxy did not need and that B6 **must** close when it wires the first real EL0 task. They are intentionally B6 work; tracked here so they are not missed:
+
+1. 🚩 **`console_write` user-window + deref (the single most important gate).** In B5 the window is the whole identity-mapped RAM extent and the copy is a direct int-to-pointer deref ([`bsp-qemu-virt/src/syscall.rs`](../../../bsp-qemu-virt/src/syscall.rs) `SYSCALL_USER_WINDOW_LEN`) — harmless because only the *trusted* EL1 stub calls it, on the identity map. If B6 wires `syscall_entry` to a real EL0 task **unchanged**, an EL0 holder of a debug-console capability could read arbitrary kernel memory via `console_write(ptr)`. B6 must (a) derive a **per-task** window from the EL0 task's actually-mapped region (not the RAM extent) and (b) replace the int-to-pointer deref with a per-page user-VA → kernel-VA translation (the forward path documented in [`user_access.rs`](../../../kernel/src/syscall/user_access.rs) module docs + [`crate::mm::phys_frame_kernel_ptr`](../../../kernel/src/mm/mod.rs)). **The window/translation failure must return `SyscallError::FaultAddress`, never panic** (the panic-free contract holds across the migration).
+2. 🚩 **`SP_EL1` initialisation for the `+0x400` entry.** The sync trampoline's first `sub sp, sp, #272` runs on `SP_EL1`, which the CPU does **not** auto-initialise on an EL0→EL1 trap. B6's per-task EL0 context-init must set `SP_EL1` to a valid kernel stack before any EL0 task is schedulable (and should assert it). Subsumed by the "EL0-ready context register file" work (ADR-0033 placeholder) but named here explicitly.
+3. 🚩 **`SYSCALL_STUB_TABLE` → scheduler current-task table.** `syscall_entry` resolves capabilities in the dedicated kernel-stub table in B5; B6 must swap it for the *running EL0 task's* capability table (looked up from the scheduler's current task). Fail-closed if forgotten (handles resolve to `InvalidHandle`, never over-grant), but functionally required for a real task to name its own caps.
+
+Two further hazards are later-phase (already tracked, not B6): `ipc_send`'s `unreachable!()` becomes a release panic-from-userspace only under **preemption/SMP** (harden to `Err(QueueFull)` when preemption lands — ADR-0032 / note C3-009); and **fault containment** for an EL0 non-`SVC` sync fault (illegal instruction, unmapped deref) is Phase E / flag K3-4 (the dispatcher itself is already panic-free).
 
 ### Flags to resolve during B6
 

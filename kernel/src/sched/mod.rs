@@ -371,12 +371,16 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         caller_table: &CapabilityTable,
         ep_cap: CapHandle,
     ) -> Result<EndpointHandle, SchedError> {
+        // Resolve → type-check, mapping each failure to ADR-0030's granular
+        // variant: a missing handle is `StaleHandle`, a non-endpoint object is
+        // `WrongObjectKind`. (The rights check lives inside `ipc_send` /
+        // `ipc_recv`, which surface `MissingRight`.)
         let cap = caller_table
             .lookup(ep_cap)
-            .map_err(|_| SchedError::Ipc(IpcError::InvalidCapability))?;
+            .map_err(|_| SchedError::Ipc(IpcError::StaleHandle))?;
         match cap.object() {
             CapObject::Endpoint(h) => Ok(h),
-            _ => Err(SchedError::Ipc(IpcError::InvalidCapability)),
+            _ => Err(SchedError::Ipc(IpcError::WrongObjectKind)),
         }
     }
 
@@ -1232,9 +1236,10 @@ pub unsafe fn ipc_recv_and_yield<C: ContextSwitch + Cpu>(
         // `Idle → RecvWaiting` transition so the caller observes the
         // same endpoint state it had before the bridge was called.
         // Phase 1 just validated `ep_cap` with RECV; the cancel cannot
-        // surface a new InvalidCapability under v1's single-thread
-        // cooperative invariant, so the result is asserted in debug
-        // and discarded in release.
+        // surface a new capability error (the ADR-0030 split variants
+        // StaleHandle / WrongObjectKind / MissingRight) under v1's
+        // single-thread cooperative invariant, so the result is asserted
+        // in debug and discarded in release.
         // SAFETY: caller contract — `ep_arena`, `queues`, `caller_table`
         // valid + distinct for this momentary block; `ep_arena` and
         // `queues` are exclusively owned (`&mut` reborrows below),
@@ -2790,8 +2795,9 @@ mod tests {
     fn ipc_send_and_yield_send_error_preserves_scheduler_state() {
         // Setup: h0 (current), h1 (Ready in queue). The endpoint cap
         // grants RECV but not SEND, so `ipc_send` fails its rights check
-        // with `IpcError::InvalidCapability`. The bridge must surface
-        // this typed error and leave the scheduler exactly as it was.
+        // with `IpcError::MissingRight` (ADR-0030: correct kind, missing
+        // right). The bridge must surface this typed error and leave the
+        // scheduler exactly as it was.
         // Symmetric to T-007's `ipc_recv_and_yield_returns_deadlock_…`
         // state-restore guarantee.
         let cpu = FakeCpu::new();
@@ -2859,8 +2865,8 @@ mod tests {
         };
 
         assert!(
-            matches!(result, Err(SchedError::Ipc(IpcError::InvalidCapability))),
-            "expected Err(Ipc(InvalidCapability)), got {result:?}"
+            matches!(result, Err(SchedError::Ipc(IpcError::MissingRight))),
+            "expected Err(Ipc(MissingRight)), got {result:?}"
         );
         // Scheduler state must be untouched.
         assert_eq!(sched.current, prior_current);

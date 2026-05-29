@@ -33,6 +33,10 @@
 //!   ADR-0028) with its `cap_map` / `cap_unmap` wrappers.
 //! - [`sched`] — cooperative scheduler (Phase A5 / [T-004]): bounded FIFO
 //!   ready queue, per-task state, and IPC bridge.
+//! - [`syscall`] — the EL0→EL1 syscall boundary's kernel-side half (Phase B5 /
+//!   [T-021]): the panic-free dispatcher, the register ABI (ADR-0030), the v1
+//!   syscall set (ADR-0031), and validated copy-from/to-user. The hardware
+//!   trap trampoline lives in the BSP.
 //!
 //! [T-001]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-001-capability-table-foundation.md
 //! [T-002]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-a/T-002-kernel-object-storage.md
@@ -41,6 +45,7 @@
 //! [T-017]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-017-physical-memory-manager.md
 //! [T-018]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-018-address-space-kernel-object.md
 //! [T-019]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
+//! [T-021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
 
 #![cfg_attr(not(test), no_std)]
 // Kernel-specific stricter lints — these layer onto `[workspace.lints]`
@@ -65,3 +70,4 @@ pub mod ipc;
 pub mod mm;
 pub mod obj;
 pub mod sched;
+pub mod syscall;
