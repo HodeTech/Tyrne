@@ -190,7 +190,7 @@ Properties the boot flow maintains. These are the claims a reader can rely on an
 - **EL3 → EL2 → EL1 chain.** v1 hardware targets do not boot at EL3; if a future BSP requires it, a follow-up task adds the EL3→EL2 transition on top of the existing EL2→EL1 logic per ADR-0024 §Open questions.
 - **DTB parsing and `BootInfo`.** The kernel's typed boot-info contract, probably introduced with Pi 4 support.
 - **Multi-core start.** PSCI `CPU_ON` for secondary cores.
-- **High-half kernel migration.** v1 maps the kernel identity-only via `TTBR0_EL1`; the future ADR-0033 placeholder (per [ADR-0027 §Decision outcome (a)](../decisions/0027-kernel-virtual-memory-layout.md)) introduces the high-half mapping when B5 surfaces the per-task `TTBR0_EL1` swap.
+- **High-half kernel migration.** v1 maps the kernel identity-only via `TTBR0_EL1`; the future ADR-0033 placeholder (per [ADR-0027 §Decision outcome (a)](../decisions/0027-kernel-virtual-memory-layout.md)) introduces the high-half mapping when B6 surfaces the per-task `TTBR0_EL1` swap (B5 closed without it).
 - **Guard-page stacks.** With the MMU now active (T-016), guard-page stacks become reachable — pending a follow-on B-phase task that remaps a stack region's bottom page as invalid.
 - **Measured boot / attestation.** Hardware-dependent; deferred per [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md).
 

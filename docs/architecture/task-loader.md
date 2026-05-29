@@ -14,11 +14,11 @@ The loader is also the first runtime exerciser of three audit-log entries that p
 
 T-019 produces a [`LoadedImage`](../../kernel/src/obj/task_loader.rs) **descriptor**, not a `CapHandle{CapObject::Task(...)}` (a runnable task cap). The reasons are architectural, not implementation laziness:
 
-- The current [`Task`](../../kernel/src/obj/task.rs) struct carries `id: u32` + `address_space_handle: AddressSpaceHandle` only — there is **no** PC/SP context register file on it, so `ContextSwitch::init_context` cannot consume a `LoadedImage` until B5 adds a per-task context surface.
-- The loader's new address space contains **only** the image + stack mappings. No kernel mappings are installed — an EL1 exception taken while the userspace AS is active would translation-fault on the kernel-side vector fetch. The kernel-in-userspace-AS problem is the future [ADR-0033 high-half migration placeholder](../decisions/0027-kernel-virtual-memory-layout.md)'s responsibility, gated on B5 surfacing per-task `TTBR0_EL1` swap.
+- The current [`Task`](../../kernel/src/obj/task.rs) struct carries `id: u32` + `address_space_handle: AddressSpaceHandle` only — there is **no** PC/SP context register file on it, so `ContextSwitch::init_context` cannot consume a `LoadedImage` until B6 adds a per-task EL0 context surface (B5 landed the syscall ABI, not the EL0 context).
+- The loader's new address space contains **only** the image + stack mappings. No kernel mappings are installed — an EL1 exception taken while the userspace AS is active would translation-fault on the kernel-side vector fetch. The kernel-in-userspace-AS problem is the future [ADR-0033 high-half migration placeholder](../decisions/0027-kernel-virtual-memory-layout.md)'s responsibility, gated on B6 surfacing per-task `TTBR0_EL1` swap (B5 closed via the syscall boundary without it — the real EL0 round-trip is B6).
 - The syscall entry path that lets a userspace task make its first kernel call is ADR-0030 / ADR-0031 work, also B5.
 
-The `task_create_from_image` wrapper that turns a `LoadedImage` into a runnable task cap lands with B5 (syscall ABI per ADR-0030) and B6 (first userspace "hello") per [phase-b §B4 §Revision-notes](../roadmap/phases/phase-b.md#milestone-b4--task-loader).
+The `task_create_from_image` wrapper that turns a `LoadedImage` into a runnable task cap lands with B6 (first userspace "hello"), building on B5's now-landed syscall ABI (ADR-0030 / ADR-0031), per [phase-b §B4 §Revision-notes](../roadmap/phases/phase-b.md#milestone-b4--task-loader).
 
 ## Pipeline (one §Simulation row at a time)
 
