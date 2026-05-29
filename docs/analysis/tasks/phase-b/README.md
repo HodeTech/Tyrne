@@ -19,7 +19,7 @@ Tasks belonging to [Phase B — Real userspace](../../../roadmap/phases/phase-b.
 | [T-017](T-017-physical-memory-manager.md) | Physical Memory Manager (PMM): bitmap allocator + reservation tracking + `FrameProvider` impl (implements ADR-0035) | B3 | Done (2026-05-10) |
 | [T-018](T-018-address-space-kernel-object.md) | `AddressSpace` kernel object + capability-gated `Mmu::map`/`unmap` wrappers + activation-on-context-switch (implements ADR-0028) | B3 | Done (2026-05-11; live on `main` 2026-05-14 via PR #28) |
 | [T-019](T-019-task-loader.md) | Task loader: embedded raw-flat userspace image → `LoadedImage` metadata (implements ADR-0029) | B4 | Done (2026-05-16 via PR #31 merge) |
-| [T-020](T-020-syscall-error-taxonomy.md) | Syscall error taxonomy: split `IpcError::InvalidCapability` + redact `Capability` `Debug` (implements ADR-0030 K2-5 / K3-9) | B5 | In Progress |
+| [T-020](T-020-syscall-error-taxonomy.md) | Syscall error taxonomy: split `IpcError::InvalidCapability` + redact `Capability`/`CapObject` `Debug` (implements ADR-0030 K2-5 / K3-9) | B5 | In Review |
 | [T-021](T-021-syscall-dispatch.md) | EL0→EL1 `SVC` dispatch: trap trampoline + panic-free dispatcher + copy-from/to-user (implements ADR-0030 / ADR-0031) | B5 | Ready |
 
 Tasks are added here as they become active. See [`../../../roadmap/phases/phase-b.md`](../../../roadmap/phases/phase-b.md) for the full phase plan.

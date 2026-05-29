@@ -214,11 +214,11 @@ Traps from EL0 into EL1 via `SVC` (or the chosen mechanism). Syscall dispatch va
 ### Acceptance criteria
 
 - ADR-0030 and ADR-0031 Accepted.
-- Syscall entry works from EL0 back to EL1 and back; register state is preserved correctly.
-- Invalid syscalls (bad number, missing capability, out-of-bounds pointer) return typed errors without panicking.
+- The syscall **dispatch mechanism** works and preserves register state: the dispatcher is installed at both the current-EL (`VBAR_EL1+0x200`) and lower-EL (`+0x400`) sync vectors, and the round-trip is exercised at B5 via an **EL1 kernel-stub `SVC`** that takes the current-EL `0x200` vector (per [ADR-0030 §Simulation](../../decisions/0030-syscall-abi.md#simulation), an `SVC` issued at EL1 cannot take the lower-EL vector). The **real EL0 round-trip through the `0x400` vector** — with the EL0↔EL1 privilege transition and copy-user against a separate userspace `TTBR0_EL1` — requires kernel mappings in the userspace AS + an EL0 context register file (gated on the ADR-0033 high-half placeholder) and is therefore a **B6 acceptance criterion**, not B5.
+- Invalid syscalls (bad number, missing/stale/wrong-kind capability, out-of-bounds pointer) return typed errors without panicking; every object-naming syscall performs a capability check (P1/P4).
 - Copy-from-user never dereferences raw user pointers outside the validated mapping.
-- `IpcError` variants are split per ADR-0030's taxonomy; all call sites and tests updated.
-- `Capability` `Debug` output redacts security-sensitive fields.
+- `IpcError` variants are split per ADR-0030's taxonomy (`StaleHandle` / `WrongObjectKind` / `MissingRight`); all call sites and tests updated. *(Done — T-020.)*
+- `Capability` (and `CapObject`) `Debug` output redacts the named kernel object. *(Done — T-020.)*
 
 ### Flags to resolve during B5
 
@@ -244,6 +244,7 @@ A real userspace task, loaded by B4, running in EL0 in its own address space, ma
 ### Acceptance criteria
 
 - Userspace "hello from userspace" appears on the serial console after the kernel's greeting.
+- **The real EL0→EL1 syscall round-trip is exercised at runtime** (carried over from B5): a true EL0 task takes the lower-EL sync vector (`VBAR_EL1+0x400`), the dispatcher copies the `console_write` buffer from the userspace `TTBR0_EL1` address space, and `ERET` returns to EL0 — the half B5's EL1 kernel-stub proxy could not prove (see [ADR-0030 §Simulation](../../decisions/0030-syscall-abi.md#simulation)).
 - Userspace can call `task_exit` cleanly; the kernel reports task termination.
 - Guide: `docs/guides/first-userspace.md` committed.
 - Performance review recording IPC round-trip and context-switch numbers against the A6 baseline.
