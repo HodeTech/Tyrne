@@ -4,7 +4,7 @@ This file is the entry point for Claude-based AI agents (Claude Code, Claude API
 
 ## What this project is
 
-Tyrne is a **capability-based microkernel** written in Rust, in the lineage of seL4 and Hubris. The project is **pre-alpha**, but implementation is well underway: the kernel boots end-to-end on QEMU `virt` aarch64 and runs a two-task capability-gated IPC demo. The project is **mid-Phase B** — the MMU, PMM, address-space objects, and task loader (load half) are done; the syscall ABI and first userspace task are next. Architecture is documented as Architecture Decision Records (see the [ADR index](docs/decisions/README.md)); active implementation work lives under `kernel/`, `hal/`, and `bsp-qemu-virt/`. Primary development target is QEMU `virt` on aarch64; first real hardware target is the Raspberry Pi 4.
+Tyrne is a **capability-based microkernel** written in Rust, in the lineage of seL4 and Hubris. The project is **pre-alpha**, but implementation is well underway: the kernel boots end-to-end on QEMU `virt` aarch64 and runs a two-task capability-gated IPC demo. The project is **mid-Phase B** — the MMU, PMM, address-space objects, task loader (load half), and the syscall boundary (the EL0→EL1 ABI + panic-free dispatcher) are done; the first userspace task running in EL0 is next. Architecture is documented as Architecture Decision Records (see the [ADR index](docs/decisions/README.md)); active implementation work lives under `kernel/`, `hal/`, and `bsp-qemu-virt/`. Primary development target is QEMU `virt` on aarch64; first real hardware target is the Raspberry Pi 4.
 
 See [README.md](README.md) for the public overview.
 

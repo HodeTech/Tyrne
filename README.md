@@ -26,8 +26,8 @@ The kernel boots end-to-end on QEMU `virt` aarch64 today, runs a capability-gate
 | Physical Memory Manager | **Done** — bitmap allocator with zero-fill on `alloc_frame` and three-stage validation on `free_frame`. |
 | Per-task `AddressSpace` kernel object | **Done** — cap-gated `cap_create_address_space` / `cap_map` / `cap_unmap`. |
 | Task loader (load half) | **Done** — `load_image` produces a `LoadedImage` describing a populated address space for a `.rodata`-resident raw-flat blob. |
-| Syscall ABI + EL0 entry | **Next** — Phase B5; will turn `LoadedImage` into a runnable `Task`. |
-| First userspace "hello" | **Planned** — Phase B6. |
+| Syscall ABI + dispatcher | **Done** — Phase B5; `SVC` trap → panic-free dispatcher → typed `SyscallError`; five-syscall v1 set; capability-gated `console_write` (debug-gated); validated copy-from/to-user. |
+| First userspace "hello" (EL0) | **Next** — Phase B6; turns `LoadedImage` into a runnable EL0 `Task` and exercises the real EL0↔EL1 round-trip. |
 
 The active task and its current state live in [`docs/roadmap/current.md`](docs/roadmap/current.md).
 Full phase plans are under [`docs/roadmap/phases/`](docs/roadmap/phases/).
