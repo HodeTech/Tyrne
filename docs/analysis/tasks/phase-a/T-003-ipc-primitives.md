@@ -19,7 +19,7 @@ As the Tyrne kernel, I want synchronous rendezvous `send` / `recv` operations on
 
 [T-002](T-002-kernel-object-storage.md) delivered the kernel-object storage layer: `Endpoint` and `Notification` live in bounded arenas, capabilities name them through typed handles, and the create / destroy lifecycle is explicit. What the A3 objects lack is *behaviour*: an `Endpoint` has waiter-queue placeholder fields but no `send` or `recv` logic; a `Notification` can set and consume bits but has no `notify` or `wait` path.
 
-T-003 wires the behaviour. The design decisions — pure rendezvous vs. rendezvous + reply-recv fastpath, blocking semantics, message format, whether badges are needed in v1 — are delegated to [ADR-0017](../../../decisions/0017-ipc-primitive-set.md) (and conditionally [ADR-0018](../../../decisions/0018-badge-scheme.md)). ADR-0017 must be Accepted before any implementation code lands.
+T-003 wires the behaviour. The design decisions — pure rendezvous vs. rendezvous + reply-recv fastpath, blocking semantics, message format, whether badges are needed in v1 — are delegated to [ADR-0017](../../../decisions/0017-ipc-primitive-set.md) (and conditionally [ADR-0018](../../../decisions/0018-badge-scheme-and-reply-recv-deferral.md)). ADR-0017 must be Accepted before any implementation code lands.
 
 **Scope constraint.** Phase A still has no real scheduler: tasks are kernel-level stubs without context switching. A4 must therefore implement IPC *without* a live scheduler: blocking is represented as a wait-queue that the scheduler (A5) will drain, but in A4 host tests the "block" state is exercised by constructing two task stubs that hand-deliver to each other. The scheduler integration happens in A5, not here.
 
@@ -81,7 +81,7 @@ Design is pinned in ADR-0017. At a sketch level:
 
 - [ADR-0016: Kernel object storage](../../../decisions/0016-kernel-object-storage.md) — the A3 foundation this task extends.
 - [ADR-0017: IPC primitive set](../../../decisions/0017-ipc-primitive-set.md) — Accepted 2026-04-21.
-- [ADR-0018: Badge scheme](../../../decisions/0018-badge-scheme.md) — deferred; see ADR-0017 §"Open questions" for the deferral rationale and revisit trigger.
+- [ADR-0018: Badge scheme](../../../decisions/0018-badge-scheme-and-reply-recv-deferral.md) — deferred; see ADR-0017 §"Open questions" for the deferral rationale and revisit trigger.
 - [Phase A plan](../../../roadmap/phases/phase-a.md) — A4 sub-breakdown and acceptance criteria.
 - [T-002](T-002-kernel-object-storage.md) — delivers the `Endpoint` and `Notification` objects this task wires up.
 - seL4 IPC model — synchronous rendezvous with capability transfer (prior art; badge scheme not adopted in v1).

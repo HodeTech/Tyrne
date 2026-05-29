@@ -81,7 +81,7 @@ Design is delegated to ADR-0019 and ADR-0020. At a sketch level:
 
 - [ADR-0017: IPC primitive set](../../../decisions/0017-ipc-primitive-set.md) — Accepted; A5 wires its blocking semantics to the scheduler.
 - [ADR-0019: Scheduler shape](../../../decisions/0019-scheduler-shape.md) *(to be written before implementation)*.
-- [ADR-0020: Cpu trait v2 / context-switch extension](../../../decisions/0020-cpu-trait-v2.md) *(to be written before context-switch code lands)*.
+- [ADR-0020: Cpu trait v2 / context-switch extension](../../../decisions/0020-cpu-trait-v2-context-switch.md) *(to be written before context-switch code lands)*.
 - [Phase A plan](../../../roadmap/phases/phase-a.md) — A5 sub-breakdown and acceptance criteria.
 - [T-003](T-003-ipc-primitives.md) — delivers the IPC waiter states this task wires to the scheduler.
 - seL4 scheduler model — priority-based, cooperative within a priority band (prior art; full model deferred).

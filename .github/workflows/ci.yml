@@ -8,7 +8,8 @@
 #   - lint-and-host-test, kernel-build, host-stable-check  (fast lane)
 #   - miri                                                 (required, slow)
 # The `miri` job runs the host-test suite under Stacked Borrows; it is
-# slower (~10–15 min) but a Miri regression is a hard stop. The
+# slower (~1–2 min in practice on the current small suite; historically
+# budgeted at ~10–15 min) but a Miri regression is a hard stop. The
 # `coverage` job is INFORMATIONAL only (it sets `continue-on-error: true`)
 # and must NOT be added to the required-checks list until the post-T-011
 # flip removes that flag — see docs/guides/ci.md §"Branch protection".
@@ -182,7 +183,8 @@ jobs:
   # ─── Miri: aliasing validation ──────────────────────────────────────────
   # Runs the full host-test suite under Miri's Stacked Borrows checker
   # (see ADR-0021 / UNSAFE-2026-0014). Slower than the fast lane
-  # (~10–15 min) and requires nightly, so it runs as its own job. A
+  # (~1–2 min in practice; historically budgeted ~10–15 min) and requires
+# nightly, so it runs as its own job. A
   # Miri regression is a hard stop.
   miri:
     name: miri (Stacked Borrows)
