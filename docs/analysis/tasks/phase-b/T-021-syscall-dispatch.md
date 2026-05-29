@@ -5,7 +5,7 @@
 - **Status:** In Review
 - **Created:** 2026-05-29
 - **In Progress:** 2026-05-29
-- **In Review:** 2026-05-29
+- **In Review:** 2026-05-29 ([PR #34](https://github.com/HodeTech/Tyrne/pull/34), base `main`, branch `t-021-syscall-dispatch`; bundles T-020 + T-021 in one combined review per the maintainer's call)
 - **Author:** @cemililik (+ Claude Opus 4.8 agent)
 - **Dependencies:** [ADR-0030](../../../decisions/0030-syscall-abi.md) + [ADR-0031](../../../decisions/0031-initial-syscall-set.md) (both `Accepted`); [T-020](T-020-syscall-error-taxonomy.md) (the granular `IpcError` + redacted `Capability` `Debug` the dispatcher composes/relies on); [T-012](T-012-exception-and-irq-infrastructure.md) (the `VBAR_EL1` vector table the EL0-sync vector slots into); [T-013](T-013-el-drop-to-el1.md) (EL drop to EL1).
 - **Informs:** Closes [ADR-0030 §Dependency chain steps 2–5](../../../decisions/0030-syscall-abi.md#dependency-chain) and [ADR-0031 §Dependency chain steps 2–5](../../../decisions/0031-initial-syscall-set.md#dependency-chain), and discharges every [ADR-0031 §Simulation](../../../decisions/0031-initial-syscall-set.md#simulation) row + [ADR-0030 §Simulation](../../../decisions/0030-syscall-abi.md#simulation) rows 0/1/2/4/5. Unblocks Phase B6 (first userspace "hello"); the deferred `task_create_from_image` wrapper ([phase-b §B4 §Revision-notes](../../../roadmap/phases/phase-b.md#milestone-b4--task-loader)) composes on top.
