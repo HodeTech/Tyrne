@@ -92,7 +92,7 @@ Milestone A4 builds the actual IPC paths against the `Endpoint` and `Notificatio
 
 ---
 
-## Milestone A4 — IPC primitives
+## Milestone A4 — IPC primitives ✓ (done 2026-04-21)
 
 Synchronous rendezvous endpoints and asynchronous notifications. Capability transfer with a message is atomic with delivery.
 
@@ -158,7 +158,7 @@ Milestone A6 integrates IPC + scheduling to demonstrate Phase A end-to-end.
 
 ---
 
-## Milestone A6 — Two-task IPC demo
+## Milestone A6 — Two-task IPC demo ✓ (done 2026-04-21)
 
 Integration: the kernel runs a deterministic two-task scenario where Task A sends a capability-gated message to Task B through an endpoint, B replies, and both exit cleanly.
 
