@@ -252,6 +252,16 @@ A real userspace task, loaded by B4, running in EL0 in its own address space, ma
 - Performance review recording IPC round-trip and context-switch numbers against the A6 baseline.
 - Business review recording Phase B retrospective.
 
+### T-021 carry-forward gates (must close *before* a real EL0 task runs)
+
+The [T-021](../../analysis/tasks/phase-b/T-021-syscall-dispatch.md) review-round (2026-05-29) confirmed **no live B5 defect** but identified three forward-gates that the B5 EL1-kernel-stub proxy did not need and that B6 **must** close when it wires the first real EL0 task. They are intentionally B6 work; tracked here so they are not missed:
+
+1. 🚩 **`console_write` user-window + deref (the single most important gate).** In B5 the window is the whole identity-mapped RAM extent and the copy is a direct int-to-pointer deref ([`bsp-qemu-virt/src/syscall.rs`](../../../bsp-qemu-virt/src/syscall.rs) `SYSCALL_USER_WINDOW_LEN`) — harmless because only the *trusted* EL1 stub calls it, on the identity map. If B6 wires `syscall_entry` to a real EL0 task **unchanged**, an EL0 holder of a debug-console capability could read arbitrary kernel memory via `console_write(ptr)`. B6 must (a) derive a **per-task** window from the EL0 task's actually-mapped region (not the RAM extent) and (b) replace the int-to-pointer deref with a per-page user-VA → kernel-VA translation (the forward path documented in [`user_access.rs`](../../../kernel/src/syscall/user_access.rs) module docs + [`crate::mm::phys_frame_kernel_ptr`](../../../kernel/src/mm/mod.rs)). **The window/translation failure must return `SyscallError::FaultAddress`, never panic** (the panic-free contract holds across the migration).
+2. 🚩 **`SP_EL1` initialisation for the `+0x400` entry.** The sync trampoline's first `sub sp, sp, #272` runs on `SP_EL1`, which the CPU does **not** auto-initialise on an EL0→EL1 trap. B6's per-task EL0 context-init must set `SP_EL1` to a valid kernel stack before any EL0 task is schedulable (and should assert it). Subsumed by the "EL0-ready context register file" work (ADR-0033 placeholder) but named here explicitly.
+3. 🚩 **`SYSCALL_STUB_TABLE` → scheduler current-task table.** `syscall_entry` resolves capabilities in the dedicated kernel-stub table in B5; B6 must swap it for the *running EL0 task's* capability table (looked up from the scheduler's current task). Fail-closed if forgotten (handles resolve to `InvalidHandle`, never over-grant), but functionally required for a real task to name its own caps.
+
+Two further hazards are later-phase (already tracked, not B6): `ipc_send`'s `unreachable!()` becomes a release panic-from-userspace only under **preemption/SMP** (harden to `Err(QueueFull)` when preemption lands — ADR-0032 / note C3-009); and **fault containment** for an EL0 non-`SVC` sync fault (illegal instruction, unmapped deref) is Phase E / flag K3-4 (the dispatcher itself is already panic-free).
+
 ### Flags to resolve during B6
 
 - 🚩 **CI rollout (K3-7).** If a CI pipeline exists by B6, wire the QEMU smoke as a regression gate (`qemu-system-aarch64 ... | grep "all tasks complete"`). If CI is still absent, defer to Phase C.

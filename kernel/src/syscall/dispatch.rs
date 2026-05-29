@@ -127,7 +127,7 @@ fn sys_send(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallReturn {
         msg,
         transfer,
     ) {
-        Ok(outcome) => SyscallReturn::ok().with_payload(0, encode_send_outcome(outcome)),
+        Ok(outcome) => SyscallReturn::ok().with_payload::<0>(encode_send_outcome(outcome)),
         Err(e) => SyscallReturn::error(SyscallError::from(e)),
     }
 }
@@ -181,15 +181,24 @@ fn sys_console_write(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallRet
         return SyscallReturn::error(SyscallError::from(e));
     }
 
-    // Validate the whole range up front so a faulting buffer emits *nothing*
+    // Validate the WHOLE range up front so a faulting buffer emits *nothing*
     // (no partial output before the fault is detected).
     if let Err(e) = ctx.user_window.validate(ptr, len) {
         return SyscallReturn::error(e);
     }
 
-    // Copy + emit in bounded chunks. Each chunk's range is a sub-range of the
-    // already-validated whole, so `copy_from_user`'s re-validation always
-    // passes; its error arm is handled for type honesty but is unreachable here.
+    // Copy + emit in bounded chunks through a kernel stack buffer.
+    //
+    // Unreachability of the three defensive error arms below (kept for totality,
+    // never hit on this path): the up-front `validate(ptr, len)` proved that
+    // `ptr + len` does not overflow `usize` AND that `[ptr, ptr + len)` is wholly
+    // inside the active window. The loop invariant `0 <= offset < len` then gives
+    // `ptr + offset <= ptr + len` (no overflow → `checked_add` is `Some`) and
+    // `[chunk_ptr, chunk_ptr + chunk) ⊆ [ptr, ptr + len)` (a sub-range of the
+    // validated whole → `copy_from_user`'s re-validation is `Ok`), and
+    // `offset + chunk <= len` (no overflow → `checked_add` is `Some`). The arms
+    // exist only so the function is total even if a future refactor weakens the
+    // up-front check.
     let mut buf = [0u8; CONSOLE_WRITE_CHUNK];
     let mut offset: usize = 0;
     while offset < len {
@@ -198,8 +207,6 @@ fn sys_console_write(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallRet
         let remaining = len.wrapping_sub(offset);
         let chunk = core::cmp::min(remaining, CONSOLE_WRITE_CHUNK);
         let Some(chunk_ptr) = ptr.checked_add(offset) else {
-            // Unreachable: the up-front validate proved ptr + len did not wrap,
-            // and offset < len. Defensive fault keeps the path total.
             return SyscallReturn::error(SyscallError::FaultAddress);
         };
         if let Err(e) = copy_from_user(&ctx.user_window, chunk_ptr, &mut buf[..chunk]) {
@@ -207,14 +214,13 @@ fn sys_console_write(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallRet
         }
         ctx.console.write_bytes(&buf[..chunk]);
         let Some(next) = offset.checked_add(chunk) else {
-            // Unreachable: offset + chunk <= len <= the validated end. Defensive.
             return SyscallReturn::error(SyscallError::FaultAddress);
         };
         offset = next;
     }
 
     // x1 = bytes written (all of them, on success).
-    SyscallReturn::ok().with_payload(0, len as u64)
+    SyscallReturn::ok().with_payload::<0>(len as u64)
 }
 
 /// Validate that `cons_cap` authorises a console write: it must resolve in the
@@ -258,11 +264,12 @@ fn validate_debug_console_cap(
 mod tests {
     use super::{dispatch, SyscallContext, CONSOLE_WRITE_CHUNK};
     use crate::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
+    use crate::ipc::IpcError;
     use crate::ipc::IpcQueues;
     use crate::obj::endpoint::{create_endpoint, Endpoint, EndpointArena};
     use crate::syscall::abi::{
-        encode_cap_handle, SyscallArgs, SyscallEffect, SyscallNumber, RECV_OUTCOME_RECEIVED,
-        SEND_OUTCOME_ENQUEUED,
+        decode_cap_handle, encode_cap_handle, SyscallArgs, SyscallEffect, SyscallNumber,
+        NULL_CAP_HANDLE, RECV_OUTCOME_PENDING, RECV_OUTCOME_RECEIVED, SEND_OUTCOME_ENQUEUED,
     };
     use crate::syscall::error::SyscallError;
     use crate::syscall::user_access::UserAccessWindow;
@@ -510,6 +517,202 @@ mod tests {
             }
             other => panic!("expected Resume(Received), got {other:?}"),
         }
+    }
+
+    // ── review-round follow-up: end-to-end transfer + Pending + chunk boundary ─
+    //
+    // These close the dispatch-level coverage gaps the T-021 review-round
+    // surfaced: the transfer-cap wiring (x5 decode → ipc_send cap_take, and
+    // ipc_recv install → x6 pack) had no through-dispatch test, nor did the
+    // RecvOutcome::Pending register packing or the exact one-chunk boundary.
+
+    #[test]
+    fn send_with_transfer_cap_then_recv_returns_cap_in_x6() {
+        // Exercises the x5 transfer-handle decode → `ipc_send` `cap_take` AND the
+        // `ipc_recv` → `encode_recv_outcome` x6 cap-pack, end-to-end through
+        // `dispatch` — wiring no existing dispatch test covered (every other send
+        // test passes the null sentinel; the recv test never asserts x6).
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new();
+        // ep1: the comm endpoint (SEND|RECV). ep2: the object whose cap we move.
+        let ep1 = create_endpoint(&mut ep_arena, Endpoint::new(0)).unwrap();
+        let ep2 = create_endpoint(&mut ep_arena, Endpoint::new(1)).unwrap();
+        let ep_cap = table
+            .insert_root(Capability::new(
+                CapRights::SEND | CapRights::RECV,
+                CapObject::Endpoint(ep1),
+            ))
+            .unwrap();
+        // The transferred cap needs the TRANSFER right (ipc_send enforces it).
+        let xfer_cap = table
+            .insert_root(Capability::new(
+                CapRights::TRANSFER,
+                CapObject::Endpoint(ep2),
+            ))
+            .unwrap();
+        let console = FakeConsole::new();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+        };
+        let ep_word = encode_cap_handle(Some(ep_cap));
+
+        // send with the transfer handle in x5.
+        let send_effect = dispatch(
+            &mut ctx,
+            call(
+                SyscallNumber::Send,
+                [ep_word, 0x77, 0, 0, 0, encode_cap_handle(Some(xfer_cap))],
+            ),
+        );
+        assert!(
+            matches!(send_effect, SyscallEffect::Resume(r) if r.status == 0),
+            "send-with-transfer must succeed, got {send_effect:?}"
+        );
+        // The transferred cap left the sender's table (cap_take).
+        assert!(
+            ctx.caller_table.lookup(xfer_cap).is_err(),
+            "transferred cap must be taken out of the sender's table"
+        );
+
+        // recv collects the message AND the transferred cap (x6).
+        let recv_effect = dispatch(
+            &mut ctx,
+            call(SyscallNumber::Recv, [ep_word, 0, 0, 0, 0, 0]),
+        );
+        let SyscallEffect::Resume(r) = recv_effect else {
+            panic!("expected Resume from recv, got {recv_effect:?}");
+        };
+        assert_eq!(r.status, 0);
+        assert_eq!(r.payload[0], RECV_OUTCOME_RECEIVED); // x1
+        assert_eq!(r.payload[1], 0x77); // x2 label
+                                        // x6 carries the transferred cap as a non-null handle that resolves.
+        assert_ne!(r.payload[5], NULL_CAP_HANDLE, "x6 must carry a real handle");
+        let received = decode_cap_handle(r.payload[5]).expect("x6 decodes to Some(handle)");
+        assert!(
+            ctx.caller_table.lookup(received).is_ok(),
+            "the transferred cap must be installed in the receiver's table"
+        );
+    }
+
+    #[test]
+    fn send_with_stale_transfer_handle_returns_invalid_transfer_cap() {
+        // A valid endpoint cap but a transfer handle (x5) that resolves to
+        // nothing: `ipc_send`'s transfer pre-flight returns `InvalidTransferCap`,
+        // composing into `SyscallError::Ipc(InvalidTransferCap)` (status 0x205).
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new();
+        let ep = create_endpoint(&mut ep_arena, Endpoint::new(0)).unwrap();
+        let ep_cap = table
+            .insert_root(Capability::new(CapRights::SEND, CapObject::Endpoint(ep)))
+            .unwrap();
+        let console = FakeConsole::new();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+        };
+        // x5 = a handle naming no live slot (index far past CAP_TABLE_CAPACITY).
+        let stale_xfer = encode_cap_handle(Some(CapHandle::from_raw(50, 7)));
+        let effect = dispatch(
+            &mut ctx,
+            call(
+                SyscallNumber::Send,
+                [encode_cap_handle(Some(ep_cap)), 0, 0, 0, 0, stale_xfer],
+            ),
+        );
+        match effect {
+            SyscallEffect::Resume(r) => assert_eq!(
+                r.status,
+                SyscallError::Ipc(IpcError::InvalidTransferCap).as_status()
+            ),
+            other => panic!("expected Resume(InvalidTransferCap), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn recv_with_no_sender_returns_pending_packing() {
+        // recv on an endpoint with no waiting sender returns RecvOutcome::Pending:
+        // status Ok, x1 = pending code, x2..x7 zeroed (deterministic).
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new();
+        let ep = create_endpoint(&mut ep_arena, Endpoint::new(0)).unwrap();
+        let ep_cap = table
+            .insert_root(Capability::new(CapRights::RECV, CapObject::Endpoint(ep)))
+            .unwrap();
+        let console = FakeConsole::new();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+        };
+        let effect = dispatch(
+            &mut ctx,
+            call(
+                SyscallNumber::Recv,
+                [encode_cap_handle(Some(ep_cap)), 0, 0, 0, 0, 0],
+            ),
+        );
+        let SyscallEffect::Resume(r) = effect else {
+            panic!("expected Resume(Pending), got {effect:?}");
+        };
+        assert_eq!(r.status, 0);
+        assert_eq!(r.payload[0], RECV_OUTCOME_PENDING); // x1
+        assert_eq!(
+            &r.payload[1..],
+            &[0, 0, 0, 0, 0, 0],
+            "x2..x7 must be zeroed on Pending"
+        );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)] // console_write number 5 is debug-gated
+    fn console_write_exactly_one_chunk_emits_all_bytes() {
+        // Boundary: len == CONSOLE_WRITE_CHUNK exercises the `offset < len` loop
+        // termination exactly — one chunk, then offset == len, no spurious extra
+        // chunk / off-by-one.
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let (mut table, cons_cap) = table_with_console_cap();
+        let console = FakeConsole::new();
+        let backing: Vec<u8> = (0..CONSOLE_WRITE_CHUNK).map(|i| (i % 251) as u8).collect();
+        let base = backing.as_ptr() as usize;
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::new(base, backing.len()),
+        };
+        let effect = dispatch(
+            &mut ctx,
+            call(
+                SyscallNumber::ConsoleWrite,
+                [
+                    encode_cap_handle(Some(cons_cap)),
+                    base as u64,
+                    backing.len() as u64,
+                    0,
+                    0,
+                    0,
+                ],
+            ),
+        );
+        match effect {
+            SyscallEffect::Resume(r) => assert_eq!(r.payload[0], CONSOLE_WRITE_CHUNK as u64),
+            other => panic!("expected Resume(ok), got {other:?}"),
+        }
+        assert_eq!(console.captured(), backing);
     }
 
     // ── console_write: capability gate ───────────────────────────────────────

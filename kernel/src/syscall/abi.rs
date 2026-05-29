@@ -145,13 +145,20 @@ impl SyscallReturn {
         }
     }
 
-    /// Set payload word `x{idx + 1}` to `val`, returning the updated frame.
+    /// Set payload word `x{IDX + 1}` to `val`, returning the updated frame.
     ///
-    /// `idx` must be `< 7` (the seven payload registers `x1`–`x7`); callers in
-    /// this crate only ever pass small compile-time indices.
+    /// `IDX` is a **const generic** bounded to `0..7` (the seven payload
+    /// registers `x1`–`x7`) by the `const { assert!(IDX < 7) }` below: an
+    /// out-of-range index is a **compile error at the call site**, not a
+    /// runtime panic — so this builder cannot panic on any input, matching the
+    /// kernel's compile-time-guard discipline (cf. `SchedQueue::new`'s
+    /// `const { assert!(N > 0) }` and the `SyscallTrapFrame` `size_of` guard).
+    /// Every caller passes a literal `::<N>`, so the indexing is provably
+    /// in-bounds. (Closes the T-021 review-round nit on unchecked indexing.)
     #[must_use]
-    pub const fn with_payload(mut self, idx: usize, val: u64) -> Self {
-        self.payload[idx] = val;
+    pub const fn with_payload<const IDX: usize>(mut self, val: u64) -> Self {
+        const { assert!(IDX < 7, "SyscallReturn payload index must be < 7 (x1..x7)") };
+        self.payload[IDX] = val;
         self
     }
 }
@@ -272,13 +279,13 @@ pub const fn encode_send_outcome(outcome: SendOutcome) -> u64 {
 pub const fn encode_recv_outcome(outcome: RecvOutcome) -> SyscallReturn {
     match outcome {
         RecvOutcome::Received { msg, cap } => SyscallReturn::ok()
-            .with_payload(0, RECV_OUTCOME_RECEIVED) // x1
-            .with_payload(1, msg.label) // x2
-            .with_payload(2, msg.params[0]) // x3
-            .with_payload(3, msg.params[1]) // x4
-            .with_payload(4, msg.params[2]) // x5
-            .with_payload(5, encode_cap_handle(cap)), // x6
-        RecvOutcome::Pending => SyscallReturn::ok().with_payload(0, RECV_OUTCOME_PENDING),
+            .with_payload::<0>(RECV_OUTCOME_RECEIVED) // x1
+            .with_payload::<1>(msg.label) // x2
+            .with_payload::<2>(msg.params[0]) // x3
+            .with_payload::<3>(msg.params[1]) // x4
+            .with_payload::<4>(msg.params[2]) // x5
+            .with_payload::<5>(encode_cap_handle(cap)), // x6
+        RecvOutcome::Pending => SyscallReturn::ok().with_payload::<0>(RECV_OUTCOME_PENDING),
     }
 }
 
@@ -452,8 +459,15 @@ mod tests {
 
     #[test]
     fn syscall_return_with_payload_sets_indexed_word() {
-        let r = SyscallReturn::ok().with_payload(2, 0x99);
+        let r = SyscallReturn::ok().with_payload::<2>(0x99);
         assert_eq!(r.payload[2], 0x99);
         assert_eq!(r.status, 0);
+        // Builder chains compose; each `::<IDX>` is a compile-time-bounded index
+        // (an out-of-range `::<7>` would fail to compile, not panic).
+        let r2 = SyscallReturn::ok()
+            .with_payload::<0>(0x11)
+            .with_payload::<6>(0x77);
+        assert_eq!(r2.payload[0], 0x11);
+        assert_eq!(r2.payload[6], 0x77);
     }
 }
