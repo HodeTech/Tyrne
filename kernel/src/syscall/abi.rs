@@ -30,6 +30,19 @@ use super::error::SyscallError;
 /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
 pub const NULL_CAP_HANDLE: u64 = u64::MAX;
 
+// Lock the sentinel-collision-freedom invariant at compile time. `encode_cap_handle`
+// packs `(generation as u64) << 16 | (index as u64)`; with the current
+// `CapHandle` component widths (`generation: u32`, `index: u16`) the widest
+// packable word is `(u32::MAX << 16) | u16::MAX` = bits 0..48 set. The sentinel
+// (`u64::MAX`) sets bits 48..64, so the two can never collide. If a future
+// `CapHandle` widening (or a change to the packing shift) pushes a packed word
+// up to or past the sentinel, this assertion fails the build — so the
+// "sentinel can never alias a live handle" guarantee cannot regress silently.
+const _: () = assert!(
+    NULL_CAP_HANDLE > (((u32::MAX as u64) << 16) | (u16::MAX as u64)),
+    "NULL_CAP_HANDLE must exceed every packable CapHandle word (see encode_cap_handle)"
+);
+
 /// The v1 syscall set, decoded from the `x8` register, per [ADR-0031][adr-0031].
 ///
 /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md

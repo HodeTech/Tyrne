@@ -131,26 +131,35 @@ pub fn copy_from_user(
         // extent, so `user_ptr` is directly readable by kernel code at `VA == PA`
         // (the B6 forward path replaces this with a per-page translation — see
         // the module docs — without changing this call site's contract).
-        // (3) **Non-overlap + destination validity.** `dst` is a Rust slice
-        // (valid for `len` writes by the slice invariant); source and
-        // destination are disjoint regions (user buffer vs. kernel-owned
-        // `dst`), so `copy_nonoverlapping`'s non-overlap precondition holds.
+        // (3) **Destination validity, overlap-tolerant.** `dst` is a Rust
+        // slice (valid for `len` writes by the slice invariant). The move uses
+        // `core::ptr::copy` (memmove semantics) — **not**
+        // `copy_nonoverlapping` — so it is correct even if the user range and
+        // `dst` alias: `validate` proves *bounds*, not *disjointness*, and
+        // under the v1 identity map (`VA == PA`) a careless caller could pass a
+        // `user_ptr` overlapping `dst`. These are *safe* `pub fn`s, which must
+        // be sound for every input, so we do not rely on an unprovable
+        // caller-side non-overlap precondition; `copy` removes the need for one.
         // (4) **No interleaving.** v1 is single-core cooperative and the SVC
         // handler runs with interrupts masked (exception entry masks `DAIF`),
         // so no peer mutates the source mid-copy.
         //
-        // **Why safer alternatives were rejected.** `core::slice::from_raw_parts`
-        // would borrow the user bytes as a `&[u8]` — still `unsafe`, same
-        // provenance requirement, and it would advertise a borrow of memory the
-        // kernel does not own; the explicit `copy_nonoverlapping` is the honest
-        // expression of "read bytes the validator just bounded". A HAL trait
-        // method would relocate the `unsafe` to the HAL surface without removing
-        // it; user-memory access is a kernel-syscall concern, so the discipline
-        // (validated-range-then-copy) belongs here.
+        // **Why safer alternatives were rejected.** `copy_nonoverlapping` would
+        // be UB on an overlapping `(user_ptr, dst)` pair that `validate` cannot
+        // rule out (see invariant 3), so `copy` is the sound choice for a safe
+        // API; the marginal memmove direction-check is negligible per syscall.
+        // `core::slice::from_raw_parts` would borrow the user bytes as a `&[u8]`
+        // — still `unsafe`, same provenance requirement, and it would advertise
+        // a borrow of memory the kernel does not own; the explicit
+        // `core::ptr::copy` is the honest expression of "read bytes the
+        // validator just bounded". A HAL trait method would relocate the
+        // `unsafe` to the HAL surface without removing it; user-memory access is
+        // a kernel-syscall concern, so the discipline (validated-range-then-copy)
+        // belongs here.
         //
         // Audit: UNSAFE-2026-0030.
         unsafe {
-            core::ptr::copy_nonoverlapping(user_ptr as *const u8, dst.as_mut_ptr(), len);
+            core::ptr::copy(user_ptr as *const u8, dst.as_mut_ptr(), len);
         }
     }
     Ok(())
@@ -181,19 +190,21 @@ pub fn copy_to_user(
     window.validate(user_ptr, len)?;
     if len > 0 {
         // SAFETY: the byte copy writes `len` bytes from the kernel-owned `src`
-        // slice to the user VA `user_ptr`. The same four invariants as
-        // [`copy_from_user`] hold — range validity (just proven by
+        // slice to the user VA `user_ptr`. The invariants from [`copy_from_user`]
+        // hold with the direction reversed — range validity (just proven by
         // `window.validate`), v1 identity map ([ADR-0027 §Decision outcome (a)]),
-        // source/destination non-overlap (kernel `src` vs. user buffer), and
-        // no single-core interleaving under the interrupts-masked SVC handler.
-        // The direction is reversed: `src` is the validated-length Rust slice
-        // (the readable side) and `user_ptr` is the validated destination. The
-        // same rejected-alternatives reasoning applies (`from_raw_parts_mut`
-        // relocates rather than removes the `unsafe`; a HAL method moves the
-        // audit point off the syscall layer where the discipline is local).
+        // and no single-core interleaving under the interrupts-masked SVC
+        // handler — and the move uses `core::ptr::copy` (memmove), **not**
+        // `copy_nonoverlapping`, so it is sound even if `src` and the user range
+        // alias: `validate` proves bounds, not disjointness, and a safe `pub fn`
+        // must not rely on an unprovable caller-side non-overlap precondition.
+        // `src` is the validated-length readable Rust slice; `user_ptr` is the
+        // validated destination. Same rejected-alternatives reasoning as
+        // `copy_from_user` (`from_raw_parts_mut` relocates rather than removes
+        // the `unsafe`; a HAL method moves the audit point off the syscall layer).
         // Audit: UNSAFE-2026-0030.
         unsafe {
-            core::ptr::copy_nonoverlapping(src.as_ptr(), user_ptr as *mut u8, len);
+            core::ptr::copy(src.as_ptr(), user_ptr as *mut u8, len);
         }
     }
     Ok(())

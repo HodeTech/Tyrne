@@ -92,8 +92,16 @@ const _: () = assert!(core::mem::size_of::<SyscallTrapFrame>() == 272);
 /// managed extent (per [ADR-0027 §Decision outcome (a)]), so the stub's buffer
 /// — a `.rodata`-resident `&[u8]` in the kernel image — is in range. B6's real
 /// EL0 task derives a tighter window from its own mapped region (see
-/// [`UserAccessWindow`]'s module docs). The subtraction is a `const` (no runtime
-/// arithmetic): `PMM_EXTENT_END > PMM_EXTENT_START` by construction.
+/// [`UserAccessWindow`]'s module docs). The subtraction is a `const`, so it
+/// cannot wrap at runtime: const-eval rejects an underflow at **build time**
+/// (an inverted extent is a hard compile error, never a release wrap). The
+/// explicit assertion below makes that invariant — and its failure message —
+/// unambiguous rather than relying on a raw "subtract with overflow" const-eval
+/// error.
+const _: () = assert!(
+    crate::PMM_EXTENT_END >= crate::PMM_EXTENT_START,
+    "PMM extent must be non-inverted: PMM_EXTENT_END >= PMM_EXTENT_START"
+);
 const SYSCALL_USER_WINDOW_LEN: usize = crate::PMM_EXTENT_END - crate::PMM_EXTENT_START;
 
 /// Rust entry for the `SVC` sync trampoline (`vectors.s`).
