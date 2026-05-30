@@ -108,74 +108,39 @@ pub use pmm::{Pmm, PmmError, PmmStats};
 
 /// Return a kernel-writable raw pointer for `frame`'s base PA.
 ///
-/// In v1 the kernel address space is identity-mapped over the entire
-/// PMM-managed physical extent per
-/// [ADR-0027 §Decision outcome (a)][adr-0027], so any
-/// [`tyrne_hal::PhysFrame`] returned by [`Pmm::alloc_frame`] is
-/// reachable at VA = PA from kernel code. This helper *centralises*
-/// that assumption: every kernel-side caller that needs to read or
-/// write a PMM-allocated frame's payload (e.g.
-/// [`crate::obj::task_loader::load_image`]'s `copy_nonoverlapping`
-/// byte-copy site under [UNSAFE-2026-0027]) routes through this
-/// function so the future high-half migration
-/// ([ADR-0033 placeholder][adr-0027]) can replace the body with a
-/// real PA → kernel-VA translation in **one** place, leaving every
-/// call site source-compatible.
+/// Since the high-half migration ([ADR-0033], T-022) the kernel runs in the
+/// `TTBR1_EL1` high half and reaches physical memory through the high-half
+/// direct map, so a frame's kernel VA is
+/// [`tyrne_hal::phys_to_kernel_va(pa)`][phys_to_kernel_va] =
+/// `KERNEL_HIGH_HALF_OFFSET + pa`. This helper *centralises* that translation:
+/// every kernel-side caller that needs to read or write a PMM-allocated
+/// frame's payload (e.g. [`crate::obj::task_loader::load_image`]'s
+/// `copy_nonoverlapping` byte-copy site under [UNSAFE-2026-0027]) routes
+/// through this one function. (Before T-022 the kernel was identity-mapped
+/// and the body was the bare `pa as *mut u8`; ADR-0033 §Negative replaced it
+/// with the direct-map rebase in this single place, leaving every call site
+/// source-compatible.)
 ///
 /// The function itself is safe (the `as *mut u8` cast is infallible
 /// Rust); only the *dereference* at the call site is `unsafe` and
 /// requires the audit-log entry that names the call site's specific
 /// ownership / aliasing discipline.
 ///
-/// ## Forward-compat note
+/// The PMM's zero-fill site ([`kernel/src/mm/pmm.rs`](pmm.rs)) and the BSP's
+/// page-table walk ([`bsp-qemu-virt/src/mmu.rs`]) perform the same
+/// direct-map rebase at their own `unsafe` deref sites; their audit-log
+/// entries ([UNSAFE-2026-0026], [UNSAFE-2026-0027]) gained ADR-0033
+/// Amendments at the T-022 commit.
 ///
-/// When [ADR-0033 placeholder][adr-0027] opens and the kernel moves
-/// to a high-half virtual layout, this function's body grows to a
-/// `KERNEL_PHYS_BASE`-rebased translation; every call site keeps
-/// working without source changes. The kernel crate denies
-/// `clippy::expect_used` / `clippy::unwrap_used` / `clippy::panic`,
-/// so the future migration cannot adopt an `.expect(...)`-style
-/// snippet (a copy-pasted example would lint-fail). The intended
-/// shape is a `checked_add` with a `debug_assert!` + fallback —
-/// either of:
-///
-/// ```ignore
-/// // Pattern A — branch on the overflow path (no panic in release).
-/// KERNEL_PHYS_BASE
-///     .checked_add(frame.as_usize())
-///     .unwrap_or_else(|| {
-///         debug_assert!(
-///             false,
-///             "ADR-0033: KERNEL_PHYS_BASE + frame PA overflows usize"
-///         );
-///         // Fall back to the unchecked value — the debug_assert
-///         // catches the overflow in development; release builds
-///         // produce a deterministic value rather than a panic.
-///         KERNEL_PHYS_BASE.wrapping_add(frame.as_usize())
-///     }) as *mut u8
-///
-/// // Pattern B — saturating arithmetic, matches the rest of the
-/// // kernel's clippy::arithmetic_side_effects discipline.
-/// KERNEL_PHYS_BASE.saturating_add(frame.as_usize()) as *mut u8
-/// ```
-///
-/// Both are lint-clean against the workspace's pedantic + kernel-
-/// extra denies. The audit-log entries that cite "identity mapping
-/// post-MMU per ADR-0027" ([UNSAFE-2026-0026], [UNSAFE-2026-0027])
-/// gain a "lifted via ADR-0033 migration on date X" Amendment at
-/// the same commit. The PMM's existing `core::ptr::write_bytes`
-/// site ([`kernel/src/mm/pmm.rs`](pmm.rs)) is the second adopter —
-/// its safety comment already names the future-migration plan; the
-/// physical PMM site will route through this helper at the same
-/// commit ADR-0033 lands (kept inline today to avoid churning the
-/// audit-log entries that landed with T-017).
-///
+/// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+/// [phys_to_kernel_va]: tyrne_hal::phys_to_kernel_va
 /// [UNSAFE-2026-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
-///
-/// [adr-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0027-kernel-virtual-memory-layout.md
 /// [UNSAFE-2026-0027]: https://github.com/HodeTech/Tyrne/blob/main/docs/audits/unsafe-log.md
 #[must_use]
 #[inline]
 pub(crate) fn phys_frame_kernel_ptr(frame: tyrne_hal::PhysFrame) -> *mut u8 {
-    frame.as_usize() as *mut u8
+    // Direct-map rebase: kernel VA = KERNEL_HIGH_HALF_OFFSET + pa (ADR-0033).
+    // The helper is infallible (`wrapping_add` + cast); only the *dereference*
+    // at the call site is `unsafe` and carries the audit-log entry.
+    tyrne_hal::phys_to_kernel_va(frame.as_usize()) as *mut u8
 }

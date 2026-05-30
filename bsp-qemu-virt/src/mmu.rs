@@ -42,8 +42,8 @@ use tyrne_hal::mmu::vmsav8::{
     flags_to_descriptor_bits, page_descriptor, table_descriptor, PAGE_OA_MASK_L3, TABLE_NLA_MASK,
 };
 use tyrne_hal::{
-    FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysAddr, PhysFrame, VirtAddr,
-    PAGE_SIZE,
+    phys_to_kernel_va, FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysAddr,
+    PhysFrame, VirtAddr, PAGE_SIZE,
 };
 
 /// Translation-table layout constants for the `VMSAv8` 4 KiB-granule,
@@ -427,8 +427,10 @@ unsafe fn walk_and_install_leaf(
     // Audit: UNSAFE-2026-0025.
     let l3_table = unsafe { walk_or_alloc_table(l2_table, l2_idx, frames, unmap)? };
 
-    // L3 leaf write or clear.
-    let l3_ptr = l3_table.as_usize() as *mut u64;
+    // L3 leaf write or clear. The page-table frame is reached through the
+    // high-half direct map (ADR-0033 / T-022) — `phys_to_kernel_va(pa)` — not
+    // identity, since the kernel runs high post-migration.
+    let l3_ptr = phys_to_kernel_va(l3_table.as_usize()) as *mut u64;
 
     // SAFETY: `l3_table` is a 4 KiB frame; `l3_idx < 512`; the offset
     // stays within the frame. Volatile access prevents the compiler
@@ -491,7 +493,9 @@ unsafe fn walk_or_alloc_table(
 ) -> Result<PhysFrame, MmuError> {
     debug_assert!(idx < ENTRIES_PER_TABLE);
 
-    let parent_ptr = parent_table.as_usize() as *mut u64;
+    // Reached through the high-half direct map (ADR-0033 / T-022), not
+    // identity — the kernel runs high post-migration.
+    let parent_ptr = phys_to_kernel_va(parent_table.as_usize()) as *mut u64;
     // SAFETY: `parent_table` is a 4 KiB frame; `idx < 512`. Audit:
     // UNSAFE-2026-0025.
     let slot_ptr = unsafe { parent_ptr.add(idx) };

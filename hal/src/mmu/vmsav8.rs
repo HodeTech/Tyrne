@@ -172,6 +172,24 @@ pub const TCR_EL1_VALUE: u64 = {
         | as_field
 };
 
+/// `TCR_EL1` value for the **high-half regime** (post-[ADR-0033] migration):
+/// byte-identical to [`TCR_EL1_VALUE`] except `EPD1` (bit 23) is cleared,
+/// enabling `TTBR1_EL1` translation-table walks for the kernel's high-half
+/// mapping. Every `TTBR0`-governing field (`T0SZ` / `EPD0` / `IRGN0` /
+/// `ORGN0` / `SH0` / `TG0`) stays byte-stable so perturbing the live
+/// `TTBR0` regime is structurally impossible (the
+/// [`tcr_high_half_clears_only_epd1`] test pins the single-bit delta).
+///
+/// Written to `TCR_EL1` by the boot-time high-half migration ([T-022] /
+/// [ADR-0033 §Simulation row 1][adr-0033]); the **`DSB ISH`** that publishes
+/// the `TTBR1` table-memory writes precedes this `MSR`, so no walk can read a
+/// stale descriptor once `EPD1` clears.
+///
+/// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+/// [adr-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md#simulation
+/// [T-022]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md
+pub const TCR_EL1_VALUE_HIGH_HALF: u64 = TCR_EL1_VALUE & !(1 << 23);
+
 /// `SCTLR_EL1` bits we **set** when activating the MMU: `M` (bit 0,
 /// MMU on), `C` (bit 2, D-cache enable), `I` (bit 12, I-cache enable).
 ///
@@ -407,7 +425,7 @@ mod tests {
         block_descriptor, flags_to_descriptor_bits, page_descriptor, table_descriptor,
         AP_KERNEL_RO, AP_KERNEL_RW, AP_USER_RO, AP_USER_RW, ATTR_IDX_DEVICE, ATTR_IDX_NORMAL,
         MAIR_EL1_VALUE, SCTLR_EL1_MMU_ENABLE_MASK, SH_INNER_SHAREABLE, SH_NON_SHAREABLE,
-        TCR_EL1_VALUE,
+        TCR_EL1_VALUE, TCR_EL1_VALUE_HIGH_HALF,
     };
     use crate::MappingFlags;
 
@@ -441,6 +459,32 @@ mod tests {
         assert_eq!((TCR_EL1_VALUE >> 14) & 0x3, 0b00);
         // TG1 = 0b10 (4 KiB granule) at bits 31:30
         assert_eq!((TCR_EL1_VALUE >> 30) & 0x3, 0b10);
+    }
+
+    #[test]
+    fn tcr_high_half_clears_only_epd1() {
+        // The high-half TCR (ADR-0033 §Simulation row 1) must clear EPD1
+        // (bit 23) to enable TTBR1 walks and leave EVERY other bit —
+        // crucially every TTBR0-governing field — byte-identical to the
+        // live v1 TCR. A perturbation of any TTBR0 field would fault the
+        // next low fetch during the migration; this single-bit-delta
+        // assertion is the row-1 verification artefact.
+        assert_eq!(
+            (TCR_EL1_VALUE >> 23) & 0x1,
+            1,
+            "precondition: v1 TCR has EPD1 set (TTBR1 disabled)"
+        );
+        assert_eq!(
+            (TCR_EL1_VALUE_HIGH_HALF >> 23) & 0x1,
+            0,
+            "high-half TCR clears EPD1 (TTBR1 walks enabled)"
+        );
+        // The ONLY difference is bit 23: XOR must equal exactly 1<<23.
+        assert_eq!(
+            TCR_EL1_VALUE ^ TCR_EL1_VALUE_HIGH_HALF,
+            1 << 23,
+            "high-half TCR differs from v1 TCR in exactly bit 23 (EPD1)"
+        );
     }
 
     #[test]

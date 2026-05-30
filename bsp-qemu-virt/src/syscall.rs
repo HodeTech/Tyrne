@@ -85,14 +85,19 @@ pub struct SyscallTrapFrame {
 // the build before that can ship. (Mirrors the `TrapFrame` 192-byte guard.)
 const _: () = assert!(core::mem::size_of::<SyscallTrapFrame>() == 272);
 
-/// Length of the syscall copy-from/to-user window in B5: the whole
-/// identity-mapped RAM extent the bootstrap address space covers.
+/// Length of the syscall copy-from/to-user window in B5: the whole RAM extent,
+/// reached through the kernel's high-half direct map (post-T-022 / ADR-0033).
 ///
-/// The B5 EL1 kernel-stub runs on the bootstrap AS, which identity-maps the
-/// managed extent (per [ADR-0027 §Decision outcome (a)]), so the stub's buffer
-/// — a `.rodata`-resident `&[u8]` in the kernel image — is in range. B6's real
-/// EL0 task derives a tighter window from its own mapped region (see
-/// [`UserAccessWindow`]'s module docs). The subtraction is a `const`, so it
+/// The B5 EL1 kernel-stub executes in the high half; its buffer — a
+/// `.rodata`-resident `&[u8]` in the kernel image — is reachable at its
+/// high-half VA, so the window base is `phys_to_kernel_va(PMM_EXTENT_START)`
+/// (see [`syscall_entry`]) and the stub buffer is in range. Because the
+/// stub's "user" pointer **is** a valid kernel VA, the dispatcher's direct
+/// deref works for the stub; B6's real EL0 task instead lives at a *user* VA
+/// in its own `TTBR0_EL1`, so B6 derives a tighter per-task window AND
+/// replaces the direct deref with a per-page user-VA→kernel-VA translation
+/// (T-021 carry-forward gate #1 — see [`UserAccessWindow`]'s module docs).
+/// The subtraction is a `const`, so it
 /// cannot wrap at runtime: const-eval rejects an underflow at **build time**
 /// (an inverted extent is a hard compile error, never a release wrap). The
 /// explicit assertion below makes that invariant — and its failure message —
@@ -165,7 +170,10 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
             queues: (*crate::IPC_QUEUES.0.get()).assume_init_mut(),
             caller_table: (*crate::SYSCALL_STUB_TABLE.0.get()).assume_init_mut(),
             console: (*crate::CONSOLE.0.get()).assume_init_ref(),
-            user_window: UserAccessWindow::new(crate::PMM_EXTENT_START, SYSCALL_USER_WINDOW_LEN),
+            user_window: UserAccessWindow::new(
+                tyrne_hal::phys_to_kernel_va(crate::PMM_EXTENT_START),
+                SYSCALL_USER_WINDOW_LEN,
+            ),
         };
         dispatch(&mut ctx, args)
     };

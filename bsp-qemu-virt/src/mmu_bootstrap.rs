@@ -33,9 +33,9 @@ use core::arch::asm;
 
 use tyrne_hal::mmu::vmsav8::{
     block_descriptor, flags_to_descriptor_bits, table_descriptor, MAIR_EL1_VALUE,
-    SCTLR_EL1_MMU_ENABLE_MASK, TCR_EL1_VALUE,
+    SCTLR_EL1_MMU_ENABLE_MASK, TCR_EL1_VALUE, TCR_EL1_VALUE_HIGH_HALF,
 };
-use tyrne_hal::MappingFlags;
+use tyrne_hal::{MappingFlags, KERNEL_HIGH_HALF_OFFSET};
 
 // Linker symbols for the four bootstrap page-table frames. The Rust
 // type `[u64; 512]` mirrors the actual storage shape (one 4 KiB frame
@@ -49,6 +49,13 @@ extern "C" {
     static __boot_pt_l1: [u64; 512];
     static __boot_pt_l2_low: [u64; 512];
     static __boot_pt_l2_high: [u64; 512];
+    /// High-half (`TTBR1_EL1`) root frames (T-022 / ADR-0033). The two L2
+    /// tables above are SHARED between the low-identity and high-half
+    /// regimes — a block descriptor's output address is the PA, identical
+    /// whether reached via the low or high VA — so only the L0/L1 roots are
+    /// new. See [`high_half_activate`].
+    static __boot_pt_l0_hh: [u64; 512];
+    static __boot_pt_l1_hh: [u64; 512];
 }
 
 /// Entries per 4 KiB translation table.
@@ -251,6 +258,109 @@ pub unsafe fn mmu_bootstrap() {
             // compiler does not assume any value across the block.
             out("x9") _,
             options(nostack, nomem),
+        );
+    }
+}
+
+/// Build the high-half (`TTBR1_EL1`) translation tables and bring the
+/// high-half regime live — while still executing in the low-identity
+/// regime. Implements [ADR-0033 §Simulation rows 0–1][adr-0033].
+///
+/// Must run AFTER [`mmu_bootstrap`] (which builds the four low-identity
+/// frames + the two L2 tables this routine SHARES, and enables the MMU)
+/// and BEFORE the [`crate::kernel_entry`] migration trampoline crosses the
+/// PC into the high half. On return both regimes are live: the low identity
+/// (`TTBR0_EL1`) the kernel is still executing through, and the high-half
+/// (`TTBR1_EL1`, `EPD1 = 0`) the trampoline is about to branch into.
+///
+/// High-half layout (per [ADR-0033 §"High-half layout"][adr-0033]): every
+/// kernel VA is `KERNEL_HIGH_HALF_OFFSET + pa`, so at `T1SZ = 16` they land
+/// at `L0[511]` and `L1[508]` (device) / `L1[509]` (RAM). The L2 tables are
+/// SHARED with the low identity (a block descriptor's output address is the
+/// PA, identical via either VA), so only the L0/L1 roots are new.
+///
+/// **v1 simplification (RWX-equivalent; PXN-split deferred to ADR-0034).**
+/// Sharing `L2_high` makes the high-half RAM window `PXN = 0` (kernel-
+/// executable) for its whole span — so the kernel image *and* the
+/// physmap/direct-map deref path (page tables, PMM frames, copy-user) live
+/// in one `PXN = 0`, `AP = 0b00` window. This is RWX-equivalent to the
+/// identity map it replaces (T-016 mapped all RAM `WRITE | EXECUTE`), which
+/// [T-022 §Out of scope](../../docs/analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md)
+/// explicitly accepts; the [ADR-0033 §High-half-layout][adr-0033] PXN=1
+/// physmap region distinct from the PXN=0 image region is the per-section
+/// W^X hardening end-state, deferred to ADR-0034. `EL0` is never granted
+/// access (`AP = 0b00`), so this is a privileged-side W^X gap only, not an
+/// EL0-reachable one.
+///
+/// # Safety
+///
+/// - Must be called exactly once per boot, at EL1, after [`mmu_bootstrap`]
+///   (the shared L2 tables and the low-identity MMU must already be live)
+///   and before the high-half migration trampoline.
+/// - The `__boot_pt_l0_hh` / `__boot_pt_l1_hh` frames must be page-aligned
+///   and pre-zeroed (the linker places them in `.bss`; `_start`'s BSS-zero
+///   loop zeros them) so the unwritten slots read as invalid descriptors.
+///
+/// Audit: UNSAFE-2026-0022 (high-half page-table frame writes — Amendment)
+/// + UNSAFE-2026-0023 (`MSR TTBR1_EL1` / `MSR TCR_EL1` — Amendment).
+///
+/// [adr-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+pub unsafe fn high_half_activate() {
+    // High-half root frames (new); the L2 tables are shared with the low
+    // identity. `addr_of!` resolves these `.bss` symbols to their LOW
+    // physical addresses here (this routine executes low, so the PC-relative
+    // materialisation yields the load address = PA) — exactly the PAs the
+    // table/TTBR descriptors must carry.
+    let l0_hh = core::ptr::addr_of!(__boot_pt_l0_hh)
+        .cast::<u64>()
+        .cast_mut();
+    let l1_hh = core::ptr::addr_of!(__boot_pt_l1_hh)
+        .cast::<u64>()
+        .cast_mut();
+    let l2_low_pa = core::ptr::addr_of!(__boot_pt_l2_low) as u64;
+    let l2_high_pa = core::ptr::addr_of!(__boot_pt_l2_high) as u64;
+
+    // High VAs → page-table indices (computed, not hardcoded, so the
+    // KERNEL_HIGH_HALF_OFFSET choice is the single source of truth).
+    let off = KERNEL_HIGH_HALF_OFFSET as u64;
+    let va_dev = off + 0x0800_0000; // GIC + UART device window base
+    let va_ram = off + 0x4000_0000; // RAM (kernel image) window base
+    let l0_idx = ((va_ram >> 39) & 0x1FF) as usize; // 511
+    let l1_idx_dev = ((va_dev >> 30) & 0x1FF) as usize; // 508
+    let l1_idx_ram = ((va_ram >> 30) & 0x1FF) as usize; // 509
+
+    // SAFETY: the three frames are page-aligned, exclusively owned for the
+    // duration of this single-core boot call, and pre-zeroed by the BSS
+    // loop. Indices are < 512 by the `& 0x1FF` construction. The table
+    // descriptors point at the shared L2 tables (device / RAM) and the new
+    // L1_hh, all by PA. Audit: UNSAFE-2026-0022.
+    unsafe {
+        // L0_hh[511] → L1_hh
+        core::ptr::write_volatile(l0_hh.add(l0_idx), table_descriptor(l1_hh as u64));
+        // L1_hh[508] → L2_low (device, shared); L1_hh[509] → L2_high (RAM, shared)
+        core::ptr::write_volatile(l1_hh.add(l1_idx_dev), table_descriptor(l2_low_pa));
+        core::ptr::write_volatile(l1_hh.add(l1_idx_ram), table_descriptor(l2_high_pa));
+    }
+
+    // SAFETY: publish the descriptor writes to the table walker (`DSB ISH`)
+    // BEFORE installing TTBR1 and clearing EPD1 — so no walk, once enabled,
+    // can read a stale/zero descriptor (ADR-0033 §Simulation row 0). Then
+    // `MSR TTBR1_EL1` (the high root PA) + `ISB`, then `MSR TCR_EL1` with the
+    // EPD1-cleared constant (every TTBR0-governing field byte-stable, so the
+    // live low regime is undisturbed — row 1) + `ISB`. After this the high
+    // half translates, but the PC/SP/VBAR are still low (the migration
+    // trampoline performs the crossing). `nomem` omitted so the descriptor
+    // writes above are not reordered past this block. Audit: UNSAFE-2026-0023.
+    unsafe {
+        asm!(
+            "dsb ish",
+            "msr ttbr1_el1, {ttbr1}",
+            "isb",
+            "msr tcr_el1, {tcr}",
+            "isb",
+            ttbr1 = in(reg) (l0_hh as u64),
+            tcr = in(reg) TCR_EL1_VALUE_HIGH_HALF,
+            options(nostack),
         );
     }
 }

@@ -79,7 +79,7 @@ v1's `TCR_EL1` value commits to the layout shape:
 | `IPS` | bits 34:32 | 0b010 | 40-bit Intermediate Physical Address — matches QEMU virt + Cortex-A72 |
 | `AS` | bit 36 | 0 | 8-bit ASID field; v1 uses ASID=0 globally |
 
-The ADR-0033 placeholder (the future high-half ADR — slot reserved in [ADR-0027 §Decision outcome (a)](../decisions/0027-kernel-virtual-memory-layout.md), not yet a real ADR file) flips `EPD1=1 → 0` and populates `TTBR1_EL1` when B6 needs per-task `TTBR0_EL1` swap (B5 closed without it); the rest of `TCR_EL1` stays byte-stable across that transition because the v1 settings already commit to the high-half-friendly shape.
+**[ADR-0033](../decisions/0033-kernel-high-half-migration.md) (Accepted 2026-05-30; implemented by [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md))** flips `EPD1 = 1 → 0` and populates `TTBR1_EL1` at boot — the kernel **migrates to the high half** so `TTBR0_EL1` is freed for per-task userspace (B6's gating prerequisite). The rest of `TCR_EL1` stays byte-stable across the transition because the v1 settings already commit to the high-half-friendly shape (`EPD1` is the single bit that changes — the host-tested `TCR_EL1_VALUE_HIGH_HALF`). **The identity layout described in this section is now the boot-time *bootstrap* phase** `mmu_bootstrap` establishes before `high_half_activate` + the migration trampoline move the running kernel to `TTBR1_EL1`; see [`boot.md` §"High-half migration"](boot.md#high-half-migration-t-022--adr-0033) for the transition and the single linear `KERNEL_HIGH_HALF_OFFSET = 0xFFFF_FFFF_0000_0000` direct map.
 
 ### Page-table entry encoding (block descriptor at L2)
 
@@ -261,7 +261,7 @@ Until then, kernel-mode faults are a "kernel programming error" (panic-class). T
 - [ADR-0012 — Boot flow and memory layout for `bsp-qemu-virt`](../decisions/0012-boot-flow-qemu-virt.md) — the static image layout this doc inherits.
 - [ADR-0024 — EL drop to EL1 policy](../decisions/0024-el-drop-policy.md) — kernel runs at EL1 when the MMU activates.
 - [ADR-0027 — Kernel virtual memory layout (B2 — identity-mapped MMU activation)](../decisions/0027-kernel-virtual-memory-layout.md) — the load-bearing decision document for this chapter.
-- ADR-0033 (named-but-unallocated placeholder slot) — Kernel high-half migration; opens when B5 surfaces the per-task `TTBR0_EL1` swap requirement. Slot is reserved in [ADR-0027 §Decision outcome (a)](../decisions/0027-kernel-virtual-memory-layout.md) and the [phase-b ADR ledger](../roadmap/phases/phase-b.md); no ADR file exists today.
+- [ADR-0033](../decisions/0033-kernel-high-half-migration.md) (**Accepted 2026-05-30**) — Kernel high-half migration; implemented by [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md). The kernel now runs in `TTBR1_EL1` (boot-time migration) and `TTBR0_EL1` is freed for the per-task swap (B6). Consumes the `TTBR1`/`EPD1` reservation + byte-stable high-half `TCR` fields ADR-0027 pre-committed; **no supersede**.
 - [`bsp-qemu-virt/src/mmu.rs`](../../bsp-qemu-virt/src/mmu.rs) — `QemuVirtMmu` impl (lands with T-016).
 - [`bsp-qemu-virt/src/mmu_bootstrap.rs`](../../bsp-qemu-virt/src/mmu_bootstrap.rs) — boot-time activation routine (lands with T-016).
 - [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) — `.boot_pt` reservation + `__boot_pt_*` linker symbols (extended by T-016).
