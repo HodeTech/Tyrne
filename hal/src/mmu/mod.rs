@@ -20,6 +20,141 @@ use core::ops::{BitAnd, BitOr, BitOrAssign};
 /// Fixed at 4 KiB in v1. Huge-page support is deferred to a later ADR.
 pub const PAGE_SIZE: usize = 4096;
 
+/// Virtual-address offset of the kernel's high-half direct map of physical
+/// memory ([ADR-0033]).
+///
+/// After the boot-time high-half migration the kernel runs entirely in the
+/// `TTBR1_EL1` high half (`VA[55] = 1`, `T1SZ = 16`). Physical memory is
+/// reachable through a single linear **direct map** at this offset:
+///
+/// ```text
+/// kernel_VA(pa) = KERNEL_HIGH_HALF_OFFSET + pa
+/// ```
+///
+/// This one offset serves **both** roles [ADR-0033 §Dependency chain step
+/// 2][adr-0033-dep] names — the kernel-image *link* offset (the image is
+/// linked at `KERNEL_HIGH_HALF_OFFSET + KERNEL_IMAGE_PHYS_BASE`) and the
+/// *physmap*/direct-map offset (any frame's kernel VA). They coincide for
+/// every in-image address because the image PA range is a subset of the
+/// direct-mapped PA range, so "using the wrong offset at a site" is
+/// impossible by construction (the value is identical). Device-MMIO PAs
+/// (below the RAM base) are covered by the same linear map.
+///
+/// `0xFFFF_FFFF_0000_0000` places PA `0` at the base of the top 4 GiB of
+/// the 64-bit VA space; the QEMU virt PA range (`0x0000_0000 ..
+/// 0x4800_0000`, well under 4 GiB) maps without overflow and every result
+/// has `VA[55] = 1`, so the `TTBR1_EL1` walker serves it. The boot-time
+/// migration ([`bsp-qemu-virt/linker.ld`] + `kernel_entry`) uses the same
+/// value; the BSP carries a compile-time `assert!` pinning the two in sync.
+///
+/// **Forward limit (Pi 4 / large images).** This offset bounds the direct map
+/// to the **low 4 GiB** of PA — `phys_to_kernel_va(pa)` for `pa ≥ 4 GiB` wraps
+/// — and the `kernel_entry` migration mask (`OFFSET | (addr & 0xFFFF_FFFF)`)
+/// assumes the kernel image PA is below 4 GiB. A future BSP with > 4 GiB RAM
+/// or peripherals above 4 GiB (e.g. the Raspberry Pi 4) needs a different
+/// offset **and** a revisited mask before this pattern is carried over.
+///
+/// **Host builds (`cfg(not(all(target_arch = "aarch64", target_os = "none")))`)
+/// define the offset as `0`** — there is no MMU or high-half on the test harness, so
+/// [`phys_to_kernel_va`] / [`kernel_va_to_phys`] are the identity there and
+/// the kernel-crate host tests (PMM frame zero-fill, `phys_frame_kernel_ptr`)
+/// deref their real host-backed "frames" unchanged. Only the aarch64 kernel
+/// build carries the real high-half offset.
+///
+/// The discriminator is `all(target_arch = "aarch64", target_os = "none")` —
+/// the **kernel build**, matching the established idiom at
+/// [`crate::cpu`]'s `cntfrq` reader — **not** bare `target_arch = "aarch64"`,
+/// which would also be true on an aarch64 *host* (e.g. Apple Silicon) and
+/// would make `cargo test` / Miri deref `phys_to_kernel_va(real_host_ptr)`
+/// into wild memory in the PMM / `phys_frame_kernel_ptr` host tests.
+///
+/// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+/// [adr-0033-dep]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md#dependency-chain
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
+pub const KERNEL_HIGH_HALF_OFFSET: usize = 0xFFFF_FFFF_0000_0000;
+
+/// Host-build identity offset — see the kernel-build [`KERNEL_HIGH_HALF_OFFSET`]
+/// for the rationale (no MMU/high-half on the test harness; identity keeps the
+/// host tests' real-backed frames reachable, including on an aarch64 host).
+#[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
+pub const KERNEL_HIGH_HALF_OFFSET: usize = 0;
+
+/// Translate a physical address to its kernel high-half direct-map virtual
+/// address (`KERNEL_HIGH_HALF_OFFSET + pa`).
+///
+/// The single helper every kernel/BSP site routes a physical-frame, page-
+/// table, or MMIO-register dereference through once the kernel runs high
+/// ([ADR-0033]). `wrapping_add` matches the kernel's
+/// `arithmetic_side_effects` discipline; the QEMU virt PA range cannot
+/// overflow the offset (see [`KERNEL_HIGH_HALF_OFFSET`]).
+///
+/// # Panics
+///
+/// On the kernel build (`KERNEL_HIGH_HALF_OFFSET != 0`), panics if `pa` falls
+/// outside the low-4 GiB direct-map window — a wrapped result would be a wild
+/// pointer, so the helper fail-stops in release too (CLAUDE.md #1). The
+/// condition cannot occur in v1 (the QEMU virt PA range is well under 4 GiB);
+/// the `assert!` guards a future BSP that wires a larger PA without first
+/// revisiting the offset. On host builds (offset `0`, identity) it
+/// short-circuits — any host address is valid.
+///
+/// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+#[must_use]
+#[inline]
+pub const fn phys_to_kernel_va(pa: usize) -> usize {
+    // On the kernel build (OFFSET != 0) the direct map covers only the low
+    // 4 GiB of PA; catch an out-of-window PA early. On host builds (OFFSET == 0,
+    // identity) the check short-circuits — any host address is valid. Hard
+    // `assert!` (not `debug_assert!`): a wrapped out-of-window PA would be a
+    // wild pointer, so we fail-stop in release too (CLAUDE.md #1 — conservative;
+    // the check is a single predictable branch on a value that cannot occur in
+    // v1, and also rejects an out-of-window arg at const-eval time).
+    assert!(
+        KERNEL_HIGH_HALF_OFFSET == 0 || pa < 0x1_0000_0000,
+        "phys_to_kernel_va: PA outside the low-4 GiB high-half direct map",
+    );
+    KERNEL_HIGH_HALF_OFFSET.wrapping_add(pa)
+}
+
+/// Translate a kernel high-half direct-map virtual address back to its
+/// physical address (`va - KERNEL_HIGH_HALF_OFFSET`) — the inverse of
+/// [`phys_to_kernel_va`].
+///
+/// Used by the small number of post-migration sites that take a linker
+/// symbol's address (`addr_of!(...)`, resolved HIGH while the kernel runs
+/// high) but need the physical address — e.g. programming a `TTBR`, naming a
+/// page-table root frame, or computing the kernel-image reserved range for
+/// the PMM ([ADR-0033] §Negative — "the `addr_of!`-as-PA conflation must be
+/// broken project-wide"). Only valid for direct-mapped high-half addresses;
+/// `wrapping_sub` matches the kernel's `arithmetic_side_effects` discipline.
+///
+/// # Panics
+///
+/// On the kernel build, panics if `va` is not a high-half direct-map VA whose
+/// recovered PA lands in the low 4 GiB — a wrapped result would be a wild
+/// pointer, so the helper fail-stops in release too (CLAUDE.md #1; mirrors
+/// [`phys_to_kernel_va`]). Cannot occur in v1. On host builds (offset `0`) it
+/// short-circuits.
+///
+/// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+#[must_use]
+#[inline]
+pub const fn kernel_va_to_phys(va: usize) -> usize {
+    // On the kernel build (OFFSET != 0) `va` must be a high-half direct-map VA
+    // whose recovered PA lands in the low 4 GiB; the `wrapping_sub` catches both
+    // a below-window VA (wraps high) and an above-window VA. On host builds
+    // (OFFSET == 0) the check short-circuits. (`wrapping_sub` rather than a
+    // `va >= OFFSET` compare avoids `clippy::absurd_extreme_comparisons` when
+    // OFFSET is 0 on host.) Hard `assert!` (fires in release too) so a wrapped
+    // out-of-window VA fail-stops rather than becoming a wild pointer (CLAUDE.md
+    // #1; mirrors `phys_to_kernel_va`).
+    assert!(
+        KERNEL_HIGH_HALF_OFFSET == 0 || va.wrapping_sub(KERNEL_HIGH_HALF_OFFSET) < 0x1_0000_0000,
+        "kernel_va_to_phys: VA outside the high-half direct-map window",
+    );
+    va.wrapping_sub(KERNEL_HIGH_HALF_OFFSET)
+}
+
 /// A virtual address.
 ///
 /// The underlying integer is exposed as a `pub` field so call sites can

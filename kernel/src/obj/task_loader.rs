@@ -587,17 +587,20 @@ pub fn load_image<M: Mmu, const N: usize, const R: usize>(
 
     // §Simulation row 4: image-PA-overlap preflight. Discharges
     // UNSAFE-2026-0027 invariant "source and destination do not
-    // overlap" at runtime — `image.as_ptr() as usize` is treated as a
-    // PA under v1's identity-mapped post-bootstrap kernel AS (ADR-0027
-    // §Decision outcome (a)). If any byte of the image's PA range
-    // could be returned by `pmm.alloc_frame()`, `copy_nonoverlapping`
-    // in the image-page loop below would alias source and destination
-    // — undefined behaviour per Rust's `core::ptr::copy_nonoverlapping`
-    // safety contract. The check is practically unreachable under
-    // correct BSP wiring (`.rodata`-resident images live in PMM-
-    // reserved memory by ADR-0035) but defensive against BSP
-    // misconfiguration. Pre-state-change; no rollback needed.
-    let image_pa_start = image.as_ptr() as usize;
+    // overlap" at runtime. Since the high-half migration (ADR-0033 /
+    // T-022) the kernel runs in the high half, so `image.as_ptr()`
+    // resolves to the image's high-half VA — `kernel_va_to_phys`
+    // converts it back to the PA the PMM extent is expressed in (on host
+    // test builds the offset is 0, so this is the identity). If any byte
+    // of the image's PA range could be returned by `pmm.alloc_frame()`,
+    // `copy_nonoverlapping` in the image-page loop below would alias
+    // source and destination — undefined behaviour per Rust's
+    // `core::ptr::copy_nonoverlapping` safety contract. The check is
+    // practically unreachable under correct BSP wiring (`.rodata`-
+    // resident images live in PMM-reserved memory by ADR-0035) but
+    // defensive against BSP misconfiguration. Pre-state-change; no
+    // rollback needed.
+    let image_pa_start = tyrne_hal::kernel_va_to_phys(image.as_ptr() as usize);
     let image_pa_end = image_pa_start.saturating_add(image.len());
     if pmm.could_yield_pa_overlapping(image_pa_start..image_pa_end) {
         return Err(LoadError::ImageOverlapsAllocatableMemory);

@@ -12,10 +12,24 @@ The overall three-layer architecture is described in [`overview.md`](overview.md
 
 The four boot stages, each with a tightly bounded responsibility:
 
-1. **Firmware / loader.** QEMU's `-kernel` flag loads the ELF image at its linked-in load address (`0x40080000` per [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md)), sets the PC to the ELF's entry point (`_start`), and enters at EL1 (default QEMU `virt`) or EL2 (`-machine virtualization=on`, or most real-hardware boot stacks delivering at EL2). The device-tree blob address is placed in `x0`; v1 ignores it.
+1. **Firmware / loader.** QEMU's `-kernel` flag loads the ELF image at its load address (`0x40080000` per [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md); the image is *linked high* but *loaded low* — see §"High-half migration"), sets the PC to the ELF's entry point (`_start_phys`, the LOW physical address of `_start` — the MMU is off at reset), and enters at EL1 (default QEMU `virt`) or EL2 (`-machine virtualization=on`, or most real-hardware boot stacks delivering at EL2). The device-tree blob address is placed in `x0`; v1 ignores it.
 2. **Assembly stub (`_start`).** Three phases: first, K3-12 (interrupts masked via `MSR DAIFSet, #0xf`) executes at the very head of the reset vector so a spurious interrupt cannot escape into an uninstalled vector table. Second, the EL drop (per [ADR-0024](../decisions/0024-el-drop-policy.md)) reads `CurrentEL`; on EL2 it configures `HCR_EL2` / `SPSR_EL2` / `ELR_EL2` and `eret`s to a post-drop label, on EL1 it falls through, on EL3 (or any unexpected EL) it halts in a named-label `wfe`-loop (`halt_unsupported_el: wfe ; b halt_unsupported_el`) — there is no Rust panic infrastructure pre-`kernel_entry`. Third, the conventional setup: load `__stack_top` into `SP`, enable FP/SIMD via `CPACR_EL1`, zero the BSS range (`__bss_start` .. `__bss_end`) using 8-byte stores, and branch to `kernel_entry`. If `kernel_entry` ever returns (it shouldn't), the stub falls into a defensive `wfe ; b 2b` halt loop. After phase two, every later instruction runs at EL1 — the precondition T-009's `UNSAFE-2026-0016` runtime check now relies on as a load-bearing invariant rather than a defensive guard.
-3. **`kernel_entry` (Rust, in the BSP).** The first Rust code to run. Constructs the BSP's concrete HAL instances (for Phase 4c: the `Pl011Uart` console), installs the EL1 vector table (T-012), captures the boot-to-end timestamp, **activates the MMU** via `mmu_bootstrap` (T-016 / ADR-0027 — this lands the v1 identity layout in `TTBR0_EL1` and flips `SCTLR_EL1.{M,I,C} = 1`; every subsequent MMIO access goes through device-nGnRnE attributes), **initialises the Physical Memory Manager** (T-017 / ADR-0035 — bitmap allocator over the 128 MiB RAM extent with two reserved ranges covering the QEMU firmware region and the kernel image / `.bss` / `.boot_pt` / boot stack), **initialises the address-space arena** (T-018 / ADR-0028 — wraps the already-active L0 root frame as `AddressSpaceArena<QemuVirtMmu>` slot 0 + mints the bootstrap AS authority cap; no `Mmu::create_address_space` call on the live root per ADR-0028 §Simulation row 0), **loads the embedded userspace placeholder image** via [`task_loader::load_image`](task-loader.md) (T-019 / ADR-0029 — produces a `LoadedImage` describing a freshly populated AS for the embedded `mov w0, #42; ret` blob; **does NOT execute** — runnability gates on B5/B6 per phase-b §B4 §Revision-notes; first runtime exerciser of [UNSAFE-2026-0025](../audits/unsafe-log.md) post-bootstrap `Mmu::map`, [UNSAFE-2026-0026](../audits/unsafe-log.md) `Pmm::alloc_frame` zero-fill, and [UNSAFE-2026-0027](../audits/unsafe-log.md) loader byte-copy), initialises the GIC, unmasks `DAIF.I`, prints the timer banner, then sets up the kernel-object arenas + capability tables + IPC + scheduler before transferring control. Marked `#[no_mangle] extern "C"` so the assembly stub can find it.
-4. **Scheduler start (`start`).** The final call in `kernel_entry` is `start(SCHED.as_mut_ptr(), cpu, activate_address_space)`, which hands control to the cooperative FIFO scheduler and never returns; the scheduler runs the first ready task and drives the cooperative IPC demo until the system halts (see [scheduler.md](scheduler.md)). An early design intended a portable `tyrne_kernel::run` that a BSP would delegate to; the B-phase brought subsystem bring-up into `kernel_entry` instead, and `start` (defined in `kernel/src/sched/mod.rs`) is the actual handoff point. Consolidating the bring-up back into a portable kernel entry is a possible future refactor.
+3. **`kernel_entry` → `kernel_main_high` (Rust, in the BSP).** The first Rust code to run, split across the high-half migration (T-022 / ADR-0033; see §"High-half migration" below for the mechanism):
+   - **`kernel_entry` (LOW physical alias, MMU off → low identity).** Constructs a throwaway low-MMIO `Pl011Uart` for early diagnostics, installs the EL1 vector table (T-012, low vectors), **activates the low-identity MMU** via `mmu_bootstrap` (T-016 / ADR-0027 — lands the v1 identity layout in `TTBR0_EL1`, flips `SCTLR_EL1.{M,I,C} = 1`; MMIO goes through device-nGnRnE attributes), then **builds the high-half `TTBR1_EL1` tables** via `high_half_activate` (T-022 / ADR-0033 — `EPD1 1→0`, both regimes now live) and **branches the running kernel into the high half** through the migration trampoline (`MSR VBAR`-high; rebase `SP`; `br kernel_main_high`). It never returns. Marked `#[no_mangle] extern "C"` so the assembly stub can find it.
+   - **`kernel_main_high` (HIGH half, `TTBR1_EL1`).** Frees `TTBR0_EL1` (null + `EPD0 = 1` + `TLBI VMALLE1`), prints `tyrne: high-half active`, then runs the rest of bring-up at high-half addresses: constructs the persistent `Pl011Uart` + `QemuVirtCpu` at the HIGH device-MMIO alias, captures the boot-to-end timestamp, **initialises the Physical Memory Manager** (T-017 / ADR-0035 — bitmap allocator over the 128 MiB RAM extent, two reserved ranges covering the QEMU firmware region and the kernel image / `.bss` / `.boot_pt` / boot stack), **initialises the address-space arena** (T-018 / ADR-0028 — wraps the bootstrap L0 root as `AddressSpaceArena<QemuVirtMmu>` slot 0 + mints the bootstrap AS authority cap; no `Mmu::create_address_space` on the populated root per ADR-0028 §Simulation row 0), **loads the embedded userspace placeholder image** via [`task_loader::load_image`](task-loader.md) (T-019 / ADR-0029 — produces a `LoadedImage` for the embedded `mov w0, #42; ret` blob; **does NOT execute** — runnability gates on B6 per phase-b §B4 §Revision-notes; first runtime exerciser of [UNSAFE-2026-0025](../audits/unsafe-log.md) post-bootstrap `Mmu::map`, [UNSAFE-2026-0026](../audits/unsafe-log.md) `Pmm::alloc_frame` zero-fill, and [UNSAFE-2026-0027](../audits/unsafe-log.md) loader byte-copy), initialises the GIC, unmasks `DAIF.I`, prints the timer banner, then sets up the kernel-object arenas + capability tables + IPC + scheduler before transferring control to `start()`.
+4. **Scheduler start (`start`).** The final call in `kernel_main_high` is `start(SCHED.as_mut_ptr(), cpu, activate_address_space)`, which hands control to the cooperative FIFO scheduler and never returns; the scheduler runs the first ready task and drives the cooperative IPC demo until the system halts (see [scheduler.md](scheduler.md)). An early design intended a portable `tyrne_kernel::run` that a BSP would delegate to; the B-phase brought subsystem bring-up into the kernel-entry path instead, and `start` (defined in `kernel/src/sched/mod.rs`) is the actual handoff point. Consolidating the bring-up back into a portable kernel entry is a possible future refactor.
+
+### High-half migration (T-022 / ADR-0033)
+
+Since [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md) the kernel runs in the high half (`TTBR1_EL1`) so `TTBR0_EL1` is free for per-task userspace — the [ADR-0033](../decisions/0033-kernel-high-half-migration.md) prerequisite that unblocks a real EL0 task's `SVC` vector fetch (B6). The kernel image is **linked high** (`KBASE = 0xFFFF_FFFF_4008_0000`) but **loaded low** (`0x4008_0000`); the ELF entry is forced to `_start`'s low physical address (`_start_phys`, [`linker.ld`](../../bsp-qemu-virt/linker.ld)) because the MMU is off at reset. A single linear high-half offset `KERNEL_HIGH_HALF_OFFSET = 0xFFFF_FFFF_0000_0000` maps physical memory: `kernel_VA = OFFSET + PA` ([`tyrne_hal::phys_to_kernel_va`](../../hal/src/mmu/mod.rs)). The boot-time transition (ADR-0033 §Simulation):
+
+1. **`kernel_entry` (LOW).** Runs at the low physical alias with the MMU off. Because the whole image is high-linked *uniformly*, PC-relative `adrp`/`adr` references resolve to LOW (load) addresses at runtime (the offset cancels between in-image symbols), so no separate identity-VMA section is needed. It enables the low-identity MMU (`mmu_bootstrap`), then builds the high-half `TTBR1` tables and clears `EPD1` (`mmu_bootstrap::high_half_activate`: `DSB ISH` → `MSR TTBR1_EL1` → `ISB` → `MSR TCR_EL1` with `EPD1 = 0` → `ISB`). Both regimes are now live; the kernel still executes low.
+2. **Migration trampoline (the crossing).** A small inline-asm block: `MSR VBAR_EL1, <high>` + `ISB` (high vectors live before the branch) → `add sp, sp, OFFSET` (rebase `SP` to the high stack alias) → `br <kernel_main_high high VA>`, `options(noreturn)`. The PC physically crosses low→high at the `br`; `DAIF` is masked and no `StaticCell` holds a low VA, so the crossing cannot brick.
+3. **`kernel_main_high` (HIGH).** Frees `TTBR0_EL1` (`MSR TTBR0_EL1, xzr` + set `EPD0 = 1` + `TLBI VMALLE1` + `DSB ISH`), prints the new **`tyrne: high-half active`** boot marker, then constructs the console + GIC at their high device-MMIO aliases and runs the rest of the bring-up (§Stage 3) at high-half addresses. Function pointers / vtables (absolute, HIGH) are all taken here, so they stay reachable once `TTBR0` is freed.
+
+v1 maps the whole high-half RAM window `PXN = 0` (RWX-equivalent, like the identity map it replaces; `AP = 0b00` keeps EL0 with no access); the ADR-0033 layout's distinct `PXN = 1` physmap region is per-section W^X hardening deferred to ADR-0034. The migration is **fault-clean** (`-d int,unimp`: exactly the 2 syscall-smoke `SVC` exceptions, zero new Translation/Permission faults). Audit: [UNSAFE-2026-0031](../audits/unsafe-log.md) + Amendments to 0022/0023/0024.
+
+> **Forward limit (Pi 4 / large images).** `KERNEL_HIGH_HALF_OFFSET = 0xFFFF_FFFF_0000_0000` bounds the direct map to the **low 4 GiB** of PA, and the migration mask (`OFFSET | (addr & 0xFFFF_FFFF)`) assumes the kernel image PA is below 4 GiB. A BSP with > 4 GiB RAM or peripherals above 4 GiB (e.g. the Raspberry Pi 4, Phase D) needs a different offset **and** a revisited mask before carrying this pattern over.
 
 ### Boot-time sequence
 
@@ -42,24 +56,30 @@ sequenceDiagram
     Note over Asm: Phase 3 — conventional setup<br/>SP ← __stack_top<br/>CPACR_EL1.FPEN ← 0b11; isb<br/>BSS zeroed (__bss_start..__bss_end)
     Asm->>KE: bl kernel_entry  (EL = 1, guaranteed)
     Note over KE: T-009 / UNSAFE-2026-0016 asserts CurrentEL == 1<br/>as a load-bearing post-condition of Phase 2
-    KE->>KE: construct QemuVirtCpu (incl. CurrentEL self-check)
-    KE->>KE: construct Pl011Uart at 0x0900_0000
+    Note over KE: ── kernel_entry (LOW physical alias; MMU off) ──
+    KE->>KE: early Pl011Uart at LOW 0x0900_0000 (identity)
     KE->>U: write_bytes(b"tyrne: hello from kernel_main\n")
-    KE->>KE: install VBAR_EL1 (T-012)
-    KE->>KE: boot_ns = cpu.now_ns() snapshot
-    KE->>KE: mmu_bootstrap() — activates MMU<br/>(T-016 / ADR-0027)
+    KE->>KE: install VBAR_EL1 (low vectors; T-012)
+    KE->>KE: mmu_bootstrap() — low-identity MMU on<br/>(T-016 / ADR-0027)
     KE->>U: write_bytes(b"tyrne: mmu activated\n")
+    KE->>KE: high_half_activate() — build TTBR1 tables, EPD1 1→0<br/>(T-022 / ADR-0033; both regimes now live)
+    KE->>KE: migration trampoline — MSR VBAR-high; ISB;<br/>add sp,sp,OFFSET; br kernel_main_high (PC crosses low→high)
+    Note over KE: ── kernel_main_high (HIGH half, TTBR1_EL1) ──
+    KE->>KE: free TTBR0_EL1 (xzr + EPD0=1 + TLBI VMALLE1)
+    KE->>KE: Pl011Uart + QemuVirtCpu at HIGH device-MMIO alias
+    KE->>U: write_bytes(b"tyrne: high-half active\n")
+    KE->>KE: boot_ns = cpu.now_ns() snapshot (post-migration)
     KE->>KE: Pmm::new — Physical Memory Manager init<br/>(T-017 / ADR-0035)
     KE->>U: write_bytes(b"tyrne: pmm initialized (...)\n")
-    KE->>KE: AddressSpace arena init — wrap bootstrap L0<br/>(T-018 / ADR-0028; no Mmu::create_address_space call<br/>per Simulation row 0 — would re-zero the live root)
+    KE->>KE: AddressSpace arena init — wrap bootstrap L0<br/>(T-018 / ADR-0028; populated-but-uninstalled root post-T-022)
     KE->>U: write_bytes(b"tyrne: address-space-arena ready (...)\n")
     KE->>KE: task_loader::load_image — embedded raw-flat blob<br/>into a fresh AS (T-019 / ADR-0029; NOT executed)
     KE->>U: write_bytes(b"tyrne: image loaded (...)\n")
-    KE->>KE: GIC init + DAIF.I unmask (T-012)
+    KE->>KE: GIC init + DAIF.I unmask (T-012; high device-MMIO)
     KE->>U: write_bytes(b"tyrne: timer ready (...)")
     KE->>KE: kernel-object setup, IPC, scheduler
     KE->>KE: start() — never returns
-    Note over KE: steady state — cooperative IPC demo
+    Note over KE: steady state — cooperative IPC demo (high half)
 ```
 
 ### Memory map at boot
@@ -145,9 +165,9 @@ post_eret:
 
 [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) pins the above memory map:
 
-- `ENTRY(_start)` — the ELF's `e_entry` is set to `_start`'s address.
-- `MEMORY` — a single `RAM` region: `ORIGIN = 0x40080000, LENGTH = 128M`.
-- `.text` starts with `KEEP(*(.text.boot))`, guaranteeing `_start` is at `0x40080000`.
+- `ENTRY(_start_phys)` — the ELF's `e_entry` is set to `_start_phys` (`= _start - KERNEL_HH_OFFSET`), the LOW physical address of `_start`, so QEMU's reset PC is physical (the MMU is off at reset; the high VMA would translation-fault immediately). This matches the link-high/load-low migration described in §"High-half migration" and [ADR-0033](../decisions/0033-kernel-high-half-migration.md).
+- **Link-high / load-low (ADR-0033).** Three constants pin the split — `KERNEL_HH_OFFSET = 0xFFFF_FFFF_0000_0000`, `KERNEL_IMAGE_PHYS_BASE = 0x40080000`, and `KBASE = KERNEL_HH_OFFSET + KERNEL_IMAGE_PHYS_BASE` (`= 0xFFFF_FFFF_4008_0000`). Virtual addresses start at `. = KBASE`; each section sets its load address low via `AT(ADDR(.section) - KERNEL_HH_OFFSET)`, so the whole image is one uniform high-half alias of the physical image loaded at `0x40080000`. (There is no `MEMORY {}` block — the single 128 MiB region is expressed directly with `KBASE` + `AT()`.)
+- `.text` starts with `KEEP(*(.text.boot))` so `_start` is first (VMA `KBASE`, LMA `0x40080000` — where QEMU loads it and where it runs with the MMU off), followed by the 2 KiB-aligned `KEEP(*(.text.vectors))` exception-vector table (`VBAR_EL1` requires 2 KiB alignment).
 - `.bss` is 8-byte aligned at both ends so the BSS-zero loop can step by 8.
 - A 64 KiB stack region is reserved after `.bss`; `__stack_top` names its high end.
 - `/DISCARD/` drops `.comment`, `.note.*`, `.eh_frame*`, and `.gcc_except_table*` — unwinding tables are dead weight under [`panic=abort`](../standards/error-handling.md).
@@ -190,7 +210,7 @@ Properties the boot flow maintains. These are the claims a reader can rely on an
 - **EL3 → EL2 → EL1 chain.** v1 hardware targets do not boot at EL3; if a future BSP requires it, a follow-up task adds the EL3→EL2 transition on top of the existing EL2→EL1 logic per ADR-0024 §Open questions.
 - **DTB parsing and `BootInfo`.** The kernel's typed boot-info contract, probably introduced with Pi 4 support.
 - **Multi-core start.** PSCI `CPU_ON` for secondary cores.
-- **High-half kernel migration.** v1 maps the kernel identity-only via `TTBR0_EL1`; the future ADR-0033 placeholder (per [ADR-0027 §Decision outcome (a)](../decisions/0027-kernel-virtual-memory-layout.md)) introduces the high-half mapping when B6 surfaces the per-task `TTBR0_EL1` swap (B5 closed without it).
+- ~~**High-half kernel migration.**~~ **Resolved (T-022 / ADR-0033, 2026-05-30)** — the kernel now runs in `TTBR1_EL1` and `TTBR0_EL1` is freed for per-task userspace (see §"High-half migration" above). v1 keeps the whole high-half RAM window `PXN = 0` (RWX-equivalent); per-section W^X hardening (a distinct `PXN = 1` physmap) is deferred to **ADR-0034**.
 - **Guard-page stacks.** With the MMU now active (T-016), guard-page stacks become reachable — pending a follow-on B-phase task that remaps a stack region's bottom page as invalid.
 - **Measured boot / attestation.** Hardware-dependent; deferred per [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md).
 

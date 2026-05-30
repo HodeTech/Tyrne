@@ -402,7 +402,11 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
         let pa_off = idx.saturating_mul(PAGE_SIZE);
         let pa_usize = self.extent.start.0.saturating_add(pa_off);
         let frame = PhysFrame::from_aligned(PhysAddr(pa_usize))?;
-        let pa_ptr = pa_usize as *mut u8;
+        // Reach the frame through the high-half direct map (ADR-0033 / T-022):
+        // kernel VA = KERNEL_HIGH_HALF_OFFSET + pa. On the host test harness
+        // the offset is 0 (identity), so the test's real host-backed frames
+        // are written in place.
+        let pa_ptr = tyrne_hal::phys_to_kernel_va(pa_usize) as *mut u8;
 
         // Mark allocated. Reached only after the fallible `from_aligned`
         // above succeeded, so the counters/bitmap and the handed-out
@@ -434,11 +438,12 @@ impl<const N: usize, const R: usize> Pmm<N, R> {
         //     bitmap bit is the proof; no other kernel subsystem can
         //     hold a PhysFrame for this index until alloc_frame
         //     returns ownership to the caller.
-        // (3) the region is identity-mapped to a kernel-readable VA
-        //     per ADR-0027's identity-only v1 layout (post-MMU
-        //     activation in mmu_bootstrap, kernel sees PA == VA);
-        //     the high-half migration (ADR-0033 placeholder) will
-        //     introduce a `phys_to_virt` helper at this site.
+        // (3) the region is reachable at the kernel VA
+        //     `phys_to_kernel_va(pa)` — the high-half direct map the
+        //     kernel runs through post-migration (ADR-0033 / T-022).
+        //     Pre-T-022 this was identity (PA == VA per ADR-0027);
+        //     the rebase is the single `phys_to_kernel_va` helper now,
+        //     identity on host test builds (offset 0).
         // (4) PAGE_SIZE = 4096 is well within isize::MAX on aarch64;
         //     `write_bytes` cannot overflow any intermediate
         //     arithmetic.

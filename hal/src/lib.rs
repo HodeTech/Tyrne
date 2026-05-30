@@ -44,8 +44,8 @@ pub use context_switch::ContextSwitch;
 pub use cpu::{CoreId, Cpu, IrqGuard, IrqState};
 pub use irq_controller::{IrqController, IrqNumber};
 pub use mmu::{
-    FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysAddr, PhysFrame, VirtAddr,
-    PAGE_SIZE,
+    kernel_va_to_phys, phys_to_kernel_va, FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError,
+    PhysAddr, PhysFrame, VirtAddr, KERNEL_HIGH_HALF_OFFSET, PAGE_SIZE,
 };
 pub use timer::Timer;
 

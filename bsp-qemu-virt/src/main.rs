@@ -31,8 +31,9 @@ use core::fmt::Write;
 use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
 
+use tyrne_hal::mmu::vmsav8::TCR_EL1_EPD0_BIT;
 use tyrne_hal::{Console, Cpu, FmtWriter, Timer};
-use tyrne_hal::{PhysAddr, VirtAddr, PAGE_SIZE};
+use tyrne_hal::{PhysAddr, VirtAddr, KERNEL_HIGH_HALF_OFFSET, PAGE_SIZE};
 use tyrne_kernel::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
 use tyrne_kernel::ipc::{IpcQueues, Message, RecvOutcome};
 use tyrne_kernel::mm::{PhysFrameRange, Pmm};
@@ -110,6 +111,19 @@ type BspPmm = Pmm<PMM_BITMAP_BYTES, PMM_RESERVED_RANGES>;
 ///
 /// [adr-0012]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0012-boot-flow-qemu-virt.md
 const PL011_UART_BASE: usize = 0x0900_0000;
+
+// Pin the HAL high-half offset to the literal the linker script (`KBASE =
+// KERNEL_HH_OFFSET + KERNEL_IMAGE_PHYS_BASE`) and the migration path assume.
+// A drift between the linker's hardcoded value and `tyrne_hal` would silently
+// corrupt every high-half VA↔PA computation (ADR-0033 / T-022); fail the build
+// instead.
+//
+// Gated on the kernel build: `KERNEL_HIGH_HALF_OFFSET` is `0` on any non
+// `target_os = "none"` build (host/IDE analysis, incl. an aarch64 host), where
+// this assert is irrelevant — without the guard it would fire a spurious
+// failure under rust-analyzer / a hosted `cargo check` on Apple Silicon.
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
+const _: () = assert!(KERNEL_HIGH_HALF_OFFSET == 0xFFFF_FFFF_0000_0000);
 
 // ─── StaticCell ───────────────────────────────────────────────────────────────
 //
@@ -243,7 +257,7 @@ static GIC: StaticCell<QemuVirtGic> = StaticCell::new();
 /// The PL011 console — used by task functions for diagnostic output.
 static CONSOLE: StaticCell<Pl011Uart> = StaticCell::new();
 
-/// Boot-time `now_ns()` snapshot, written once by `kernel_entry` after the
+/// Boot-time `now_ns()` snapshot, written once by `kernel_main_high` after the
 /// CPU is constructed and read by `task_a` to compute the boot-to-end
 /// elapsed time. T-009 measurement scaffold; replaced by a richer
 /// instrumentation surface when the first hypothesis-driven performance
@@ -643,7 +657,7 @@ fn task_a() -> ! {
     console.write_bytes(b"tyrne: all tasks complete\n");
 
     // T-009 measurement: print boot-to-end elapsed time. Uses `now_ns` on
-    // the live Timer impl and the BOOT_NS snapshot taken in `kernel_entry`.
+    // the live Timer impl and the BOOT_NS snapshot taken in `kernel_main_high`.
     // `saturating_sub` is defensive — the hardware counter is monotonic so
     // `now >= boot_ns` always holds, but the saturating form makes the
     // subtraction's correctness obvious to a reader scanning for overflow
@@ -801,46 +815,68 @@ extern "C" {
     static __boot_pt_l0: [u64; 512];
 }
 
-/// First Rust entry after the assembly stub.
+/// Mask of the low 4 GiB of physical address space — the bound on the QEMU
+/// virt kernel image PA. The migration `br`/`VBAR` targets are derived by
+/// masking a symbol address to this and OR-ing [`KERNEL_HIGH_HALF_OFFSET`]; a
+/// future BSP with an image PA ≥ 4 GiB (e.g. Pi 4) must revisit this + the
+/// offset (see [`high_half_alias`] + the linker.ld / `KERNEL_HIGH_HALF_OFFSET`
+/// forward-notes).
+const KERNEL_IMAGE_PA_MASK: usize = 0xFFFF_FFFF;
+
+/// Compute the high-half image alias of a kernel-symbol address, for the
+/// boot-time migration's `MSR VBAR_EL1` / `br` targets.
 ///
-/// Sets up the console, CPU, kernel objects, capability tables, IPC
-/// infrastructure, and cooperative scheduler. Registers Task B before Task A
-/// so that B runs first and registers as IPC receiver before A sends.
-/// Transfers control to the scheduler. This function never returns.
+/// Masking the low 32 bits recovers the symbol's **PA** whether the compiler
+/// materialised it PC-relative (low, while `kernel_entry` runs at the low
+/// physical alias) or absolute (high); OR-ing [`KERNEL_HIGH_HALF_OFFSET`] then
+/// yields its high-half VA. Correct only while the image PA is below 4 GiB —
+/// the `debug_assert!` fails fast (in debug builds) if `addr` is neither a low
+/// PA nor its exact high-half alias, which would mean the image escaped the
+/// low-4 GiB window the mask assumes.
+#[inline]
+fn high_half_alias(addr: usize) -> usize {
+    let pa = addr & KERNEL_IMAGE_PA_MASK;
+    debug_assert!(
+        addr == pa || addr == (KERNEL_HIGH_HALF_OFFSET | pa),
+        "migration: symbol address is neither a low PA nor its high-half alias \
+         — the kernel image PA must be < 4 GiB (KERNEL_IMAGE_PA_MASK)",
+    );
+    KERNEL_HIGH_HALF_OFFSET | pa
+}
+
+/// Low-half boot entry — the `_start` (`boot.s`) branch target.
 ///
-/// # Panics
+/// Runs at the LOW physical alias of the kernel image with the MMU off (the
+/// linker forces the ELF entry to the physical address of `_start`; see
+/// [`linker.ld`] + [ADR-0033]). It enables the low-identity MMU, builds the
+/// high-half (`TTBR1_EL1`) tables, then performs the boot-time high-half
+/// migration: install the high vectors, rebase `SP` to the high stack alias,
+/// and branch the PC into [`kernel_main_high`] (the high-half image alias).
+/// It never returns.
 ///
-/// Panics if any kernel-object allocation or capability-table operation fails.
-/// All capacities are statically bounded and the demo uses far fewer objects
-/// than the limits, so in practice none of these branches are reachable.
+/// Only PC-relative-safe, identity-mapped work happens here (early
+/// diagnostics via a throwaway low-MMIO console, the MMU bring-up, the
+/// migration asm). Everything that takes a `&'static`/function-pointer
+/// address (the `StaticCell` publishes, `create_task`, the scheduler) lives
+/// in [`kernel_main_high`] so those absolute addresses resolve HIGH and stay
+/// reachable once `TTBR0_EL1` is freed for userspace.
+///
+/// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+/// [`linker.ld`]: https://github.com/HodeTech/Tyrne/blob/main/bsp-qemu-virt/linker.ld
 #[unsafe(no_mangle)]
-#[allow(
-    clippy::too_many_lines,
-    reason = "BSP boot sequence is intentionally linear top-to-bottom for auditability — splitting into helpers obscures the order each phase depends on (per docs/standards/bsp-boot-checklist.md)"
-)]
 pub extern "C" fn kernel_entry() -> ! {
-    // ── Hardware setup ────────────────────────────────────────────────────────
-
-    // SAFETY: 0x0900_0000 is the well-known QEMU virt PL011 UART MMIO
-    // base, exclusively owned by this kernel in v1. Audit: UNSAFE-2026-0001.
-    let console = unsafe { Pl011Uart::new(PL011_UART_BASE) };
-    // SAFETY: constructed exactly once in kernel_entry; single-core v1.
-    // See QemuVirtCpu::new # Safety. Audit: UNSAFE-2026-0006.
-    let cpu = unsafe { QemuVirtCpu::new() };
-
-    // SAFETY: single-core; no concurrent writer exists before `start()`.
+    // ── Early diagnostics (low identity) ──────────────────────────────────────
+    //
+    // A throwaway console at the LOW PL011 MMIO base (identity-mapped while
+    // the migration has not yet run). The persistent `CONSOLE` StaticCell is
+    // constructed with the HIGH device-MMIO alias only after the migration,
+    // in `kernel_main_high`.
+    //
+    // SAFETY: 0x0900_0000 is the well-known QEMU virt PL011 UART MMIO base,
+    // exclusively owned by this kernel in v1, identity-mapped pre-migration.
     // Audit: UNSAFE-2026-0001.
-    unsafe {
-        (*CONSOLE.0.get()).write(console);
-        (*CPU.0.get()).write(cpu);
-    }
-
-    // SAFETY: CONSOLE was written in the block above. Audit: UNSAFE-2026-0001.
-    let console = unsafe { (*CONSOLE.0.get()).assume_init_ref() };
-    // SAFETY: CPU was written in the block above. Audit: UNSAFE-2026-0001.
-    let cpu = unsafe { (*CPU.0.get()).assume_init_ref() };
-
-    console.write_bytes(b"tyrne: hello from kernel_main\n");
+    let early_console = unsafe { Pl011Uart::new(PL011_UART_BASE) };
+    early_console.write_bytes(b"tyrne: hello from kernel_main\n");
 
     // ── Exception vector install — T-012 (must run before mmu_bootstrap) ──────
     //
@@ -882,21 +918,6 @@ pub extern "C" fn kernel_entry() -> ! {
         );
     }
 
-    // ── boot_ns snapshot before mmu_bootstrap (T-016 / ADR-0027) ──────────────
-    //
-    // `cpu.now_ns()` reads `CNTVCT_EL0` (system register, MMU-independent).
-    // Sampling it here — before `mmu_bootstrap` — captures the boot-to-end
-    // baseline that *includes* MMU activation cost (~< 100 µs per
-    // ADR-0027 §Consequences). This keeps the post-T-016 boot-to-end
-    // measurement comparable to the pre-T-016 baseline modulo the
-    // bootstrap-routine addition.
-    let boot_ns = cpu.now_ns();
-    // SAFETY: single-core; no concurrent writer exists before `start()`.
-    // Audit: UNSAFE-2026-0001.
-    unsafe {
-        (*BOOT_NS.0.get()).write(boot_ns);
-    }
-
     // ── MMU activation — T-016 / ADR-0027 ─────────────────────────────────────
     //
     // Activates the MMU with the v1 identity-mapped layout per
@@ -917,7 +938,151 @@ pub extern "C" fn kernel_entry() -> ! {
     unsafe {
         mmu_bootstrap::mmu_bootstrap();
     }
-    console.write_bytes(b"tyrne: mmu activated\n");
+    early_console.write_bytes(b"tyrne: mmu activated\n");
+
+    // ── High-half table build — T-022 / ADR-0033 §Simulation rows 0-1 ─────────
+    //
+    // Build the TTBR1_EL1 tables and enable TTBR1 walks (EPD1 1→0). Both
+    // translation regimes are live on return; the kernel still executes low.
+    //
+    // SAFETY: called once, at EL1, after `mmu_bootstrap` (the shared L2 tables
+    // + the low-identity MMU are live) and before the migration trampoline.
+    // Audit: UNSAFE-2026-0022 / 0023 (Amendments).
+    unsafe {
+        mmu_bootstrap::high_half_activate();
+    }
+
+    // ── Boot-time high-half migration — T-022 / ADR-0033 §Simulation row 2 ────
+    //
+    // Install the high VBAR (so a fault on the first high fetch vectors to a
+    // mapped handler), rebase SP to the high stack alias, and branch the PC
+    // into the high-half image (`kernel_main_high`). The low identity stays
+    // live (TTBR0 is freed inside `kernel_main_high`), DAIF is masked (since
+    // `_start`), and no `StaticCell` holds a low VA yet, so the few pre-`br`
+    // instructions cannot brick. The high targets are derived by masking the
+    // (PC-relative-resolved) address to its physical part and OR-ing the
+    // high-half offset, so the computation is correct regardless of how the
+    // compiler materialises the symbol addresses.
+    let high_vbar = high_half_alias(core::ptr::addr_of!(tyrne_vectors) as usize);
+    let high_entry = high_half_alias(kernel_main_high as *const () as usize);
+    // SAFETY: the absolute-jump migration trampoline (ADR-0033 §Simulation
+    // row 2). `MSR VBAR_EL1` to the high vector base (mapped PXN=0 in TTBR1) +
+    // `ISB` so high vectors are live before the branch; `add sp, sp, off`
+    // rebases SP to the high alias of the same boot stack; `br` crosses the PC
+    // from the low identity to the high-half image alias. Both regimes are
+    // live across the branch and DAIF is masked, so the crossing cannot fault.
+    // `options(noreturn)`: control never returns (kernel_main_high is `-> !`),
+    // so changing SP here is sound. Audit: UNSAFE-2026-0031.
+    unsafe {
+        core::arch::asm!(
+            "msr vbar_el1, {vbar}",
+            "isb",
+            "add sp, sp, {off}",
+            "br  {entry}",
+            vbar = in(reg) high_vbar,
+            off = in(reg) KERNEL_HIGH_HALF_OFFSET,
+            entry = in(reg) high_entry,
+            options(noreturn),
+        );
+    }
+}
+
+/// High-half kernel main — the migration trampoline's branch target.
+///
+/// Entered via `br` from [`kernel_entry`] with the PC, `SP`, and `VBAR_EL1`
+/// all resolving through the high half (`TTBR1_EL1`). Frees `TTBR0_EL1` (the
+/// low identity) for per-task userspace, then runs the full boot sequence
+/// (console / CPU / PMM / address space / loader / IPC / syscall smoke /
+/// scheduler) at high-half addresses. Never returns.
+///
+/// `#[inline(never)]` + `#[unsafe(no_mangle)]` keep it a stable, addressable
+/// symbol — `kernel_entry` takes its address to compute the migration branch
+/// target.
+///
+/// # Panics
+///
+/// Panics if any kernel-object allocation or capability-table operation
+/// fails; all capacities are statically bounded and the demo uses far fewer
+/// objects than the limits, so in practice none of these branches are
+/// reachable.
+#[unsafe(no_mangle)]
+#[inline(never)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "BSP boot sequence is intentionally linear top-to-bottom for auditability — splitting into helpers obscures the order each phase depends on (per docs/standards/bsp-boot-checklist.md)"
+)]
+extern "C" fn kernel_main_high() -> ! {
+    // ── Free TTBR0 — the low identity — T-022 / ADR-0033 §Simulation row 3 ────
+    //
+    // SP was rebased to the high alias by the migration trampoline, so this
+    // function's frame is already high. Null `TTBR0_EL1`, set `EPD0 = 1`
+    // (disable TTBR0 walks until a per-task AS activates), and flush stale low
+    // translations. After this the kernel is structurally absent from the low
+    // half — `TTBR0_EL1` is free for userspace.
+    //
+    // SAFETY: register-only writes (no table-memory mutation, so no `DSB`
+    // before the `TLBI` is required). `MSR TTBR0_EL1, xzr` + `ISB`; set `EPD0`
+    // via a read-modify-write of `TCR_EL1` + `ISB`; `TLBI VMALLE1` + `DSB ISH`
+    // + `ISB` to drop and complete the stale low translations.
+    // Audit: UNSAFE-2026-0023 / 0024 (Amendments) + UNSAFE-2026-0031.
+    unsafe {
+        core::arch::asm!(
+            "msr ttbr0_el1, xzr",
+            "isb",
+            "mrs {t}, tcr_el1",
+            "orr {t}, {t}, {epd0}",
+            "msr tcr_el1, {t}",
+            "isb",
+            "tlbi vmalle1",
+            "dsb ish",
+            "isb",
+            epd0 = in(reg) TCR_EL1_EPD0_BIT,
+            t = out(reg) _,
+            options(nostack, nomem),
+        );
+    }
+
+    // ── Hardware setup (high-half device MMIO) ────────────────────────────────
+    //
+    // The console + GIC now reach the PL011 / GIC registers through the HIGH
+    // device-MMIO alias (`phys_to_kernel_va`) — the low identity is gone.
+    //
+    // SAFETY: the PL011 UART reached via its high-half alias is the same
+    // device, exclusively owned in v1. Audit: UNSAFE-2026-0001.
+    let console = unsafe { Pl011Uart::new(tyrne_hal::phys_to_kernel_va(PL011_UART_BASE)) };
+    // SAFETY: constructed exactly once; single-core v1; we are at EL1 (the EL
+    // drop completed in boot.s). See QemuVirtCpu::new # Safety. Audit: UNSAFE-2026-0006.
+    let cpu = unsafe { QemuVirtCpu::new() };
+
+    // SAFETY: single-core; no concurrent writer exists before `start()`.
+    // Audit: UNSAFE-2026-0001.
+    unsafe {
+        (*CONSOLE.0.get()).write(console);
+        (*CPU.0.get()).write(cpu);
+    }
+    // SAFETY: CONSOLE / CPU written just above. Audit: UNSAFE-2026-0001.
+    let console = unsafe { (*CONSOLE.0.get()).assume_init_ref() };
+    // SAFETY: as above. Audit: UNSAFE-2026-0001.
+    let cpu = unsafe { (*CPU.0.get()).assume_init_ref() };
+
+    console.write_bytes(b"tyrne: high-half active\n");
+
+    // ── boot_ns snapshot (T-016 / ADR-0027; post-migration per ADR-0033) ──────
+    //
+    // `cpu.now_ns()` reads `CNTVCT_EL0` (system register, MMU-independent).
+    // Sampled just after the high-half migration so the boot-to-end baseline
+    // measures the high-half steady state. NOTE: this excludes BOTH
+    // `mmu_bootstrap` (MMU activation, ~< 100 µs — which the pre-T-022 boot_ns
+    // deliberately *included*) and the migration (~ a few µs), so the metric's
+    // meaning shifted vs the pre-T-022 baseline (now "high-half-steady-state to
+    // end", not "MMU-activation to end"). Both excluded costs are immaterial
+    // against the ~ms boot-to-end total; the perf review records the shift.
+    let boot_ns = cpu.now_ns();
+    // SAFETY: single-core; no concurrent writer exists before `start()`.
+    // Audit: UNSAFE-2026-0001.
+    unsafe {
+        (*BOOT_NS.0.get()).write(boot_ns);
+    }
 
     // ── PMM init — T-017 / ADR-0035 ──────────────────────────────────────────
     //
@@ -942,7 +1107,10 @@ pub extern "C" fn kernel_entry() -> ! {
     // single-core boot-time, no concurrent observer. Same discipline
     // as the pre-existing `addr_of!(tyrne_vectors)` site.
     // Audit: UNSAFE-2026-0001 (StaticCell pattern for `PMM`).
-    let stack_top_addr = core::ptr::addr_of!(__stack_top) as usize;
+    // `addr_of!` resolves HIGH here (kernel_main_high runs in the high half),
+    // so convert the symbol's high-half VA back to its PA for the PMM's
+    // physical-frame reservation (ADR-0033 §Negative — addr_of!-as-PA fix).
+    let stack_top_addr = tyrne_hal::kernel_va_to_phys(core::ptr::addr_of!(__stack_top) as usize);
     let stack_top_aligned_up = stack_top_addr.saturating_add(PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
     let pmm_extent = PhysFrameRange::new(PhysAddr(PMM_EXTENT_START), PhysAddr(PMM_EXTENT_END));
     let pmm_reserved = [
@@ -1007,16 +1175,17 @@ pub extern "C" fn kernel_entry() -> ! {
     // SAFETY: `addr_of!` of an `extern "C"` static is itself safe — no
     // load happens here, only the symbol's address is taken.
     let l0_root = {
-        let pa = core::ptr::addr_of!(__boot_pt_l0) as usize;
+        // `addr_of!` resolves HIGH (high-half execution); the L0 root is named
+        // by its PA, so convert back (ADR-0033 §Negative — addr_of!-as-PA fix).
+        let pa = tyrne_hal::kernel_va_to_phys(core::ptr::addr_of!(__boot_pt_l0) as usize);
         tyrne_hal::PhysFrame::from_aligned(PhysAddr(pa))
             .expect("L0 root must be 4 KiB-aligned per linker.ld `.boot_pt` reservation")
     };
 
-    // Wrap the already-live root + publish in arena slot 0.
-    // Wrap the already-live root + publish in arena slot 0. The
-    // `bootstrap_root_pa` for the banner is read directly from
-    // `l0_root` — the wrapped `AddressSpace<QemuVirtMmu>` stores
-    // exactly this `PhysFrame` and the round-trip is pinned by
+    // Wrap the bootstrap root (the low-identity L0 `mmu_bootstrap` built)
+    // and publish it as arena slot 0. The `bootstrap_root_pa` for the banner
+    // is read directly from `l0_root` — the wrapped `AddressSpace<QemuVirtMmu>`
+    // stores exactly this `PhysFrame` and the round-trip is pinned by
     // `wrap_bootstrap_returns_address_space_with_root` in
     // `kernel/src/mm/address_space.rs::tests`.
     let bootstrap_root_pa = l0_root.as_usize();
@@ -1028,15 +1197,19 @@ pub extern "C" fn kernel_entry() -> ! {
     //   These two entries cover ONLY the StaticCell/arena publish
     //   mechanics, not the `from_existing_root` wrap below.
     // - `QemuVirtAddressSpace::from_existing_root(l0_root)` requires
-    //   `l0_root` to be a currently-live VMSAv8 L0 translation table
-    //   (see its `# Safety` doc). `mmu_bootstrap` populated this exact
-    //   frame and wrote its PA into `TTBR0_EL1` before this block runs
-    //   (we are post-`mmu_bootstrap` at this point); the kernel-half
-    //   mappings are installed; the descriptors are correctly encoded
-    //   per the host-tested `tyrne_hal::mmu::vmsav8` encoders. The wrap
-    //   does NOT zero-fill the live root (which would unmap the running
-    //   kernel) — that is why it cannot route through the zero-fill
-    //   `create_address_space`. Audit: UNSAFE-2026-0028.
+    //   `l0_root` to be a valid, **populated** VMSAv8 L0 translation table
+    //   (see its `# Safety` doc). `mmu_bootstrap` populated this exact frame
+    //   as the low-identity root and installed it in `TTBR0_EL1`; **post-T-022
+    //   `kernel_main_high` has already freed `TTBR0_EL1` (null + `EPD0 = 1`)
+    //   before this block runs**, so the frame is no longer the *live* TTBR0 —
+    //   it is a populated-but-uninstalled table retained as arena slot 0
+    //   (kernel-init's AS authority + the cap-derivation parent for the
+    //   loader). Its descriptors are correctly encoded per the host-tested
+    //   `tyrne_hal::mmu::vmsav8` encoders. The wrap does NOT zero-fill (which
+    //   would corrupt the populated descriptor topology a future `activate` /
+    //   `map` walk relies on) — that is why it cannot route through the
+    //   zero-fill `create_address_space`. Audit: UNSAFE-2026-0028 (+ its
+    //   2026-05-30 T-022 Amendment refining "live" → "populated").
     let bootstrap_as_handle = unsafe {
         let arena = (*AS_ARENA.0.get()).assume_init_mut();
         let inner = mmu::QemuVirtAddressSpace::from_existing_root(l0_root);
@@ -1213,8 +1386,8 @@ pub extern "C" fn kernel_entry() -> ! {
     // Audit: UNSAFE-2026-0019.
     let gic = unsafe {
         QemuVirtGic::new(
-            QEMU_VIRT_GIC_DISTRIBUTOR_BASE,
-            QEMU_VIRT_GIC_CPU_INTERFACE_BASE,
+            tyrne_hal::phys_to_kernel_va(QEMU_VIRT_GIC_DISTRIBUTOR_BASE),
+            tyrne_hal::phys_to_kernel_va(QEMU_VIRT_GIC_CPU_INTERFACE_BASE),
         )
     };
     // SAFETY: single-core; no concurrent writer to GIC static yet.
@@ -1248,9 +1421,11 @@ pub extern "C" fn kernel_entry() -> ! {
     // (it sampled CNTFRQ_EL0 and cached the resolution). Print the timer
     // parameters so QEMU output makes the measurement visible. The UART
     // write goes through the device-nGnRnE mapping installed by
-    // `mmu_bootstrap`. The boot-to-end timestamp was already captured
-    // pre-MMU (above) so the recorded baseline includes the MMU
-    // activation cost.
+    // `mmu_bootstrap`. The boot-to-end baseline (`BOOT_NS`) was captured just
+    // above — *post* high-half migration — so it measures the high-half steady
+    // state and therefore *excludes* the MMU-activation + migration cost (see
+    // the `boot_ns` snapshot comment above for the metric-meaning shift vs the
+    // pre-T-022 baseline, which included MMU activation).
     {
         let mut w = FmtWriter(console);
         let _ = writeln!(
@@ -1420,11 +1595,31 @@ pub extern "C" fn kernel_entry() -> ! {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // SAFETY: constructing a fresh Pl011Uart in the panic path is
-    // best-effort diagnostic output. Writes may interleave if the original
-    // instance is still reachable — acceptable per the Console contract
-    // (ADR-0007). Audit: UNSAFE-2026-0002.
-    let console = unsafe { Pl011Uart::new(PL011_UART_BASE) };
+    // Pick the UART MMIO alias for the regime we panicked in, so the panic
+    // prints in BOTH the early-boot (pre-migration, low identity) and the
+    // steady-state (post-migration, high half) windows — rather than silently
+    // translation-faulting if the high alias is used before it is live. The
+    // migration trampoline rebases `SP` into the high half, so
+    // `sp >= KERNEL_HIGH_HALF_OFFSET` iff the kernel is running high (where the
+    // low identity is gone and the high device alias is the only mapped UART);
+    // below it we are still on the low identity stack and the physical base is
+    // mapped.
+    let sp: usize;
+    // SAFETY: reading `SP` into a GPR is a side-effect-free register move; no
+    // memory/stack/flags touched. Audit: UNSAFE-2026-0002.
+    unsafe {
+        core::arch::asm!("mov {}, sp", out(reg) sp, options(nostack, nomem, preserves_flags));
+    }
+    let uart_base = if sp >= KERNEL_HIGH_HALF_OFFSET {
+        tyrne_hal::phys_to_kernel_va(PL011_UART_BASE)
+    } else {
+        PL011_UART_BASE
+    };
+    // SAFETY: constructing a fresh Pl011Uart in the panic path is best-effort
+    // diagnostic output. Writes may interleave if the original instance is
+    // still reachable — acceptable per the Console contract (ADR-0007). The
+    // base is the regime-correct alias selected above. Audit: UNSAFE-2026-0002.
+    let console = unsafe { Pl011Uart::new(uart_base) };
 
     console.write_bytes(b"\n!! tyrne panic !!\n");
     let mut w = FmtWriter(&console);
