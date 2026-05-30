@@ -1421,9 +1421,11 @@ extern "C" fn kernel_main_high() -> ! {
     // (it sampled CNTFRQ_EL0 and cached the resolution). Print the timer
     // parameters so QEMU output makes the measurement visible. The UART
     // write goes through the device-nGnRnE mapping installed by
-    // `mmu_bootstrap`. The boot-to-end timestamp was already captured
-    // pre-MMU (above) so the recorded baseline includes the MMU
-    // activation cost.
+    // `mmu_bootstrap`. The boot-to-end baseline (`BOOT_NS`) was captured just
+    // above — *post* high-half migration — so it measures the high-half steady
+    // state and therefore *excludes* the MMU-activation + migration cost (see
+    // the `boot_ns` snapshot comment above for the metric-meaning shift vs the
+    // pre-T-022 baseline, which included MMU activation).
     {
         let mut w = FmtWriter(console);
         let _ = writeln!(

@@ -333,7 +333,11 @@ pub unsafe fn high_half_activate() {
     // duration of this single-core boot call, and pre-zeroed by the BSS
     // loop. Indices are < 512 by the `& 0x1FF` construction. The table
     // descriptors point at the shared L2 tables (device / RAM) and the new
-    // L1_hh, all by PA. Audit: UNSAFE-2026-0022.
+    // L1_hh, all by PA. Safer alternatives rejected: identical to
+    // `mmu_bootstrap` Step 1 — VMSAv8 descriptors are raw `u64` words at fixed
+    // offsets in frames the BSP owns by address (not as Rust objects), so a
+    // safe wrapper would only relocate, not remove, the audited
+    // `write_volatile`. Audit: UNSAFE-2026-0022.
     unsafe {
         // L0_hh[511] → L1_hh
         core::ptr::write_volatile(l0_hh.add(l0_idx), table_descriptor(l1_hh as u64));
@@ -350,7 +354,12 @@ pub unsafe fn high_half_activate() {
     // live low regime is undisturbed — row 1) + `ISB`. After this the high
     // half translates, but the PC/SP/VBAR are still low (the migration
     // trampoline performs the crossing). `nomem` omitted so the descriptor
-    // writes above are not reordered past this block. Audit: UNSAFE-2026-0023.
+    // writes above are not reordered past this block. Safer alternatives
+    // rejected: identical to `mmu_bootstrap` Step 2 — EL1 system registers
+    // (`TTBR1_EL1`, `TCR_EL1`) and the `DSB`/`ISB` ordering have no safe-Rust
+    // expression; inline `asm!` is the minimal architected surface (no
+    // `cortex-a`-class crate in the dependency graph, per ADR-0014).
+    // Audit: UNSAFE-2026-0023.
     unsafe {
         asm!(
             "dsb ish",

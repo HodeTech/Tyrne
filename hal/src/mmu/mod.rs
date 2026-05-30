@@ -88,14 +88,28 @@ pub const KERNEL_HIGH_HALF_OFFSET: usize = 0;
 /// `arithmetic_side_effects` discipline; the QEMU virt PA range cannot
 /// overflow the offset (see [`KERNEL_HIGH_HALF_OFFSET`]).
 ///
+/// # Panics
+///
+/// On the kernel build (`KERNEL_HIGH_HALF_OFFSET != 0`), panics if `pa` falls
+/// outside the low-4 GiB direct-map window — a wrapped result would be a wild
+/// pointer, so the helper fail-stops in release too (CLAUDE.md #1). The
+/// condition cannot occur in v1 (the QEMU virt PA range is well under 4 GiB);
+/// the `assert!` guards a future BSP that wires a larger PA without first
+/// revisiting the offset. On host builds (offset `0`, identity) it
+/// short-circuits — any host address is valid.
+///
 /// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
 #[must_use]
 #[inline]
 pub const fn phys_to_kernel_va(pa: usize) -> usize {
     // On the kernel build (OFFSET != 0) the direct map covers only the low
     // 4 GiB of PA; catch an out-of-window PA early. On host builds (OFFSET == 0,
-    // identity) the check short-circuits — any host address is valid.
-    debug_assert!(
+    // identity) the check short-circuits — any host address is valid. Hard
+    // `assert!` (not `debug_assert!`): a wrapped out-of-window PA would be a
+    // wild pointer, so we fail-stop in release too (CLAUDE.md #1 — conservative;
+    // the check is a single predictable branch on a value that cannot occur in
+    // v1, and also rejects an out-of-window arg at const-eval time).
+    assert!(
         KERNEL_HIGH_HALF_OFFSET == 0 || pa < 0x1_0000_0000,
         "phys_to_kernel_va: PA outside the low-4 GiB high-half direct map",
     );
@@ -114,6 +128,14 @@ pub const fn phys_to_kernel_va(pa: usize) -> usize {
 /// broken project-wide"). Only valid for direct-mapped high-half addresses;
 /// `wrapping_sub` matches the kernel's `arithmetic_side_effects` discipline.
 ///
+/// # Panics
+///
+/// On the kernel build, panics if `va` is not a high-half direct-map VA whose
+/// recovered PA lands in the low 4 GiB — a wrapped result would be a wild
+/// pointer, so the helper fail-stops in release too (CLAUDE.md #1; mirrors
+/// [`phys_to_kernel_va`]). Cannot occur in v1. On host builds (offset `0`) it
+/// short-circuits.
+///
 /// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
 #[must_use]
 #[inline]
@@ -123,8 +145,10 @@ pub const fn kernel_va_to_phys(va: usize) -> usize {
     // a below-window VA (wraps high) and an above-window VA. On host builds
     // (OFFSET == 0) the check short-circuits. (`wrapping_sub` rather than a
     // `va >= OFFSET` compare avoids `clippy::absurd_extreme_comparisons` when
-    // OFFSET is 0 on host.)
-    debug_assert!(
+    // OFFSET is 0 on host.) Hard `assert!` (fires in release too) so a wrapped
+    // out-of-window VA fail-stops rather than becoming a wild pointer (CLAUDE.md
+    // #1; mirrors `phys_to_kernel_va`).
+    assert!(
         KERNEL_HIGH_HALF_OFFSET == 0 || va.wrapping_sub(KERNEL_HIGH_HALF_OFFSET) < 0x1_0000_0000,
         "kernel_va_to_phys: VA outside the high-half direct-map window",
     );

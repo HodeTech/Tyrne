@@ -33,10 +33,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate the budget: it is passed to `timeout`/`alarm()` as integer seconds,
-# both of which fail (or misbehave) on a non-numeric value.
-if ! [[ "$TO" =~ ^[0-9]+$ ]]; then
-    echo "error: --timeout must be a non-negative integer (seconds); got '$TO'" >&2
+# Validate the budget: it is passed to `timeout`/`alarm()` as integer seconds.
+# Both fail (or misbehave) on a non-numeric value, and zero is worse than
+# invalid — `timeout 0s` *disables* the timeout and `alarm(0)` cancels it, so a
+# zero budget would let the WFI-idling kernel hang the run forever. Require a
+# strictly positive integer (the regex rejects "0", non-numerics, and "").
+if ! [[ "$TO" =~ ^[1-9][0-9]*$ ]]; then
+    echo "error: --timeout must be a positive integer (seconds); got '$TO'" >&2
     exit 2
 fi
 
