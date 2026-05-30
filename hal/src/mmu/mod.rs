@@ -47,6 +47,13 @@ pub const PAGE_SIZE: usize = 4096;
 /// migration ([`bsp-qemu-virt/linker.ld`] + `kernel_entry`) uses the same
 /// value; the BSP carries a compile-time `assert!` pinning the two in sync.
 ///
+/// **Forward limit (Pi 4 / large images).** This offset bounds the direct map
+/// to the **low 4 GiB** of PA — `phys_to_kernel_va(pa)` for `pa ≥ 4 GiB` wraps
+/// — and the `kernel_entry` migration mask (`OFFSET | (addr & 0xFFFF_FFFF)`)
+/// assumes the kernel image PA is below 4 GiB. A future BSP with > 4 GiB RAM
+/// or peripherals above 4 GiB (e.g. the Raspberry Pi 4) needs a different
+/// offset **and** a revisited mask before this pattern is carried over.
+///
 /// **Host builds (`cfg(not(target_arch = "aarch64"))`) define the offset as
 /// `0`** — there is no MMU or high-half on the test harness, so
 /// [`phys_to_kernel_va`] / [`kernel_va_to_phys`] are the identity there and
@@ -54,14 +61,22 @@ pub const PAGE_SIZE: usize = 4096;
 /// deref their real host-backed "frames" unchanged. Only the aarch64 kernel
 /// build carries the real high-half offset.
 ///
+/// The discriminator is `all(target_arch = "aarch64", target_os = "none")` —
+/// the **kernel build**, matching the established idiom at
+/// [`crate::cpu`]'s `cntfrq` reader — **not** bare `target_arch = "aarch64"`,
+/// which would also be true on an aarch64 *host* (e.g. Apple Silicon) and
+/// would make `cargo test` / Miri deref `phys_to_kernel_va(real_host_ptr)`
+/// into wild memory in the PMM / `phys_frame_kernel_ptr` host tests.
+///
 /// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
 /// [adr-0033-dep]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md#dependency-chain
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 pub const KERNEL_HIGH_HALF_OFFSET: usize = 0xFFFF_FFFF_0000_0000;
 
-/// Host-build identity offset — see the aarch64 [`KERNEL_HIGH_HALF_OFFSET`]
-/// for the rationale (no MMU/high-half on the test harness).
-#[cfg(not(target_arch = "aarch64"))]
+/// Host-build identity offset — see the kernel-build [`KERNEL_HIGH_HALF_OFFSET`]
+/// for the rationale (no MMU/high-half on the test harness; identity keeps the
+/// host tests' real-backed frames reachable, including on an aarch64 host).
+#[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
 pub const KERNEL_HIGH_HALF_OFFSET: usize = 0;
 
 /// Translate a physical address to its kernel high-half direct-map virtual

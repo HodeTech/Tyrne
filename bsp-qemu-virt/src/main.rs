@@ -250,7 +250,7 @@ static GIC: StaticCell<QemuVirtGic> = StaticCell::new();
 /// The PL011 console — used by task functions for diagnostic output.
 static CONSOLE: StaticCell<Pl011Uart> = StaticCell::new();
 
-/// Boot-time `now_ns()` snapshot, written once by `kernel_entry` after the
+/// Boot-time `now_ns()` snapshot, written once by `kernel_main_high` after the
 /// CPU is constructed and read by `task_a` to compute the boot-to-end
 /// elapsed time. T-009 measurement scaffold; replaced by a richer
 /// instrumentation surface when the first hypothesis-driven performance
@@ -650,7 +650,7 @@ fn task_a() -> ! {
     console.write_bytes(b"tyrne: all tasks complete\n");
 
     // T-009 measurement: print boot-to-end elapsed time. Uses `now_ns` on
-    // the live Timer impl and the BOOT_NS snapshot taken in `kernel_entry`.
+    // the live Timer impl and the BOOT_NS snapshot taken in `kernel_main_high`.
     // `saturating_sub` is defensive — the hardware counter is monotonic so
     // `now >= boot_ns` always holds, but the saturating form makes the
     // subtraction's correctness obvious to a reader scanning for overflow
@@ -1037,8 +1037,12 @@ extern "C" fn kernel_main_high() -> ! {
     //
     // `cpu.now_ns()` reads `CNTVCT_EL0` (system register, MMU-independent).
     // Sampled just after the high-half migration so the boot-to-end baseline
-    // measures the high-half steady state; the one-time migration cost (a few
-    // µs) is excluded — immaterial against the ~ms boot-to-end total.
+    // measures the high-half steady state. NOTE: this excludes BOTH
+    // `mmu_bootstrap` (MMU activation, ~< 100 µs — which the pre-T-022 boot_ns
+    // deliberately *included*) and the migration (~ a few µs), so the metric's
+    // meaning shifted vs the pre-T-022 baseline (now "high-half-steady-state to
+    // end", not "MMU-activation to end"). Both excluded costs are immaterial
+    // against the ~ms boot-to-end total; the perf review records the shift.
     let boot_ns = cpu.now_ns();
     // SAFETY: single-core; no concurrent writer exists before `start()`.
     // Audit: UNSAFE-2026-0001.
@@ -1144,11 +1148,10 @@ extern "C" fn kernel_main_high() -> ! {
             .expect("L0 root must be 4 KiB-aligned per linker.ld `.boot_pt` reservation")
     };
 
-    // Wrap the already-live root + publish in arena slot 0.
-    // Wrap the already-live root + publish in arena slot 0. The
-    // `bootstrap_root_pa` for the banner is read directly from
-    // `l0_root` — the wrapped `AddressSpace<QemuVirtMmu>` stores
-    // exactly this `PhysFrame` and the round-trip is pinned by
+    // Wrap the bootstrap root (the low-identity L0 `mmu_bootstrap` built)
+    // and publish it as arena slot 0. The `bootstrap_root_pa` for the banner
+    // is read directly from `l0_root` — the wrapped `AddressSpace<QemuVirtMmu>`
+    // stores exactly this `PhysFrame` and the round-trip is pinned by
     // `wrap_bootstrap_returns_address_space_with_root` in
     // `kernel/src/mm/address_space.rs::tests`.
     let bootstrap_root_pa = l0_root.as_usize();
@@ -1160,15 +1163,19 @@ extern "C" fn kernel_main_high() -> ! {
     //   These two entries cover ONLY the StaticCell/arena publish
     //   mechanics, not the `from_existing_root` wrap below.
     // - `QemuVirtAddressSpace::from_existing_root(l0_root)` requires
-    //   `l0_root` to be a currently-live VMSAv8 L0 translation table
-    //   (see its `# Safety` doc). `mmu_bootstrap` populated this exact
-    //   frame and wrote its PA into `TTBR0_EL1` before this block runs
-    //   (we are post-`mmu_bootstrap` at this point); the kernel-half
-    //   mappings are installed; the descriptors are correctly encoded
-    //   per the host-tested `tyrne_hal::mmu::vmsav8` encoders. The wrap
-    //   does NOT zero-fill the live root (which would unmap the running
-    //   kernel) — that is why it cannot route through the zero-fill
-    //   `create_address_space`. Audit: UNSAFE-2026-0028.
+    //   `l0_root` to be a valid, **populated** VMSAv8 L0 translation table
+    //   (see its `# Safety` doc). `mmu_bootstrap` populated this exact frame
+    //   as the low-identity root and installed it in `TTBR0_EL1`; **post-T-022
+    //   `kernel_main_high` has already freed `TTBR0_EL1` (null + `EPD0 = 1`)
+    //   before this block runs**, so the frame is no longer the *live* TTBR0 —
+    //   it is a populated-but-uninstalled table retained as arena slot 0
+    //   (kernel-init's AS authority + the cap-derivation parent for the
+    //   loader). Its descriptors are correctly encoded per the host-tested
+    //   `tyrne_hal::mmu::vmsav8` encoders. The wrap does NOT zero-fill (which
+    //   would corrupt the populated descriptor topology a future `activate` /
+    //   `map` walk relies on) — that is why it cannot route through the
+    //   zero-fill `create_address_space`. Audit: UNSAFE-2026-0028 (+ its
+    //   2026-05-30 T-022 Amendment refining "live" → "populated").
     let bootstrap_as_handle = unsafe {
         let arena = (*AS_ARENA.0.get()).assume_init_mut();
         let inner = mmu::QemuVirtAddressSpace::from_existing_root(l0_root);

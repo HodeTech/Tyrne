@@ -10,7 +10,7 @@
 # Usage:
 #   tools/smoke.sh                       — debug build, 20s budget
 #   tools/smoke.sh --release             — release build
-#   tools/smoke.sh --int                 — add -d int,unimp,guest_errors
+#   tools/smoke.sh --int                 — add -d int,unimp (fault-class check)
 #   tools/smoke.sh --timeout 30          — override the wall-clock budget (s)
 #   tools/smoke.sh <path/to/elf>         — explicit ELF
 #
@@ -25,7 +25,7 @@ KERNEL=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --release) PROFILE="release"; shift ;;
-        --int) INT_FLAGS=(-d int,unimp,guest_errors); shift ;;
+        --int) INT_FLAGS=(-d int,unimp); shift ;;  # no guest_errors: PL011 noise interleaves the trace
         --timeout) TO="$2"; shift 2 ;;
         -h|--help) sed -n '2,/^set -/p' "$0" | sed 's/^# \{0,1\}//;/^set -/d' >&2; exit 0 ;;
         --*) echo "error: unknown flag: $1" >&2; exit 2 ;;
@@ -61,3 +61,22 @@ echo "===== markers =====" >&2
 grep -nE "tyrne:|panic|all tasks complete|high-half" "$LOG" || echo "(no tyrne markers found)"
 echo "===== fault classes (int log, if --int) =====" >&2
 grep -nE "Taking exception|Translation fault|Permission fault|Data Abort|Prefetch Abort" "$LOG" | head -40 || true
+
+# ── Gate (usable as a CI / regression check) ──────────────────────────────────
+# The kernel idles in WFI after completion and is SIGTERM'd, so a non-zero QEMU
+# exit is expected and ignored above (|| true). Pass/fail is decided by the
+# trace contents, not QEMU's exit code: the completion marker must appear, and
+# there must be no panic or CPU fault. `--int` uses `-d int,unimp` (no
+# `guest_errors`), so the pre-existing PL011 "data written to disabled UART"
+# noise does not interleave with the serial markers or the fault grep.
+rc=0
+if ! grep -q "all tasks complete" "$LOG"; then
+    echo "FAIL: 'tyrne: all tasks complete' marker missing (boot did not finish)" >&2
+    rc=1
+fi
+if grep -qE "tyrne panic|Translation fault|Permission fault|Data Abort|Prefetch Abort|Unallocated Instruction" "$LOG"; then
+    echo "FAIL: a panic / CPU-fault class appeared in the trace" >&2
+    rc=1
+fi
+[[ $rc -eq 0 ]] && echo "PASS: boot reached 'all tasks complete' with no panic/fault" >&2
+exit $rc

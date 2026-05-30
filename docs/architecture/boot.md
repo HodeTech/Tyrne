@@ -27,6 +27,8 @@ Since [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md) the k
 
 v1 maps the whole high-half RAM window `PXN = 0` (RWX-equivalent, like the identity map it replaces; `AP = 0b00` keeps EL0 with no access); the ADR-0033 layout's distinct `PXN = 1` physmap region is per-section W^X hardening deferred to ADR-0034. The migration is **fault-clean** (`-d int,unimp`: exactly the 2 syscall-smoke `SVC` exceptions, zero new Translation/Permission faults). Audit: [UNSAFE-2026-0031](../audits/unsafe-log.md) + Amendments to 0022/0023/0024.
 
+> **Forward limit (Pi 4 / large images).** `KERNEL_HIGH_HALF_OFFSET = 0xFFFF_FFFF_0000_0000` bounds the direct map to the **low 4 GiB** of PA, and the migration mask (`OFFSET | (addr & 0xFFFF_FFFF)`) assumes the kernel image PA is below 4 GiB. A BSP with > 4 GiB RAM or peripherals above 4 GiB (e.g. the Raspberry Pi 4, Phase D) needs a different offset **and** a revisited mask before carrying this pattern over.
+
 ### Boot-time sequence
 
 ```mermaid
@@ -52,24 +54,30 @@ sequenceDiagram
     Note over Asm: Phase 3 — conventional setup<br/>SP ← __stack_top<br/>CPACR_EL1.FPEN ← 0b11; isb<br/>BSS zeroed (__bss_start..__bss_end)
     Asm->>KE: bl kernel_entry  (EL = 1, guaranteed)
     Note over KE: T-009 / UNSAFE-2026-0016 asserts CurrentEL == 1<br/>as a load-bearing post-condition of Phase 2
-    KE->>KE: construct QemuVirtCpu (incl. CurrentEL self-check)
-    KE->>KE: construct Pl011Uart at 0x0900_0000
+    Note over KE: ── kernel_entry (LOW physical alias; MMU off) ──
+    KE->>KE: early Pl011Uart at LOW 0x0900_0000 (identity)
     KE->>U: write_bytes(b"tyrne: hello from kernel_main\n")
-    KE->>KE: install VBAR_EL1 (T-012)
-    KE->>KE: boot_ns = cpu.now_ns() snapshot
-    KE->>KE: mmu_bootstrap() — activates MMU<br/>(T-016 / ADR-0027)
+    KE->>KE: install VBAR_EL1 (low vectors; T-012)
+    KE->>KE: mmu_bootstrap() — low-identity MMU on<br/>(T-016 / ADR-0027)
     KE->>U: write_bytes(b"tyrne: mmu activated\n")
+    KE->>KE: high_half_activate() — build TTBR1 tables, EPD1 1→0<br/>(T-022 / ADR-0033; both regimes now live)
+    KE->>KE: migration trampoline — MSR VBAR-high; ISB;<br/>add sp,sp,OFFSET; br kernel_main_high (PC crosses low→high)
+    Note over KE: ── kernel_main_high (HIGH half, TTBR1_EL1) ──
+    KE->>KE: free TTBR0_EL1 (xzr + EPD0=1 + TLBI VMALLE1)
+    KE->>KE: Pl011Uart + QemuVirtCpu at HIGH device-MMIO alias
+    KE->>U: write_bytes(b"tyrne: high-half active\n")
+    KE->>KE: boot_ns = cpu.now_ns() snapshot (post-migration)
     KE->>KE: Pmm::new — Physical Memory Manager init<br/>(T-017 / ADR-0035)
     KE->>U: write_bytes(b"tyrne: pmm initialized (...)\n")
-    KE->>KE: AddressSpace arena init — wrap bootstrap L0<br/>(T-018 / ADR-0028; no Mmu::create_address_space call<br/>per Simulation row 0 — would re-zero the live root)
+    KE->>KE: AddressSpace arena init — wrap bootstrap L0<br/>(T-018 / ADR-0028; populated-but-uninstalled root post-T-022)
     KE->>U: write_bytes(b"tyrne: address-space-arena ready (...)\n")
     KE->>KE: task_loader::load_image — embedded raw-flat blob<br/>into a fresh AS (T-019 / ADR-0029; NOT executed)
     KE->>U: write_bytes(b"tyrne: image loaded (...)\n")
-    KE->>KE: GIC init + DAIF.I unmask (T-012)
+    KE->>KE: GIC init + DAIF.I unmask (T-012; high device-MMIO)
     KE->>U: write_bytes(b"tyrne: timer ready (...)")
     KE->>KE: kernel-object setup, IPC, scheduler
     KE->>KE: start() — never returns
-    Note over KE: steady state — cooperative IPC demo
+    Note over KE: steady state — cooperative IPC demo (high half)
 ```
 
 ### Memory map at boot

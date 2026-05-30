@@ -34,7 +34,9 @@
  */
 
 /* tyrne_hal::KERNEL_HIGH_HALF_OFFSET — kept in sync by a compile-time assert
- * in bsp-qemu-virt/src/main.rs. */
+ * in bsp-qemu-virt/src/main.rs. Forward limit: this offset (and the migration
+ * mask in main.rs) bound the direct map to the low 4 GiB of PA; a BSP with
+ * > 4 GiB RAM / high peripherals (e.g. Pi 4) needs a different offset. */
 KERNEL_HH_OFFSET       = 0xFFFFFFFF00000000;
 KERNEL_IMAGE_PHYS_BASE = 0x40080000;
 KBASE                  = KERNEL_HH_OFFSET + KERNEL_IMAGE_PHYS_BASE;

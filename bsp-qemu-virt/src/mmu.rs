@@ -99,11 +99,15 @@ impl QemuVirtAddressSpace {
     ///
     /// # Safety
     ///
-    /// The caller must guarantee that `root` is a valid, **currently-
-    /// live** `VMSAv8` L0 translation table — i.e., a 4 KiB frame whose
+    /// The caller must guarantee that `root` is a valid, **populated**
+    /// `VMSAv8` L0 translation table — i.e., a 4 KiB frame whose
     /// 512 × 8-byte entries are correctly-encoded `VMSAv8` table /
     /// block / page descriptors, with at least the kernel-half
-    /// mappings populated. Subsequent operations on the resulting
+    /// mappings populated. (The root need **not** be the *currently-installed*
+    /// `TTBR0`/`TTBR1` value — the wrap only stores the `PhysFrame` for later
+    /// `map`/`unmap`/`activate` to walk; post-T-022 the bootstrap root is a
+    /// populated-but-uninstalled table, see the caller note below.)
+    /// Subsequent operations on the resulting
     /// `QemuVirtAddressSpace` (e.g., [`Mmu::map`] / [`Mmu::unmap`])
     /// perform `volatile` reads + writes through this root's descriptor
     /// chain; passing an arbitrary `PhysFrame` would dereference
@@ -117,11 +121,14 @@ impl QemuVirtAddressSpace {
     /// be *already populated and live*. Both are caller-side
     /// preconditions the type system cannot enforce.
     ///
-    /// v1's only caller is `bsp-qemu-virt/src/main.rs::kernel_entry`,
-    /// which derives `root` from the `__boot_pt_l0` linker symbol —
-    /// the L0 frame `mmu_bootstrap` populated and wrote into
-    /// `TTBR0_EL1`. The bootstrap path is the only well-known
-    /// already-live root in v1.
+    /// v1's only caller is `bsp-qemu-virt/src/main.rs::kernel_main_high`,
+    /// which derives `root` from the `__boot_pt_l0` linker symbol — the L0
+    /// frame `mmu_bootstrap` populated as the low-identity root. **Post-T-022
+    /// (ADR-0033) the wrap runs *after* `kernel_main_high` frees `TTBR0_EL1`
+    /// (null + `EPD0 = 1`)**, so the root is a populated-but-uninstalled
+    /// table retained as arena slot 0 — not a live TTBR value. The wrap is
+    /// sound because soundness rests on the table being *valid + populated*,
+    /// not *installed*.
     ///
     /// Audit: UNSAFE-2026-0028.
     ///
@@ -194,27 +201,41 @@ impl Mmu for QemuVirtMmu {
         // PhysFrame populated with a valid VMSAv8 layout before this
         // call) and by the caller.
         //
-        // Sequence: `MSR TTBR0_EL1` + `ISB` (translation regime now
-        // staged but stale TLB entries may exist) + `DSB ISHST`
+        // Sequence: `MSR TTBR0_EL1` (install the per-task root) +
+        // **clear `TCR_EL1.EPD0`** (re-enable `TTBR0_EL1` translation-table
+        // walks) + `ISB` (the TTBR0/TCR writes now staged) + `DSB ISHST`
         // (ensure any prior page-table descriptor stores are globally
         // observable inner-shareable before the TLBI broadcast — see
         // 2026-05-09 review-round Finding 4 / ADR-0027 §"Why DSB ISH"
-        // forward-compat) + `TLBI VMALLE1` + `DSB ISH` (drain
-        // invalidate completion) + `ISB` (drain pipeline so the next
-        // instruction-fetch goes through the freshly-installed
-        // regime). `options(nostack)` only — `nomem` omitted so the
-        // compiler treats this asm as a memory clobber and cannot
-        // reorder prior page-table writes past it.
-        // Audit: UNSAFE-2026-0023.
+        // forward-compat) + `TLBI VMALLE1` + `DSB ISH` (drain invalidate
+        // completion) + `ISB` (drain pipeline so the next instruction-fetch
+        // goes through the freshly-installed regime). `options(nostack)`
+        // only — `nomem` omitted so the compiler treats this asm as a memory
+        // clobber and cannot reorder prior page-table writes past it.
+        //
+        // **`EPD0` clear (T-022 / ADR-0033).** The high-half migration freed
+        // `TTBR0_EL1` and set `TCR_EL1.EPD0 = 1` (low-half walks disabled) so
+        // the kernel is structurally absent from the low half. A per-task
+        // swap re-enables low-half walks so the new AS's userspace mappings
+        // translate; without this clear the first real EL0 task's lower-half
+        // fetch/data access would translation-fault. Clearing an already-
+        // clear `EPD0` (a second swap) is idempotent. The kernel stays in
+        // `TTBR1_EL1` (high) throughout — only the low half is (re)enabled.
+        // Audit: UNSAFE-2026-0023 (+ its T-022 Amendment).
         unsafe {
             asm!(
-                "msr ttbr0_el1, {0}",
+                "msr ttbr0_el1, {ttbr0}",
+                "mrs {tmp}, tcr_el1",
+                "and {tmp}, {tmp}, {epd0_clear}",
+                "msr tcr_el1, {tmp}",
                 "isb",
                 "dsb ishst",
                 "tlbi vmalle1",
                 "dsb ish",
                 "isb",
-                in(reg) ttbr0,
+                ttbr0 = in(reg) ttbr0,
+                epd0_clear = in(reg) !(1u64 << 7),
+                tmp = out(reg) _,
                 options(nostack),
             );
         }

@@ -35,7 +35,7 @@ flowchart TB
     end
 ```
 
-The four bootstrap page-table frames live in a dedicated `.boot_pt` section in [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) (added by T-016). Each is `PAGE_SIZE`-aligned and pre-zeroed by the existing BSS-zero loop in [`boot.s`](../../bsp-qemu-virt/src/boot.s) because `.boot_pt` is bracketed by `__bss_start` / `__bss_end`. The total budget is **16 KiB of static reservation** (4 frames × 4 KiB). No kernel allocator dependency at the bootstrap moment; all of `.boot_pt` is filled in before `SCTLR_EL1.M = 1`.
+The four low-identity bootstrap page-table frames live in a dedicated `.boot_pt` section in [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) (added by T-016). Each is `PAGE_SIZE`-aligned and pre-zeroed by the existing BSS-zero loop in [`boot.s`](../../bsp-qemu-virt/src/boot.s) because `.boot_pt` is bracketed by `__bss_start` / `__bss_end`. The low-identity budget is **16 KiB** (4 frames × 4 KiB); no kernel allocator dependency at the bootstrap moment; all of `.boot_pt` is filled in before `SCTLR_EL1.M = 1`. **(T-022 / ADR-0033 adds two more frames to `.boot_pt` — the high-half `TTBR1_EL1` roots `__boot_pt_l0_hh` / `__boot_pt_l1_hh`, built by `high_half_activate` — for six frames / 24 KiB total; the two low-identity L2 tables are shared into the high-half regime, so no L2 frames are duplicated.)**
 
 ### Identity ranges
 
@@ -196,10 +196,10 @@ Plus `Pmm::extent()` / `Pmm::stats()` accessors and `impl FrameProvider for Pmm<
 **Smoke trace.** Boot output gains exactly one new line immediately after `tyrne: mmu activated`:
 
 ```text
-tyrne: pmm initialized (32604 frames available; 164 reserved)
+tyrne: pmm initialized (32596 frames available; 172 reserved)
 ```
 
-The 32 604 + 164 = 32 768 frames sanity-check is built into the test fixture (`stats_parity_with_bitmap_bit_count`); the 164 reserved frames decompose as 128 (firmware region, 512 KiB) + 36 (kernel image + `.bss` + `.boot_pt` 16 KiB + 64 KiB stack + alignment slack).
+The `available + reserved = 32 768` sanity-check is built into the test fixture (`stats_parity_with_bitmap_bit_count`). The exact reserved-frame count is **build-dependent** (it tracks the kernel-image + `.bss` + stack size, which differs debug vs release): the post-T-022 debug build reserves 172 (32 596 available); release reserves 168. The reserved set decomposes as 128 (firmware region, 512 KiB) + the kernel-image / `.bss` / `.boot_pt` / 64 KiB-stack range — which grew by the two high-half `TTBR1` root frames T-022 added to `.boot_pt` (`__boot_pt_l0_hh` / `__boot_pt_l1_hh`, +8 KiB).
 
 **Audit-log surface.** [UNSAFE-2026-0026](../audits/unsafe-log.md) covers the single `core::ptr::write_bytes` site in `Pmm::alloc_frame`. The entry's safety argument names five invariants: page-alignment of the target (propagates from `Pmm::new`'s validation (i)), exclusive ownership at write time (the just-set bitmap bit), identity mapping post-MMU (per ADR-0027 §Decision outcome (a)), bitmap-math overflow-freedom (all `saturating_*` / `wrapping_div`), and `write_bytes` ordering (single-core; no peer reader). A new entry rather than an Amendment of UNSAFE-2026-0001 per [ADR-0035 §Dependency chain step 5][adr-0035-dep5]'s adjudication-deferred caveat — PL011 MMIO base blessing and PMM RAM zero-fill share surface shape but differ on what they touch and what proves ownership.
 
