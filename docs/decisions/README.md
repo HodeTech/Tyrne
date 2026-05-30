@@ -61,11 +61,11 @@ Each ADR contains:
 | 0030 | [Syscall ABI and userspace error taxonomy (B5)](0030-syscall-abi.md) | Accepted | 2026-05-29 |
 | 0031 | [Initial syscall set (B5 — `send`/`recv`/`console_write`/`task_yield`/`task_exit`)](0031-initial-syscall-set.md) | Accepted | 2026-05-29 |
 | 0032 | [Endpoint state rollback on `ipc_recv_and_yield` Deadlock + `ipc_cancel_recv` primitive](0032-endpoint-rollback-and-cancel-recv.md) | Accepted | 2026-05-07 |
-| 0033 | [Kernel high-half migration (B6 — kernel → `TTBR1_EL1`, boot-time)](0033-kernel-high-half-migration.md) | Proposed | 2026-05-29 |
+| 0033 | [Kernel high-half migration (B6 — kernel → `TTBR1_EL1`, boot-time)](0033-kernel-high-half-migration.md) | Accepted | 2026-05-30 |
 | 0035 | [Physical Memory Manager (B3 prerequisite — bitmap allocator)](0035-physical-memory-manager.md) | Accepted | 2026-05-09 |
 | 0036 | [QEMU virt is GICv2 / no-IOMMU in v1; corrects GICv3/SMMUv3 in ADR-0004/0006/0012](0036-qemu-virt-gicv2-no-iommu-v1.md) | Accepted | 2026-05-22 |
 
-> **Numbering gaps.** Slot **0034** is intentionally reserved, not missing: 0034 (kernel-image section permissions) is a named-but-unallocated placeholder forward-flagged in ADR-0027. No file exists for it yet; it opens when the corresponding work surfaces (the first attacker-observable EL0 execution — likely B6). (Slot **0033** (high-half migration) was filed `Proposed` on 2026-05-29 to open B6 and is no longer a gap; slots **0030**/**0031** were filed and `Accepted` on 2026-05-29 for B5.) ADR numbers are stable history and are never renumbered.
+> **Numbering gaps.** Slot **0034** is intentionally reserved, not missing: 0034 (kernel-image section permissions) is a named-but-unallocated placeholder forward-flagged in ADR-0027. No file exists for it yet; it opens when the corresponding work surfaces (the first attacker-observable EL0 execution — likely B6). (Slot **0033** (high-half migration) was filed `Proposed` on 2026-05-29 to open B6 and `Accepted` on 2026-05-30, and is no longer a gap; slots **0030**/**0031** were filed and `Accepted` on 2026-05-29 for B5.) ADR numbers are stable history and are never renumbered.
 
 ## Creating a new ADR
 

@@ -1,7 +1,7 @@
 # 0033 — Kernel high-half migration
 
-- **Status:** Proposed
-- **Date:** 2026-05-29
+- **Status:** Accepted
+- **Date:** 2026-05-30
 - **Deciders:** @cemililik
 
 ## Context

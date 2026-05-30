@@ -2,7 +2,7 @@
 
 - **Phase:** B
 - **Milestone:** B6 — First userspace "hello" (this is B6's **gating prerequisite**: making the kernel reachable from every task's active translation so a real EL0 task's `SVC` vector fetch + the EL1 handler translate — the [ADR-0033](../../../decisions/0033-kernel-high-half-migration.md) high-half migration; per [phase-b §B6 opening sequence](../../../roadmap/phases/phase-b.md#b6-opening-sequence--prerequisites))
-- **Status:** Draft
+- **Status:** In Progress
 - **Created:** 2026-05-29
 - **Author:** @cemililik (+ Claude Opus 4.8 agent)
 - **Dependencies:** [ADR-0033](../../../decisions/0033-kernel-high-half-migration.md) — must be `Accepted` before code lands (settles the boot-time high-half §Simulation + the link-high/load-low + `KERNEL_VA_OFFSET` discipline); [ADR-0027](../../../decisions/0027-kernel-virtual-memory-layout.md) (the reserved `TTBR1`/`EPD1` + the byte-stable high-half `TCR` fields this consumes); [T-016](T-016-mmu-activation.md) (the `mmu_bootstrap` + `QemuVirtMmu` + `vmsav8` encoders this extends); [T-018](T-018-address-space-kernel-object.md) (the `activate` differ-path that goes live).
