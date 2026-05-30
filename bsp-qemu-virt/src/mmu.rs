@@ -40,6 +40,7 @@ use core::arch::asm;
 
 use tyrne_hal::mmu::vmsav8::{
     flags_to_descriptor_bits, page_descriptor, table_descriptor, PAGE_OA_MASK_L3, TABLE_NLA_MASK,
+    TCR_EL1_EPD0_BIT,
 };
 use tyrne_hal::{
     phys_to_kernel_va, FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysAddr,
@@ -234,7 +235,7 @@ impl Mmu for QemuVirtMmu {
                 "dsb ish",
                 "isb",
                 ttbr0 = in(reg) ttbr0,
-                epd0_clear = in(reg) !(1u64 << 7),
+                epd0_clear = in(reg) !TCR_EL1_EPD0_BIT,
                 tmp = out(reg) _,
                 options(nostack),
             );

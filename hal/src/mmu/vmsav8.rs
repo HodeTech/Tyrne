@@ -172,6 +172,17 @@ pub const TCR_EL1_VALUE: u64 = {
         | as_field
 };
 
+/// `TCR_EL1.EPD0` (bit 7) — when set, **disable** `TTBR0_EL1` translation-table
+/// walks. The boot-time high-half migration sets it (freeing `TTBR0` for
+/// userspace); `QemuVirtMmu::activate` clears it on a per-task swap. Named here
+/// so every site reuses one definition if the `TCR_EL1` layout ever changes.
+pub const TCR_EL1_EPD0_BIT: u64 = 1 << 7;
+
+/// `TCR_EL1.EPD1` (bit 23) — when set, **disable** `TTBR1_EL1` translation-table
+/// walks (the v1 default). [`TCR_EL1_VALUE_HIGH_HALF`] clears it to bring the
+/// high half live. Named for reuse (see [`TCR_EL1_EPD0_BIT`]).
+pub const TCR_EL1_EPD1_BIT: u64 = 1 << 23;
+
 /// `TCR_EL1` value for the **high-half regime** (post-[ADR-0033] migration):
 /// byte-identical to [`TCR_EL1_VALUE`] except `EPD1` (bit 23) is cleared,
 /// enabling `TTBR1_EL1` translation-table walks for the kernel's high-half
@@ -188,7 +199,7 @@ pub const TCR_EL1_VALUE: u64 = {
 /// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
 /// [adr-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md#simulation
 /// [T-022]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md
-pub const TCR_EL1_VALUE_HIGH_HALF: u64 = TCR_EL1_VALUE & !(1 << 23);
+pub const TCR_EL1_VALUE_HIGH_HALF: u64 = TCR_EL1_VALUE & !TCR_EL1_EPD1_BIT;
 
 /// `SCTLR_EL1` bits we **set** when activating the MMU: `M` (bit 0,
 /// MMU on), `C` (bit 2, D-cache enable), `I` (bit 12, I-cache enable).

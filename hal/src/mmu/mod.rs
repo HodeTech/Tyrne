@@ -54,8 +54,8 @@ pub const PAGE_SIZE: usize = 4096;
 /// or peripherals above 4 GiB (e.g. the Raspberry Pi 4) needs a different
 /// offset **and** a revisited mask before this pattern is carried over.
 ///
-/// **Host builds (`cfg(not(target_arch = "aarch64"))`) define the offset as
-/// `0`** — there is no MMU or high-half on the test harness, so
+/// **Host builds (`cfg(not(all(target_arch = "aarch64", target_os = "none")))`)
+/// define the offset as `0`** — there is no MMU or high-half on the test harness, so
 /// [`phys_to_kernel_va`] / [`kernel_va_to_phys`] are the identity there and
 /// the kernel-crate host tests (PMM frame zero-fill, `phys_frame_kernel_ptr`)
 /// deref their real host-backed "frames" unchanged. Only the aarch64 kernel
@@ -92,6 +92,13 @@ pub const KERNEL_HIGH_HALF_OFFSET: usize = 0;
 #[must_use]
 #[inline]
 pub const fn phys_to_kernel_va(pa: usize) -> usize {
+    // On the kernel build (OFFSET != 0) the direct map covers only the low
+    // 4 GiB of PA; catch an out-of-window PA early. On host builds (OFFSET == 0,
+    // identity) the check short-circuits — any host address is valid.
+    debug_assert!(
+        KERNEL_HIGH_HALF_OFFSET == 0 || pa < 0x1_0000_0000,
+        "phys_to_kernel_va: PA outside the low-4 GiB high-half direct map",
+    );
     KERNEL_HIGH_HALF_OFFSET.wrapping_add(pa)
 }
 
@@ -111,6 +118,16 @@ pub const fn phys_to_kernel_va(pa: usize) -> usize {
 #[must_use]
 #[inline]
 pub const fn kernel_va_to_phys(va: usize) -> usize {
+    // On the kernel build (OFFSET != 0) `va` must be a high-half direct-map VA
+    // whose recovered PA lands in the low 4 GiB; the `wrapping_sub` catches both
+    // a below-window VA (wraps high) and an above-window VA. On host builds
+    // (OFFSET == 0) the check short-circuits. (`wrapping_sub` rather than a
+    // `va >= OFFSET` compare avoids `clippy::absurd_extreme_comparisons` when
+    // OFFSET is 0 on host.)
+    debug_assert!(
+        KERNEL_HIGH_HALF_OFFSET == 0 || va.wrapping_sub(KERNEL_HIGH_HALF_OFFSET) < 0x1_0000_0000,
+        "kernel_va_to_phys: VA outside the high-half direct-map window",
+    );
     va.wrapping_sub(KERNEL_HIGH_HALF_OFFSET)
 }
 

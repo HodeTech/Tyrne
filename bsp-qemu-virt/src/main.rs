@@ -31,6 +31,7 @@ use core::fmt::Write;
 use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
 
+use tyrne_hal::mmu::vmsav8::TCR_EL1_EPD0_BIT;
 use tyrne_hal::{Console, Cpu, FmtWriter, Timer};
 use tyrne_hal::{PhysAddr, VirtAddr, KERNEL_HIGH_HALF_OFFSET, PAGE_SIZE};
 use tyrne_kernel::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
@@ -116,6 +117,12 @@ const PL011_UART_BASE: usize = 0x0900_0000;
 // A drift between the linker's hardcoded value and `tyrne_hal` would silently
 // corrupt every high-half VA↔PA computation (ADR-0033 / T-022); fail the build
 // instead.
+//
+// Gated on the kernel build: `KERNEL_HIGH_HALF_OFFSET` is `0` on any non
+// `target_os = "none"` build (host/IDE analysis, incl. an aarch64 host), where
+// this assert is irrelevant — without the guard it would fire a spurious
+// failure under rust-analyzer / a hosted `cargo check` on Apple Silicon.
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 const _: () = assert!(KERNEL_HIGH_HALF_OFFSET == 0xFFFF_FFFF_0000_0000);
 
 // ─── StaticCell ───────────────────────────────────────────────────────────────
@@ -808,6 +815,35 @@ extern "C" {
     static __boot_pt_l0: [u64; 512];
 }
 
+/// Mask of the low 4 GiB of physical address space — the bound on the QEMU
+/// virt kernel image PA. The migration `br`/`VBAR` targets are derived by
+/// masking a symbol address to this and OR-ing [`KERNEL_HIGH_HALF_OFFSET`]; a
+/// future BSP with an image PA ≥ 4 GiB (e.g. Pi 4) must revisit this + the
+/// offset (see [`high_half_alias`] + the linker.ld / `KERNEL_HIGH_HALF_OFFSET`
+/// forward-notes).
+const KERNEL_IMAGE_PA_MASK: usize = 0xFFFF_FFFF;
+
+/// Compute the high-half image alias of a kernel-symbol address, for the
+/// boot-time migration's `MSR VBAR_EL1` / `br` targets.
+///
+/// Masking the low 32 bits recovers the symbol's **PA** whether the compiler
+/// materialised it PC-relative (low, while `kernel_entry` runs at the low
+/// physical alias) or absolute (high); OR-ing [`KERNEL_HIGH_HALF_OFFSET`] then
+/// yields its high-half VA. Correct only while the image PA is below 4 GiB —
+/// the `debug_assert!` fails fast (in debug builds) if `addr` is neither a low
+/// PA nor its exact high-half alias, which would mean the image escaped the
+/// low-4 GiB window the mask assumes.
+#[inline]
+fn high_half_alias(addr: usize) -> usize {
+    let pa = addr & KERNEL_IMAGE_PA_MASK;
+    debug_assert!(
+        addr == pa || addr == (KERNEL_HIGH_HALF_OFFSET | pa),
+        "migration: symbol address is neither a low PA nor its high-half alias \
+         — the kernel image PA must be < 4 GiB (KERNEL_IMAGE_PA_MASK)",
+    );
+    KERNEL_HIGH_HALF_OFFSET | pa
+}
+
 /// Low-half boot entry — the `_start` (`boot.s`) branch target.
 ///
 /// Runs at the LOW physical alias of the kernel image with the MMU off (the
@@ -927,10 +963,8 @@ pub extern "C" fn kernel_entry() -> ! {
     // (PC-relative-resolved) address to its physical part and OR-ing the
     // high-half offset, so the computation is correct regardless of how the
     // compiler materialises the symbol addresses.
-    let high_vbar =
-        KERNEL_HIGH_HALF_OFFSET | ((core::ptr::addr_of!(tyrne_vectors) as usize) & 0xFFFF_FFFF);
-    let high_entry =
-        KERNEL_HIGH_HALF_OFFSET | ((kernel_main_high as *const () as usize) & 0xFFFF_FFFF);
+    let high_vbar = high_half_alias(core::ptr::addr_of!(tyrne_vectors) as usize);
+    let high_entry = high_half_alias(kernel_main_high as *const () as usize);
     // SAFETY: the absolute-jump migration trampoline (ADR-0033 §Simulation
     // row 2). `MSR VBAR_EL1` to the high vector base (mapped PXN=0 in TTBR1) +
     // `ISB` so high vectors are live before the branch; `add sp, sp, off`
@@ -1002,7 +1036,7 @@ extern "C" fn kernel_main_high() -> ! {
             "tlbi vmalle1",
             "dsb ish",
             "isb",
-            epd0 = in(reg) (1u64 << 7),
+            epd0 = in(reg) TCR_EL1_EPD0_BIT,
             t = out(reg) _,
             options(nostack, nomem),
         );
@@ -1559,14 +1593,31 @@ extern "C" fn kernel_main_high() -> ! {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // SAFETY: constructing a fresh Pl011Uart in the panic path is
-    // best-effort diagnostic output. Writes may interleave if the original
-    // instance is still reachable — acceptable per the Console contract
-    // (ADR-0007). The HIGH device-MMIO alias is used because the kernel runs
-    // in the high half post-migration (ADR-0033); a panic in the brief
-    // pre-migration low window would not print, but that window is only the
-    // verified `mmu_bootstrap` / `high_half_activate` path. Audit: UNSAFE-2026-0002.
-    let console = unsafe { Pl011Uart::new(tyrne_hal::phys_to_kernel_va(PL011_UART_BASE)) };
+    // Pick the UART MMIO alias for the regime we panicked in, so the panic
+    // prints in BOTH the early-boot (pre-migration, low identity) and the
+    // steady-state (post-migration, high half) windows — rather than silently
+    // translation-faulting if the high alias is used before it is live. The
+    // migration trampoline rebases `SP` into the high half, so
+    // `sp >= KERNEL_HIGH_HALF_OFFSET` iff the kernel is running high (where the
+    // low identity is gone and the high device alias is the only mapped UART);
+    // below it we are still on the low identity stack and the physical base is
+    // mapped.
+    let sp: usize;
+    // SAFETY: reading `SP` into a GPR is a side-effect-free register move; no
+    // memory/stack/flags touched. Audit: UNSAFE-2026-0002.
+    unsafe {
+        core::arch::asm!("mov {}, sp", out(reg) sp, options(nostack, nomem, preserves_flags));
+    }
+    let uart_base = if sp >= KERNEL_HIGH_HALF_OFFSET {
+        tyrne_hal::phys_to_kernel_va(PL011_UART_BASE)
+    } else {
+        PL011_UART_BASE
+    };
+    // SAFETY: constructing a fresh Pl011Uart in the panic path is best-effort
+    // diagnostic output. Writes may interleave if the original instance is
+    // still reachable — acceptable per the Console contract (ADR-0007). The
+    // base is the regime-correct alias selected above. Audit: UNSAFE-2026-0002.
+    let console = unsafe { Pl011Uart::new(uart_base) };
 
     console.write_bytes(b"\n!! tyrne panic !!\n");
     let mut w = FmtWriter(&console);

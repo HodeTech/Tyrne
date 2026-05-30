@@ -33,6 +33,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Validate the budget: it is passed to `timeout`/`alarm()` as integer seconds,
+# both of which fail (or misbehave) on a non-numeric value.
+if ! [[ "$TO" =~ ^[0-9]+$ ]]; then
+    echo "error: --timeout must be a non-negative integer (seconds); got '$TO'" >&2
+    exit 2
+fi
+
 [[ -z "$KERNEL" ]] && KERNEL="target/aarch64-unknown-none/${PROFILE}/tyrne-bsp-qemu-virt"
 if [[ ! -f "$KERNEL" ]]; then
     echo "error: kernel image not found at $KERNEL (run 'cargo kernel-build' first)" >&2
@@ -42,18 +49,32 @@ fi
 LOG="${TMPDIR:-/tmp}/tyrne-smoke.$$.log"
 echo "smoke: $KERNEL  (budget ${TO}s)  log -> $LOG" >&2
 
-# perl alarm wrapper: fork QEMU, SIGTERM it after $TO seconds. QEMU inherits
-# the child's stdout/stderr (redirected to $LOG by the caller below).
-TO="$TO" perl -e '
-    my $pid = fork();
-    if ($pid == 0) { open(STDIN, "<", "/dev/null"); exec(@ARGV) or die "exec: $!"; }
-    $SIG{ALRM} = sub { kill("TERM", $pid); };
-    alarm($ENV{TO});
-    waitpid($pid, 0);
-' qemu-system-aarch64 -M virt -cpu cortex-a72 -m 128M -smp 1 \
-    -display none -serial stdio -monitor none \
-    "${INT_FLAGS[@]+"${INT_FLAGS[@]}"}" \
-    -kernel "$KERNEL" > "$LOG" 2>&1 || true
+# The kernel idles in WFI after completion and never exits on its own, so the
+# run must be bounded by a wall-clock timeout. Prefer coreutils `timeout(1)`
+# (present on most Linux CI images); fall back to a Perl `alarm()` wrapper
+# (macOS ships Perl but not `timeout`); error out if neither is available.
+QEMU_ARGS=(
+    -M virt -cpu cortex-a72 -m 128M -smp 1
+    -display none -serial stdio -monitor none
+    "${INT_FLAGS[@]+"${INT_FLAGS[@]}"}"
+    -kernel "$KERNEL"
+)
+if command -v timeout >/dev/null 2>&1; then
+    timeout "${TO}s" qemu-system-aarch64 "${QEMU_ARGS[@]}" </dev/null > "$LOG" 2>&1 || true
+elif command -v perl >/dev/null 2>&1; then
+    # Perl alarm wrapper: fork QEMU, SIGTERM it after $TO seconds. QEMU inherits
+    # the child's stdout/stderr (redirected to $LOG by the caller below).
+    TO="$TO" perl -e '
+        my $pid = fork();
+        if ($pid == 0) { open(STDIN, "<", "/dev/null"); exec(@ARGV) or die "exec: $!"; }
+        $SIG{ALRM} = sub { kill("TERM", $pid); };
+        alarm($ENV{TO});
+        waitpid($pid, 0);
+    ' qemu-system-aarch64 "${QEMU_ARGS[@]}" > "$LOG" 2>&1 || true
+else
+    echo "error: neither 'timeout(1)' nor 'perl' is available to bound the ${TO}s run" >&2
+    exit 1
+fi
 
 echo "===== trace =====" >&2
 cat "$LOG"
