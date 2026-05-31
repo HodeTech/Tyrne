@@ -1,6 +1,6 @@
 # 0037 — EL0 entry context (userspace register file + enter-EL0/`ERET` path)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-05-31
 - **Deciders:** @cemililik
 
