@@ -28,3 +28,14 @@ version = "0.0.1"
 dependencies = [
  "tyrne-hal",
 ]
+
+[[package]]
+name = "tyrne-user"
+version = "0.0.1"
+
+[[package]]
+name = "tyrne-userland-hello"
+version = "0.0.1"
+dependencies = [
+ "tyrne-user",
+]
