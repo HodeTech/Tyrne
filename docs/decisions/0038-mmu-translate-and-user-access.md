@@ -73,12 +73,15 @@ The worst-case interaction is `console_write` from a real EL0 task whose buffer 
 | # | state-pre (caller passes) | action | state-post | observable effect |
 |---|---|---|---|---|
 | 0 | `ptr,len` wholly in `[entry_va, stack_top_va)`, all pages `USER` | window OK → `translate` each page → `USER` present | copy each page sub-run; emit | bytes written to console; `Ok` |
-| 1 | in-window **kernel high-half VA** (leaf lacks `USER`) | window OK → `translate` → flags **without `USER`** | **reject before any deref** | **`FaultAddress`; nothing emitted** (confused-deputy blocked) |
+| 1 | in-window **low-VA page** in `[entry_va, stack_top_va)` whose leaf lacks `USER` (a guard page, RO-shared page, or an adversarially mis-mapped page) | window OK → `translate` → flags **without `USER`** | **reject before any deref** | **`FaultAddress`; nothing emitted** — the `USER` check is load-bearing (it proves the page *grants user access*, not merely that the VA is in range) |
 | 2 | in-window but page unmapped (gap in task AS) | window OK → `translate` → `Err(NotMapped)` | reject | `FaultAddress`; nothing emitted |
 | 3 | range escapes `[entry_va, stack_top_va)` or wraps past `usize::MAX` | window `validate` fails (cheap first gate) | reject before any `translate` | `FaultAddress`; no walk performed |
 | 4 | multi-page span; page 0 `USER`-ok, page 1 unmapped | up-front probe `translate`s every page → page 1 `Err` | reject before emit (all-or-nothing) | `FaultAddress`; **no prefix emitted** |
+| 5 | `copy_to_user`: in-window page is `USER` but **not `WRITE`** (RO data) | window OK → `translate` → `USER` present, `WRITE` absent | reject before write | `FaultAddress`; nothing written |
 
-Row-to-verification mapping (discharged by **T-025**, recorded in its review-history row): row 0 → `copy_from_user_translates_and_copies_a_user_page`; row 1 → `copy_from_user_rejects_in_window_kernel_only_page` (the confused-deputy regression test) + `dispatch::console_write_cap_ok_but_kernel_page_emits_nothing`; row 2 → `copy_from_user_faults_on_unmapped_page`; row 3 → the retained `UserAccessWindow::validate` tests; row 4 → `console_write_multipage_second_page_unmapped_emits_nothing`. `copy_to_user`'s `WRITE` enforcement → `copy_to_user_rejects_read_only_user_page`. The read-only `QemuVirtMmu::translate` walk rides UNSAFE-2026-0025 (extended, not new).
+> The high-half **kernel-VA** confused-deputy (the B5-legacy threat, when the window was the whole RAM extent) is caught by the **window first gate** under the per-task window — a high-half VA is not in `[entry_va, stack_top_va)`, so it fails as row 3, never reaching the `USER` check. Once the window is tight, the residual *in-range* threat the `USER` check defends is row 1. Both layers are retained as defence-in-depth.
+
+Row-to-verification mapping (discharged by **T-025**, recorded in its review-history row): row 0 → `copy_from_user_translates_and_copies_a_user_page`; row 1 → `copy_from_user_rejects_in_window_non_user_page` (the confused-deputy regression test) + `dispatch::console_write_cap_ok_but_non_user_page_emits_nothing`; row 2 → `copy_from_user_faults_on_unmapped_page`; row 3 → the retained `UserAccessWindow::validate` tests; row 4 → `console_write_multipage_second_page_unmapped_emits_nothing`; row 5 → `copy_to_user_rejects_read_only_user_page`. The read-only `QemuVirtMmu::translate` walk rides UNSAFE-2026-0025 (extended, not new).
 
 ### Dependency chain
 
