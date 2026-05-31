@@ -64,7 +64,8 @@
 //! [t-019]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-019-task-loader.md
 //! [phase-b-b4-rider]: https://github.com/HodeTech/Tyrne/blob/main/docs/roadmap/phases/phase-b.md#milestone-b4--task-loader
 
-use crate::cap::{CapError, CapHandle, CapKind, CapRights, CapabilityTable};
+use super::task::{create_task, destroy_task, Task, TaskArena};
+use crate::cap::{CapError, CapHandle, CapKind, CapObject, CapRights, Capability, CapabilityTable};
 use crate::mm::{
     cap_create_address_space, cap_map, cap_unmap, AddressSpaceArena, AddressSpaceError, Pmm,
 };
@@ -850,6 +851,121 @@ fn rollback<M: Mmu, const N: usize, const R: usize>(
     let _ = table.cap_drop(loaded_as_cap);
 }
 
+/// Failure taxonomy for [`task_create_from_image`].
+///
+/// `#[non_exhaustive]` because future-state variants are foreseeable — e.g. a
+/// per-operation Task-rights check if/when that ADR lands.
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum TaskCreateError {
+    /// `loaded.as_cap` did not resolve to a live `CapKind::AddressSpace`
+    /// capability in the supplied table — wraps [`CapError::InvalidHandle`]
+    /// (stale / freed handle) or [`CapError::WrongKind`] (wrong-kind cap). No
+    /// task object was minted.
+    InvalidAddressSpaceCap(CapError),
+    /// The task arena had no free slot. No task object was minted and no
+    /// capability inserted.
+    TaskArenaFull,
+    /// The capability table could not hold the Task capability (wraps
+    /// [`CapError::CapsExhausted`]). The just-minted task object is **rolled
+    /// back** (its arena slot freed) before returning, so the failure leaves
+    /// no orphaned task.
+    CapTableExhausted(CapError),
+}
+
+/// Turn a [`LoadedImage`] into a runnable `CapObject::Task` capability — the
+/// deferred [B4 §3 / B6-step-3][phase-b-b6] bridge.
+///
+/// Resolves the loaded address space from `loaded.as_cap`, mints a [`Task`]
+/// kernel object bound to it, and installs a **root** `CapKind::Task`
+/// capability naming that task into `table`, returning its [`CapHandle`].
+///
+/// **Mints, does not schedule.** This produces a runnable task capability; it
+/// does *not* run the task. The B6 wire-up runs it — calling
+/// [`Scheduler::add_user_task`][crate::sched::Scheduler::add_user_task] with
+/// `loaded.entry_va` / `loaded.stack_top_va` (the EL0 entry context lives in
+/// the cooperative task context per [ADR-0037], not on the `Task` object, so
+/// `task_create_from_image` does not read them) — and **not** before the
+/// T-021 carry-forward gates (per-task `console_write` window + per-page
+/// user-VA translation; current-task capability table) close.
+///
+/// **v1 cap-rights model (kind-only).** The minted `CapKind::Task` cap carries
+/// `task_rights`, which govern *capability management* (duplicate / derive /
+/// transfer / revoke the Task cap). There is **no Task-*operation* right** in
+/// v1 — this mirrors the `CapKind::AddressSpace` kind-only model (see
+/// [`cap_map`], where the cap *kind* grants the authority). Callers should
+/// therefore pass only cap-management rights; object-operation rights
+/// (`SEND` / `RECV` / `NOTIFY` / `CONSOLE_WRITE`) are **inert** on a Task cap —
+/// no operation gates on them — and are deliberately **not** masked here (the
+/// caller chooses the rights at mint, matching the cap model's convention; a
+/// uniform Task-cap rights policy, if ever wanted, is an ADR, not a silent
+/// per-site mask). Per-operation Task rights (a future run / suspend / kill
+/// authority) are deferred to a later ADR.
+///
+/// # Errors
+///
+/// - [`TaskCreateError::InvalidAddressSpaceCap`] if `loaded.as_cap` is stale
+///   or is not a `CapKind::AddressSpace` cap when resolved against `table`.
+/// - [`TaskCreateError::TaskArenaFull`] if `task_arena` has no free slot (no
+///   task minted, no cap inserted).
+/// - [`TaskCreateError::CapTableExhausted`] if `table` cannot hold the Task
+///   cap; the freshly-minted task object is rolled back (arena slot freed)
+///   before returning, so the failure leaves no leaked task.
+///
+/// [ADR-0037]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0037-el0-entry-context.md
+/// [phase-b-b6]: https://github.com/HodeTech/Tyrne/blob/main/docs/roadmap/phases/phase-b.md#milestone-b6--first-userspace-hello
+pub fn task_create_from_image(
+    loaded: &LoadedImage,
+    table: &mut CapabilityTable,
+    task_arena: &mut TaskArena,
+    id: u32,
+    task_rights: CapRights,
+) -> Result<CapHandle, TaskCreateError> {
+    // 1 — resolve the loaded AS cap to its handle (lookup + kind-check),
+    //     mirroring `resolve_address_space_cap`'s kind-only discipline. The
+    //     immutable borrow of `table` ends with this block, before the
+    //     `insert_root` mutable borrow below.
+    let as_handle = {
+        let cap = table
+            .lookup(loaded.as_cap)
+            .map_err(TaskCreateError::InvalidAddressSpaceCap)?;
+        match cap.object() {
+            CapObject::AddressSpace(h) => h,
+            _ => return Err(TaskCreateError::InvalidAddressSpaceCap(CapError::WrongKind)),
+        }
+    };
+
+    // 2 — mint the Task kernel object bound to that AS. `create_task` only ever
+    //     returns `ObjError::ArenaFull` (its body is `arena.allocate(..).ok_or(
+    //     ObjError::ArenaFull)`), so collapsing its error to `TaskArenaFull` is
+    //     exhaustive by that contract — not a lossy catch-all.
+    let task_handle = create_task(task_arena, Task::new(id, as_handle))
+        .map_err(|_| TaskCreateError::TaskArenaFull)?;
+
+    // 3 — install a root Task capability.
+    let cap = Capability::new(task_rights, CapObject::Task(task_handle));
+    match table.insert_root(cap) {
+        Ok(task_cap) => Ok(task_cap),
+        Err(e) => {
+            // `insert_root` only ever returns `CapsExhausted` (cap/table.rs);
+            // pin that so a future widening of its contract is caught here in
+            // debug rather than silently mislabelled as `CapTableExhausted`.
+            debug_assert!(
+                matches!(e, CapError::CapsExhausted),
+                "insert_root returned a non-CapsExhausted error: {e:?}",
+            );
+            // Roll the task object back so a full cap-table leaks no arena slot.
+            // Called UNCONDITIONALLY (deliberately NOT inside `debug_assert!`,
+            // which would strip the call in release builds and leak the slot);
+            // the handle was just created by `create_task`, so `destroy_task`
+            // cannot fail (it deallocates a live, generation-matched slot and
+            // performs no reachability check — task.rs).
+            let _ = destroy_task(task_arena, task_handle);
+            Err(TaskCreateError::CapTableExhausted(e))
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -859,10 +975,15 @@ fn rollback<M: Mmu, const N: usize, const R: usize>(
     reason = "tests may use pragmas forbidden in production kernel code"
 )]
 mod tests {
-    use super::{intermediate_frame_count, load_image, rollback, LoadError, LoadedImage};
-    use crate::cap::{CapError, CapObject, CapRights, Capability, CapabilityTable};
+    use super::{
+        create_task, intermediate_frame_count, load_image, rollback, task_create_from_image,
+        LoadError, LoadedImage, TaskCreateError,
+    };
+    use crate::cap::{
+        CapError, CapHandle, CapKind, CapObject, CapRights, Capability, CapabilityTable,
+    };
     use crate::mm::{AddressSpaceArena, AddressSpaceError, PhysFrameRange, Pmm};
-    use crate::obj::EndpointHandle;
+    use crate::obj::{EndpointHandle, Task, TaskArena};
     use std::sync::Mutex;
     use std::vec;
     use std::vec::Vec;
@@ -978,6 +1099,152 @@ mod tests {
         let pmm = pmm_over_backing(ptr, frames);
 
         (table, parent_cap_handle, mmu, arena, pmm, backing)
+    }
+
+    // ── task_create_from_image (T-024) ─────────────────────────────────────────
+
+    /// A `LoadedImage` whose `as_cap` is the given cap. The other fields are
+    /// **not read** by `task_create_from_image` (they feed `add_user_task` at
+    /// the B6 wire-up), so opaque placeholders suffice.
+    fn loaded_image_with(as_cap: CapHandle) -> LoadedImage {
+        LoadedImage {
+            as_cap,
+            entry_va: VirtAddr(0x0080_0000),
+            stack_top_va: VirtAddr(0x0080_2000),
+            image_bytes: 8,
+            stack_bytes: PAGE_SIZE,
+        }
+    }
+
+    #[test]
+    fn task_create_from_image_mints_task_cap_bound_to_the_loaded_as() {
+        let (mut table, as_cap, _mmu, _arena, _pmm, _b) = fixture(16);
+        // The AS handle the loaded AS cap names — for the binding assertion.
+        let expected_ash = match table.lookup(as_cap).unwrap().object() {
+            CapObject::AddressSpace(h) => h,
+            other => panic!("fixture parent cap is not an AS cap: {other:?}"),
+        };
+        let loaded = loaded_image_with(as_cap);
+        let mut task_arena = TaskArena::default();
+
+        let task_cap = task_create_from_image(
+            &loaded,
+            &mut table,
+            &mut task_arena,
+            7,
+            CapRights::DUPLICATE,
+        )
+        .expect("mint should succeed against a valid AS cap");
+
+        // The returned cap names a Task kernel object...
+        let cap = table.lookup(task_cap).unwrap();
+        assert_eq!(cap.kind(), CapKind::Task);
+        let task_handle = match cap.object() {
+            CapObject::Task(h) => h,
+            other => panic!("expected a Task cap, got {other:?}"),
+        };
+        // ...bound to exactly the loaded address space, with the given id.
+        let task = task_arena
+            .get(task_handle.slot())
+            .expect("the minted task is in the arena");
+        assert_eq!(task.address_space_handle(), expected_ash);
+        assert_eq!(task.id(), 7);
+    }
+
+    #[test]
+    fn task_create_from_image_rejects_wrong_kind_as_cap() {
+        // An `as_cap` that resolves to a non-AddressSpace cap is rejected at
+        // step 1, before any task object is minted.
+        let (mut table, _as_cap, _mmu, _arena, _pmm, _b) = fixture(16);
+        let ep_cap = table
+            .insert_root(Capability::new(
+                CapRights::empty(),
+                CapObject::Endpoint(EndpointHandle::test_handle(0, 0)),
+            ))
+            .unwrap();
+        let loaded = loaded_image_with(ep_cap);
+        let mut task_arena = TaskArena::default();
+
+        assert_eq!(
+            task_create_from_image(&loaded, &mut table, &mut task_arena, 1, CapRights::empty()),
+            Err(TaskCreateError::InvalidAddressSpaceCap(CapError::WrongKind)),
+        );
+    }
+
+    #[test]
+    fn task_create_from_image_rejects_stale_as_cap() {
+        // A handle inserted then dropped is stale → lookup fails InvalidHandle.
+        let (mut table, _as_cap, _mmu, _arena, _pmm, _b) = fixture(16);
+        let stale = table
+            .insert_root(Capability::new(
+                CapRights::empty(),
+                CapObject::Endpoint(EndpointHandle::test_handle(0, 0)),
+            ))
+            .unwrap();
+        table.cap_drop(stale).unwrap();
+        let loaded = loaded_image_with(stale);
+        let mut task_arena = TaskArena::default();
+
+        assert_eq!(
+            task_create_from_image(&loaded, &mut table, &mut task_arena, 1, CapRights::empty()),
+            Err(TaskCreateError::InvalidAddressSpaceCap(
+                CapError::InvalidHandle
+            )),
+        );
+    }
+
+    #[test]
+    fn task_create_from_image_rolls_back_task_on_cap_table_exhausted() {
+        // When the cap table is full, step-3 insert_root fails AFTER step-2
+        // created the task object; the task must be rolled back (no leak).
+        let (mut table, as_cap, _mmu, _arena, _pmm, _b) = fixture(16);
+        let expected_ash = match table.lookup(as_cap).unwrap().object() {
+            CapObject::AddressSpace(h) => h,
+            other => panic!("not an AS cap: {other:?}"),
+        };
+        // Exhaust the cap table (the AS cap is already in it and stays valid).
+        while table
+            .insert_root(Capability::new(
+                CapRights::empty(),
+                CapObject::Endpoint(EndpointHandle::test_handle(0, 0)),
+            ))
+            .is_ok()
+        {}
+        let loaded = loaded_image_with(as_cap);
+        let mut task_arena = TaskArena::default();
+
+        assert_eq!(
+            task_create_from_image(&loaded, &mut table, &mut task_arena, 1, CapRights::empty()),
+            Err(TaskCreateError::CapTableExhausted(CapError::CapsExhausted)),
+        );
+        // Rollback proof: the just-created-then-freed slot 0 is reusable — a
+        // fresh task takes index 0 (it would be index 1 if the task leaked).
+        let reused = create_task(&mut task_arena, Task::new(0, expected_ash)).unwrap();
+        assert_eq!(
+            reused.slot().index(),
+            0,
+            "rolled-back arena slot 0 must be reused"
+        );
+    }
+
+    #[test]
+    fn task_create_from_image_rejects_when_task_arena_full() {
+        // Step 2 fails when the task arena has no free slot → TaskArenaFull,
+        // before any cap is inserted into the table.
+        let (mut table, as_cap, _mmu, _arena, _pmm, _b) = fixture(16);
+        let ash = match table.lookup(as_cap).unwrap().object() {
+            CapObject::AddressSpace(h) => h,
+            other => panic!("not an AS cap: {other:?}"),
+        };
+        let mut task_arena = TaskArena::default();
+        // Fill the task arena until create_task reports it full.
+        while create_task(&mut task_arena, Task::new(0, ash)).is_ok() {}
+        let loaded = loaded_image_with(as_cap);
+
+        assert_eq!(
+            task_create_from_image(&loaded, &mut table, &mut task_arena, 1, CapRights::empty()),
+            Err(TaskCreateError::TaskArenaFull),
+        );
     }
 
     // ── §Simulation row 1 — argument preflight ────────────────────────────────

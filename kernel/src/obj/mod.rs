@@ -9,7 +9,11 @@
 //! [`LoadedImage`] + [`LoadError`]) — added in T-019 (B4) per
 //! [ADR-0029][adr-0029] to compose `Pmm` / `AddressSpace` / cap-table
 //! into a single state machine that turns an embedded raw-flat
-//! userspace binary into a populated address space.
+//! userspace binary into a populated address space — plus
+//! [`task_loader::task_create_from_image`] + [`TaskCreateError`] (T-024,
+//! B6 step 3), the bridge that **mints** a runnable
+//! `CapHandle{CapObject::Task(...)}` from that `LoadedImage` (it mints,
+//! it does not schedule).
 //!
 //! The storage shape for the three object types is pinned in
 //! [ADR-0016][adr-0016]: per-type fixed-size-block arenas,
@@ -32,13 +36,16 @@
 //!   [`NotificationHandle`] (asynchronous notification; T-002).
 //! - **Task** — [`Task`], [`TaskArena`], [`TaskHandle`] (per-task
 //!   kernel-object; T-002).
-//! - **Task loader** — [`task_loader::load_image`] +
-//!   [`LoadedImage`] + [`LoadError`] (T-019 / ADR-0029; *loader half*
-//!   of B4 — produces a `LoadedImage` descriptor, **not** a runnable
-//!   `CapHandle{CapObject::Task(...)}`; runnability gates on
-//!   B5/B6 per phase-b §B4 §Revision-notes).
+//! - **Task loader** — [`task_loader::load_image`] + [`LoadedImage`] +
+//!   [`LoadError`] (T-019 / ADR-0029 — the *loader half* of B4: produces a
+//!   `LoadedImage` descriptor of a populated address space), plus
+//!   [`task_loader::task_create_from_image`] + [`TaskCreateError`] (T-024 /
+//!   B6 step 3 — **mints** a runnable `CapHandle{CapObject::Task(...)}` from a
+//!   `LoadedImage`). The split is deliberate: `load_image` builds the address
+//!   space, `task_create_from_image` mints the Task capability, and *running*
+//!   the task is the separate B6 wire-up (it **mints**, it does not schedule).
 //!
-//! ## Status (v1, T-002 + T-019)
+//! ## Status (v1, T-002 + T-019 + T-024)
 //!
 //! - Three object kinds: [`Task`], [`Endpoint`], [`Notification`].
 //!   `MemoryRegion` is deferred to a B5+ ADR.
@@ -68,7 +75,7 @@ pub mod task_loader;
 pub use endpoint::{Endpoint, EndpointArena, EndpointHandle};
 pub use notification::{Notification, NotificationArena, NotificationHandle};
 pub use task::{Task, TaskArena, TaskHandle};
-pub use task_loader::{LoadError, LoadedImage};
+pub use task_loader::{LoadError, LoadedImage, TaskCreateError};
 
 /// Compile-time bound on the number of live `Task` kernel objects.
 /// Conservatively small for v1; revisit when a real deployment asks
