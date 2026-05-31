@@ -593,6 +593,41 @@ pub trait Mmu: Send + Sync {
         va: VirtAddr,
     ) -> Result<(MapperFlush, PhysFrame), MmuError>;
 
+    /// Resolve `va` through this address space's translation tables by a
+    /// **read-only** walk, returning the page frame that backs it and the
+    /// leaf mapping's [`MappingFlags`].
+    ///
+    /// This is the "translation walk query" deferred in
+    /// [ADR-0009][adr-0009] §Open questions, added by [ADR-0038][adr-0038]
+    /// now that B6 gate #1 (user-access translation) is its first caller:
+    /// the syscall copy-user path resolves a user VA through the running
+    /// task's own translation regime and confirms the leaf is
+    /// [`MappingFlags::USER`]-accessible before dereferencing it (the
+    /// confused-deputy defence). Unlike [`Self::map`] / [`Self::unmap`] it
+    /// neither mutates the tables nor allocates frames, so it takes
+    /// `&Self::AddressSpace` and no [`FrameProvider`].
+    ///
+    /// Returns the [`PAGE_SIZE`]-aligned [`PhysFrame`] *containing* `va`;
+    /// the caller re-adds the in-page offset (`va.0 & (PAGE_SIZE - 1)`) to
+    /// obtain the exact physical address.
+    ///
+    /// # Errors
+    ///
+    /// - [`MmuError::NotMapped`] if no valid leaf descriptor covers `va`.
+    /// - [`MmuError::BlockMapped`] if `va` resolves through a large-block
+    ///   descriptor: v1 `translate` serves only 4 KiB page leaves
+    ///   (block-mapped regions — e.g. the bootstrap kernel map — are never
+    ///   user-reachable, so a user buffer never legitimately resolves
+    ///   through one).
+    ///
+    /// [adr-0009]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0009-mmu-trait.md
+    /// [adr-0038]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0038-mmu-translate-and-user-access.md
+    fn translate(
+        &self,
+        as_: &Self::AddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError>;
+
     /// Invalidate any TLB entry covering `va` on the current core.
     fn invalidate_tlb_address(&self, va: VirtAddr);
 

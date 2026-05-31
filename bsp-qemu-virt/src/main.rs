@@ -289,6 +289,22 @@ static MMU: StaticCell<mmu::QemuVirtMmu> = StaticCell::new();
 static AS_ARENA: StaticCell<tyrne_kernel::mm::AddressSpaceArena<mmu::QemuVirtMmu>> =
     StaticCell::new();
 
+/// A BSP-local copy of the bootstrap [`QemuVirtAddressSpace`][mmu::QemuVirtAddressSpace]
+/// for [`syscall_entry`][crate::syscall::syscall_entry] to pass as the
+/// `SyscallContext`'s `task_as` (the translation regime gate #1's per-page
+/// `Mmu::translate` resolves user pointers through, [ADR-0038]). `QemuVirtAddressSpace`
+/// is `Copy` (it carries only the root `PhysFrame`), so this is a copy of the
+/// same root the kernel arena's bootstrap AS wraps — the kernel's
+/// `AddressSpace<M>::inner` is `pub(crate)`, so the BSP keeps its own handle
+/// rather than reach through the wrapper. **B5/dormant only:** the EL1 stub
+/// runs in this bootstrap AS, whose low-identity table maps no `USER` page —
+/// so a stub `console_write` of a kernel VA is correctly rejected by gate #1
+/// (the demonstration in [`syscall_boundary_smoke`]). B6 (gate #3 / T-026)
+/// sources the *running EL0 task's* AS from the scheduler instead.
+///
+/// [ADR-0038]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0038-mmu-translate-and-user-access.md
+static BOOTSTRAP_AS: StaticCell<mmu::QemuVirtAddressSpace> = StaticCell::new();
+
 /// The bootstrap "AS authority" cap. Kernel-init's parent cap for any
 /// `cap_create_address_space` invocation that wants to mint a new AS.
 /// Stored as a `CapHandle` into [`BOOTSTRAP_AS_TABLE`] (the kernel-
@@ -729,16 +745,26 @@ fn syscall_boundary_smoke(console: &Pl011Uart) {
     let cons_cap_word = tyrne_kernel::syscall::encode_cap_handle(Some(cons_cap));
 
     // (1) console_write via SVC: x8 = 5, x0 = cap, x1 = buffer VA, x2 = length.
-    let greeting: &[u8] = b"tyrne: hello from the syscall boundary (console_write via SVC)\n";
-    let ptr = greeting.as_ptr() as u64;
-    let len = greeting.len() as u64;
+    //
+    // Gate #1 demonstration (ADR-0038 / T-025): the stub passes a **kernel**
+    // .rodata VA. The dispatcher's per-page `Mmu::translate` resolves it through
+    // the bootstrap AS — whose low-identity table maps no `USER` page — so the
+    // copy is rejected with `SyscallError::FaultAddress` and **nothing is
+    // emitted**. This is the confused-deputy defence working: even a holder of a
+    // valid debug-console cap cannot make the kernel copy a non-user (kernel) VA
+    // to the console. (A real EL0 task with a genuine USER buffer is the B6
+    // wire-up; before T-025 this same `SVC` emitted the greeting via the old
+    // identity-map deref. The mechanism is exhaustively host-tested — see the
+    // kernel `syscall::user_access` / `syscall::dispatch` tests.)
+    let kernel_buf: &[u8] = b"tyrne: (gate #1 rejects this kernel-VA buffer)\n";
+    let ptr = kernel_buf.as_ptr() as u64;
+    let len = kernel_buf.len() as u64;
     let status: u64;
     let written: u64;
     // SAFETY: `SVC #0` traps to the EL1 current-EL sync vector (+0x200), runs
-    // the panic-free dispatcher, and `ERET`s back here. The convention is
-    // x8 = number, x0..x2 = args; the handler writes x0 = status, x1 = bytes
-    // written, clobbers x0..x7, and preserves x8..x30 + SP_EL0. The emitted
-    // greeting bytes are the observable round-trip proof. Audit: UNSAFE-2026-0029.
+    // the panic-free dispatcher, and `ERET`s back here. x8 = number, x0..x2 =
+    // args; the handler writes x0 = status, x1 = bytes written, clobbers
+    // x0..x7, preserves x8..x30 + SP_EL0. Audit: UNSAFE-2026-0029.
     unsafe {
         core::arch::asm!(
             "svc #0",
@@ -777,7 +803,7 @@ fn syscall_boundary_smoke(console: &Pl011Uart) {
     let mut w = FmtWriter(console);
     let _ = writeln!(
         w,
-        "tyrne: syscall smoke ok (console_write status={status:#x}, bytes={written}; bad-number status={bad_status:#x})"
+        "tyrne: syscall smoke ok (gate #1 rejected kernel-VA console_write: status={status:#x} bytes={written}; bad-number status={bad_status:#x})"
     );
 }
 
@@ -1213,6 +1239,10 @@ extern "C" fn kernel_main_high() -> ! {
     let bootstrap_as_handle = unsafe {
         let arena = (*AS_ARENA.0.get()).assume_init_mut();
         let inner = mmu::QemuVirtAddressSpace::from_existing_root(l0_root);
+        // Stash a copy for `syscall_entry`'s `task_as` (gate #1 translation
+        // source). `QemuVirtAddressSpace` is `Copy` — the same root the kernel
+        // arena's bootstrap AS wraps below. Audit: UNSAFE-2026-0010 (StaticCell).
+        (*BOOTSTRAP_AS.0.get()).write(inner);
         let address_space = tyrne_kernel::mm::AddressSpace::wrap_bootstrap(inner);
         tyrne_kernel::mm::create_address_space(arena, address_space)
             .expect("bootstrap AS allocation in empty arena cannot fail")

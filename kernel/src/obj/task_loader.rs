@@ -2166,6 +2166,14 @@ mod tests {
             self.inner.unmap(as_, va)
         }
 
+        fn translate(
+            &self,
+            as_: &Self::AddressSpace,
+            va: VirtAddr,
+        ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+            self.inner.translate(as_, va)
+        }
+
         fn invalidate_tlb_address(&self, va: VirtAddr) {
             self.inner.invalidate_tlb_address(va);
         }

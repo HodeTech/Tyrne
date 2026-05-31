@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tyrne_hal::{
-    FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysFrame, VirtAddr, PAGE_SIZE,
+    FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysAddr, PhysFrame, VirtAddr,
+    PAGE_SIZE,
 };
 
 /// A simple [`FrameProvider`] backed by a `Vec` of pre-allocated frames.
@@ -261,6 +262,19 @@ impl Mmu for FakeMmu {
             .ok_or(MmuError::NotMapped)
     }
 
+    fn translate(
+        &self,
+        as_: &FakeAddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+        // Read-only lookup keyed by the page base — the trait contract is
+        // the frame *containing* `va`, so an interior offset resolves to its
+        // page. The flat `HashMap` has no block descriptors, so `FakeMmu`
+        // never returns `MmuError::BlockMapped`.
+        let page_base = VirtAddr(va.0 & !(PAGE_SIZE - 1));
+        as_.lookup(page_base).ok_or(MmuError::NotMapped)
+    }
+
     fn invalidate_tlb_address(&self, va: VirtAddr) {
         self.locked().tlb_address_invalidations.push(va);
     }
@@ -394,6 +408,16 @@ impl Mmu for OutOfFramesMmu {
         va: VirtAddr,
     ) -> Result<(MapperFlush, PhysFrame), MmuError> {
         self.inner.unmap(as_, va)
+    }
+
+    fn translate(
+        &self,
+        as_: &FakeAddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+        // `OutOfFrames` is a map-time allocation failure; a read-only
+        // translate is unaffected, so delegate unchanged.
+        self.inner.translate(as_, va)
     }
 
     fn invalidate_tlb_address(&self, va: VirtAddr) {
@@ -533,12 +557,165 @@ impl Mmu for BlockMappedMmu {
         self.inner.unmap(as_, va)
     }
 
+    fn translate(
+        &self,
+        as_: &FakeAddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+        // A blocked VA models a 2 MiB block descriptor: the walk hits the
+        // block and cannot serve a 4 KiB leaf, so translate surfaces
+        // `BlockMapped` (checked on the page base so any in-page offset
+        // does too). Non-blocked VAs delegate to the inner `FakeMmu`.
+        let page_base = VirtAddr(va.0 & !(tyrne_hal::PAGE_SIZE - 1));
+        if self.is_blocked(page_base) {
+            return Err(MmuError::BlockMapped);
+        }
+        self.inner.translate(as_, va)
+    }
+
     fn invalidate_tlb_address(&self, va: VirtAddr) {
         self.inner.invalidate_tlb_address(va);
     }
 
     fn invalidate_tlb_all(&self) {
         self.inner.invalidate_tlb_all();
+    }
+}
+
+/// Page-aligned host memory backing fake user pages, mapped at a synthetic user
+/// VA in a [`FakeMmu`] address space — the fixture for testing translate-based
+/// user-access copies ([`tyrne_hal::Mmu::translate`] + the kernel's
+/// `copy_from_user` / `copy_to_user`).
+///
+/// The translate-based copy resolves a user VA to a [`PhysFrame`], rebases it to
+/// a kernel pointer (identity on host, so the frame *is* the host address), and
+/// reads / writes the backing bytes. `FakeUserMem` allocates real page-aligned
+/// host pages, maps `[base_va, base_va + npages * PAGE_SIZE)` onto them with the
+/// given per-page [`MappingFlags`], and exposes provenance via `ptr as usize` so
+/// the int-to-pointer rebase recovers it under Miri's permissive-provenance mode
+/// (the same pattern the kernel `pmm` / `task_loader` tests use).
+pub struct FakeUserMem {
+    ptr: *mut u8,
+    layout: std::alloc::Layout,
+    base_va: usize,
+    npages: usize,
+    mmu: FakeMmu,
+    as_: FakeAddressSpace,
+}
+
+impl FakeUserMem {
+    /// Allocate `npages` page-aligned, zero-filled host pages and map them at
+    /// `base_va` (page-aligned) with `flags` per page in a fresh [`FakeMmu`] AS.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `npages == 0`, `base_va` is not page-aligned, or the host
+    /// allocation fails.
+    #[must_use]
+    pub fn new(base_va: usize, npages: usize, flags: MappingFlags) -> Self {
+        assert!(npages >= 1, "npages must be >= 1");
+        assert!(
+            base_va.is_multiple_of(PAGE_SIZE),
+            "base_va must be page-aligned"
+        );
+        let layout = std::alloc::Layout::from_size_align(npages * PAGE_SIZE, PAGE_SIZE)
+            .expect("valid layout");
+        // SAFETY: non-zero size, power-of-two alignment; null checked below.
+        let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
+        assert!(!ptr.is_null(), "alloc_zeroed failed");
+        let mmu = FakeMmu::new();
+        // SAFETY: FakeMmu::create_address_space stores the root, never derefs it.
+        let mut as_ =
+            unsafe { mmu.create_address_space(PhysFrame::from_aligned(PhysAddr(0x1000)).unwrap()) };
+        let mut fp = VecFrameProvider::new(Vec::new());
+        for i in 0..npages {
+            // `ptr as usize` exposes provenance; the page-aligned host address
+            // doubles as the PhysFrame the rebase recovers.
+            let host_page = (ptr as usize) + i * PAGE_SIZE;
+            let frame = PhysFrame::from_aligned(PhysAddr(host_page)).expect("page-aligned");
+            mmu.map(
+                &mut as_,
+                VirtAddr(base_va + i * PAGE_SIZE),
+                frame,
+                flags,
+                &mut fp,
+            )
+            .expect("fake map must succeed")
+            .ignore();
+        }
+        Self {
+            ptr,
+            layout,
+            base_va,
+            npages,
+            mmu,
+            as_,
+        }
+    }
+
+    /// Write `bytes` into the backing region at byte offset `off`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `off + bytes.len()` exceeds the region.
+    pub fn write(&self, off: usize, bytes: &[u8]) {
+        assert!(
+            off + bytes.len() <= self.region_len(),
+            "write out of region"
+        );
+        // SAFETY: range checked; `ptr` owns `npages * PAGE_SIZE` bytes.
+        unsafe {
+            core::ptr::copy(bytes.as_ptr(), self.ptr.add(off), bytes.len());
+        }
+    }
+
+    /// Read `len` bytes from the backing region at byte offset `off`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `off + len` exceeds the region.
+    #[must_use]
+    pub fn read(&self, off: usize, len: usize) -> Vec<u8> {
+        assert!(off + len <= self.region_len(), "read out of region");
+        let mut out = vec![0u8; len];
+        // SAFETY: range checked.
+        unsafe {
+            core::ptr::copy(self.ptr.add(off), out.as_mut_ptr(), len);
+        }
+        out
+    }
+
+    /// The synthetic user base VA the region is mapped at.
+    #[must_use]
+    pub fn base_va(&self) -> usize {
+        self.base_va
+    }
+
+    /// The region length in bytes (`npages * PAGE_SIZE`).
+    #[must_use]
+    pub fn region_len(&self) -> usize {
+        self.npages * PAGE_SIZE
+    }
+
+    /// The MMU to pass as the translation source.
+    #[must_use]
+    pub fn mmu(&self) -> &FakeMmu {
+        &self.mmu
+    }
+
+    /// The mapped address space to translate user pointers through.
+    #[must_use]
+    pub fn address_space(&self) -> &FakeAddressSpace {
+        &self.as_
+    }
+}
+
+impl Drop for FakeUserMem {
+    fn drop(&mut self) {
+        // SAFETY: `ptr` / `layout` are the matched pair returned by `alloc_zeroed`.
+        unsafe {
+            std::alloc::dealloc(self.ptr, self.layout);
+        }
     }
 }
 
@@ -974,5 +1151,66 @@ mod tests {
             .unmap(&mut as_, VirtAddr(0x6000))
             .expect_err("missing VA must be NotMapped, not BlockMapped");
         assert_eq!(err, MmuError::NotMapped);
+    }
+
+    // ── translate (ADR-0038 / T-025) ──────────────────────────────────────────
+
+    #[test]
+    fn fake_translate_returns_mapping_and_aligns_interior_offset() {
+        let mmu = FakeMmu::new();
+        // SAFETY: page-aligned by construction.
+        let mut as_ = unsafe { mmu.create_address_space(frame(0x1000)) };
+        let mut fp = VecFrameProvider::new(vec![]);
+        mmu.map(
+            &mut as_,
+            VirtAddr(0x4000),
+            frame(0x8000),
+            MappingFlags::USER | MappingFlags::WRITE,
+            &mut fp,
+        )
+        .expect("map must succeed")
+        .ignore();
+
+        // Exact page base resolves to the mapped frame + flags.
+        let (pa, flags) = mmu
+            .translate(&as_, VirtAddr(0x4000))
+            .expect("translate page base");
+        assert_eq!(pa, frame(0x8000));
+        assert!(flags.contains(MappingFlags::USER));
+        assert!(flags.contains(MappingFlags::WRITE));
+
+        // An interior offset resolves to the same page frame.
+        let (pa2, _) = mmu
+            .translate(&as_, VirtAddr(0x4ABC))
+            .expect("translate interior offset");
+        assert_eq!(pa2, frame(0x8000));
+    }
+
+    #[test]
+    fn fake_translate_unmapped_is_not_mapped() {
+        let mmu = FakeMmu::new();
+        // SAFETY: page-aligned by construction.
+        let as_ = unsafe { mmu.create_address_space(frame(0x1000)) };
+        let err = mmu
+            .translate(&as_, VirtAddr(0x4000))
+            .expect_err("unmapped VA must fault");
+        assert_eq!(err, MmuError::NotMapped);
+    }
+
+    #[test]
+    fn block_mapped_mmu_translate_injects_block_mapped() {
+        let mmu = BlockMappedMmu::with_blocked([VirtAddr(0x20_0000)]);
+        // SAFETY: the inner FakeMmu never dereferences `root`.
+        let as_ = unsafe { mmu.create_address_space(frame(0x1000)) };
+        // A blocked page surfaces BlockMapped, even at an interior offset.
+        assert_eq!(
+            mmu.translate(&as_, VirtAddr(0x20_0FFF)).unwrap_err(),
+            MmuError::BlockMapped
+        );
+        // A different, unmapped page is NotMapped — distinct from BlockMapped.
+        assert_eq!(
+            mmu.translate(&as_, VirtAddr(0x21_0000)).unwrap_err(),
+            MmuError::NotMapped
+        );
     }
 }

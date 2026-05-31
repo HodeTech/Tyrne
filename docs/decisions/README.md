@@ -65,6 +65,7 @@ Each ADR contains:
 | 0035 | [Physical Memory Manager (B3 prerequisite — bitmap allocator)](0035-physical-memory-manager.md) | Accepted | 2026-05-09 |
 | 0036 | [QEMU virt is GICv2 / no-IOMMU in v1; corrects GICv3/SMMUv3 in ADR-0004/0006/0012](0036-qemu-virt-gicv2-no-iommu-v1.md) | Accepted | 2026-05-22 |
 | 0037 | [EL0 entry context (B6 — userspace register file + enter-EL0/`ERET` path + per-task `SP_EL1`)](0037-el0-entry-context.md) | Accepted | 2026-05-31 |
+| 0038 | [`Mmu::translate` read-only walk + per-task user-access translation (B6 gate #1)](0038-mmu-translate-and-user-access.md) | Accepted | 2026-05-31 |
 
 > **Numbering gaps.** Slot **0034** is intentionally reserved, not missing: 0034 (kernel-image section permissions) is a named-but-unallocated placeholder forward-flagged in ADR-0027. No file exists for it yet; it opens when the corresponding work surfaces (the first attacker-observable EL0 execution — likely B6). (Slot **0033** (high-half migration) was filed `Proposed` on 2026-05-29 to open B6 and `Accepted` on 2026-05-30, and is no longer a gap; slots **0030**/**0031** were filed and `Accepted` on 2026-05-29 for B5.) ADR numbers are stable history and are never renumbered.
 
