@@ -1,6 +1,6 @@
 # 0039 — Userland build pipeline (B6 — `userland/hello` + `tyrne-user` + raw-flat embed orchestration)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-05-31
 - **Deciders:** @cemililik
 
