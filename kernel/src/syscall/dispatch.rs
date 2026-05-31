@@ -94,6 +94,17 @@ pub struct SyscallContext<'a, M: Mmu> {
     /// are resolved through. Sourced from the scheduler's current task in B6
     /// (gate #3 / T-026); in B5 it is the EL1 stub's bootstrap AS.
     pub task_as: &'a M::AddressSpace,
+    /// Whether a running EL0 task is current (gate #3 / T-026). The BSP sets it
+    /// from the scheduler (`current_user_table().is_some()`). The **control-plane**
+    /// syscalls (`task_yield` / `task_exit`) act on the trusted current-task
+    /// identity ([ADR-0031][adr-0031]) and consult **no** capability, so the
+    /// empty fail-closed `caller_table` cannot guard them — the dispatcher
+    /// instead rejects them with `InvalidHandle` when this is `false` (H2). A
+    /// data-plane syscall with no current task fails closed via the empty table
+    /// regardless of this flag.
+    ///
+    /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
+    pub has_current_task: bool,
 }
 
 /// Decode and execute one syscall, returning the trampoline's next action.
@@ -113,9 +124,30 @@ pub fn dispatch<M: Mmu>(ctx: &mut SyscallContext<'_, M>, args: SyscallArgs) -> S
     match number {
         SyscallNumber::Send => SyscallEffect::Resume(sys_send(ctx, args.args)),
         SyscallNumber::Recv => SyscallEffect::Resume(sys_recv(ctx, args.args)),
-        // Control-plane: act on the caller's own task; see SyscallEffect.
-        SyscallNumber::TaskYield => SyscallEffect::Reschedule,
-        SyscallNumber::TaskExit => SyscallEffect::Terminate(args.args[0]),
+        // Control-plane: act on the caller's own task. These consult no
+        // capability, so the empty fail-closed `caller_table` does not guard
+        // them — gate #3 (T-026, H2) rejects them here when no EL0 task is
+        // current (nothing to yield / exit). With a current task they return
+        // the directive the BSP applies (real `yield_now` / termination is the
+        // B6 wire-up).
+        SyscallNumber::TaskYield => {
+            if ctx.has_current_task {
+                SyscallEffect::Reschedule
+            } else {
+                SyscallEffect::Resume(SyscallReturn::error(SyscallError::from(
+                    CapError::InvalidHandle,
+                )))
+            }
+        }
+        SyscallNumber::TaskExit => {
+            if ctx.has_current_task {
+                SyscallEffect::Terminate(args.args[0])
+            } else {
+                SyscallEffect::Resume(SyscallReturn::error(SyscallError::from(
+                    CapError::InvalidHandle,
+                )))
+            }
+        }
         SyscallNumber::ConsoleWrite => SyscallEffect::Resume(sys_console_write(ctx, args.args)),
     }
 }
@@ -373,6 +405,7 @@ mod tests {
             user_window: window,
             mmu,
             task_as,
+            has_current_task: true,
         };
         dispatch(
             &mut ctx,
@@ -397,6 +430,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let effect = dispatch(
             &mut ctx,
@@ -429,6 +463,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let effect = dispatch(
             &mut ctx,
@@ -460,6 +495,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         assert_eq!(
             dispatch(&mut ctx, call(SyscallNumber::TaskYield, [0; 6])),
@@ -482,6 +518,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         assert_eq!(
             dispatch(
@@ -490,6 +527,68 @@ mod tests {
             ),
             SyscallEffect::Terminate(0x2A)
         );
+    }
+
+    // ── control-plane fail-closed (gate #3 / T-026, H2) ──────────────────────
+
+    #[test]
+    fn task_yield_with_no_current_task_fails_closed() {
+        // Control-plane consults no capability, so the empty fail-closed table
+        // cannot guard it; the dispatcher rejects task_yield with InvalidHandle
+        // when no EL0 task is current (nothing to yield) — not Reschedule.
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new();
+        let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
+            has_current_task: false,
+        };
+        let effect = dispatch(&mut ctx, call(SyscallNumber::TaskYield, [0; 6]));
+        match effect {
+            SyscallEffect::Resume(r) => assert_eq!(
+                r.status,
+                SyscallError::Cap(crate::cap::CapError::InvalidHandle).as_status()
+            ),
+            other => panic!("expected Resume(InvalidHandle), not Reschedule, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_exit_with_no_current_task_fails_closed() {
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new();
+        let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
+            has_current_task: false,
+        };
+        let effect = dispatch(
+            &mut ctx,
+            call(SyscallNumber::TaskExit, [0x2A, 0, 0, 0, 0, 0]),
+        );
+        match effect {
+            SyscallEffect::Resume(r) => assert_eq!(
+                r.status,
+                SyscallError::Cap(crate::cap::CapError::InvalidHandle).as_status()
+            ),
+            other => panic!("expected Resume(InvalidHandle), not Terminate, got {other:?}"),
+        }
     }
 
     // ── send / recv ──────────────────────────────────────────────────────────
@@ -516,6 +615,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         let effect = dispatch(
@@ -554,6 +654,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         let effect = dispatch(
@@ -594,6 +695,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         // Enqueue a message via the send syscall.
@@ -664,6 +766,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let ep_word = encode_cap_handle(Some(ep_cap));
 
@@ -727,6 +830,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         // x5 = a handle naming no live slot (index far past CAP_TABLE_CAPACITY).
         let stale_xfer = encode_cap_handle(Some(CapHandle::from_raw(50, 7)));
@@ -767,6 +871,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let effect = dispatch(
             &mut ctx,

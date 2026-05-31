@@ -14,22 +14,25 @@
 //!   [`tyrne_kernel::syscall::dispatch`], and applies the returned
 //!   [`SyscallEffect`] by writing the status + payload back into the frame.
 //!
-//! ## B5 scope and the `0x200` / `0x400` split
+//! ## The `0x200` / `0x400` split
 //!
 //! The shared trampoline is installed at **both** sync vector slots — current-EL
 //! (`VBAR_EL1 + 0x200`) and lower-EL-AArch64 (`VBAR_EL1 + 0x400`) — because the
-//! save → dispatch → `ERET` mechanism is privilege-entry-agnostic. In B5 the
-//! only `SVC` comes from an **EL1 kernel-stub** (see `kernel_entry`'s syscall
-//! smoke), which — executing at the *current* EL — takes the `0x200` vector,
-//! **not** the lower-EL `0x400` vector. A real EL0 task taking the `0x400`
-//! vector (with the EL0↔EL1 privilege transition and copy-user against a
-//! separate userspace `TTBR0_EL1`) is verified at runtime in **B6**, per
+//! save → dispatch → `ERET` mechanism is privilege-entry-agnostic. The only
+//! `SVC` today comes from the [`crate::syscall_boundary_smoke`] EL1 stub, which —
+//! executing at the *current* EL — takes the `0x200` vector. A real EL0 task
+//! taking the `0x400` vector (with the EL0↔EL1 privilege transition and copy-user
+//! against a separate userspace `TTBR0_EL1`) is the B6 wire-up, per
 //! [ADR-0030 §Simulation row-to-verification mapping][adr-0030]. The `0x400`
-//! handler is installed now so B6 adds only the EL0 task, not new trap plumbing.
+//! handler is installed now so the wire-up adds only the EL0 task, not new trap
+//! plumbing.
 //!
-//! `caller_table` is a dedicated **kernel-stub** capability table in B5
-//! ([`crate::SYSCALL_STUB_TABLE`]); B6 replaces it with the scheduler's
-//! current-task table once a real EL0 task exists.
+//! `caller_table` is sourced per-syscall from the **scheduler's running task**
+//! (gate #3 / T-026): `syscall_entry` resolves the current task's own capability
+//! table, address space, and user-access window from `SCHED.current`, and **fails
+//! closed** when no task is current — the empty [`crate::FAILCLOSED_TABLE`] (every
+//! lookup → `InvalidHandle`) + an empty window, so a syscall with no running task
+//! names no capability and copies no byte.
 //!
 //! Audit: UNSAFE-2026-0029 (the trap-frame asm + this entry's frame
 //! reads/writes).
@@ -85,29 +88,9 @@ pub struct SyscallTrapFrame {
 // the build before that can ship. (Mirrors the `TrapFrame` 192-byte guard.)
 const _: () = assert!(core::mem::size_of::<SyscallTrapFrame>() == 272);
 
-/// Length of the syscall copy-from/to-user window in B5: the whole RAM extent,
-/// reached through the kernel's high-half direct map (post-T-022 / ADR-0033).
-///
-/// The B5 EL1 kernel-stub executes in the high half; its buffer — a
-/// `.rodata`-resident `&[u8]` in the kernel image — is reachable at its
-/// high-half VA, so the window base is `phys_to_kernel_va(PMM_EXTENT_START)`
-/// (see [`syscall_entry`]) and the stub buffer is in range. Because the
-/// stub's "user" pointer **is** a valid kernel VA, the dispatcher's direct
-/// deref works for the stub; B6's real EL0 task instead lives at a *user* VA
-/// in its own `TTBR0_EL1`, so B6 derives a tighter per-task window AND
-/// replaces the direct deref with a per-page user-VA→kernel-VA translation
-/// (T-021 carry-forward gate #1 — see [`UserAccessWindow`]'s module docs).
-/// The subtraction is a `const`, so it
-/// cannot wrap at runtime: const-eval rejects an underflow at **build time**
-/// (an inverted extent is a hard compile error, never a release wrap). The
-/// explicit assertion below makes that invariant — and its failure message —
-/// unambiguous rather than relying on a raw "subtract with overflow" const-eval
-/// error.
-const _: () = assert!(
-    crate::PMM_EXTENT_END >= crate::PMM_EXTENT_START,
-    "PMM extent must be non-inverted: PMM_EXTENT_END >= PMM_EXTENT_START"
-);
-const SYSCALL_USER_WINDOW_LEN: usize = crate::PMM_EXTENT_END - crate::PMM_EXTENT_START;
+// The B5 whole-RAM-extent `SYSCALL_USER_WINDOW_LEN` is gone: post-gate-#3
+// (T-026) the user-access window is **per task**, sourced from the scheduler's
+// current task (`current_user_window()`), not a fixed extent — see `syscall_entry`.
 
 /// Rust entry for the `SVC` sync trampoline (`vectors.s`).
 ///
@@ -127,22 +110,33 @@ const SYSCALL_USER_WINDOW_LEN: usize = crate::PMM_EXTENT_END - crate::PMM_EXTENT
 /// register frame through a raw `*mut SyscallTrapFrame` (the asm calling
 /// convention passes a pointer, not a `&mut`), and it materialises momentary
 /// references to the write-once BSP statics via `assume_init_{mut,ref}`.
-/// **Invariants upheld.** (1) The four statics it reaches
-/// (`EP_ARENA` / `IPC_QUEUES` / `SYSCALL_STUB_TABLE` / `CONSOLE`) are all
-/// written before the syscall smoke issues any `SVC`; (2) v1 is single-core and
-/// the `SVC` handler runs with interrupts masked (exception entry masks `DAIF`),
-/// so no peer aliases them mid-call; (3) the momentary `&mut`s are scoped to the
+/// **Invariants upheld.** (1) The statics it reaches (`SCHED` / `EP_ARENA` /
+/// `IPC_QUEUES` / `CONSOLE` / `MMU` / `AS_ARENA` / `FAILCLOSED_TABLE` /
+/// `BOOTSTRAP_AS`) are all written before the syscall smoke issues any `SVC` —
+/// the smoke is sequenced *after* `SCHED` is published, so `SCHED.current` reads
+/// a valid (empty, not-yet-started) scheduler; (2) v1 is single-core and the
+/// `SVC` handler runs with interrupts masked (exception entry masks `DAIF`), so
+/// no peer aliases them mid-call; (3) the momentary `&mut`s are scoped to the
 /// single `dispatch` call and do not cross a context switch — the data-plane
 /// syscalls do not switch and the control-plane ones return a directive *before*
 /// any switch, honouring the [ADR-0021] discipline; (4) the frame writes touch
 /// only `x0`–`x7`, leaving the trampoline's restore of `x8`–`x30` + `SP_EL0` +
-/// `ELR_EL1` + `SPSR_EL1` intact. **Rejected alternatives.** Passing a `&mut
+/// `ELR_EL1` + `SPSR_EL1` intact; (5) **gate #3 (M4):** with a current EL0 task,
+/// `caller_table` is `&mut *current_user_table()` — a momentary `&mut` to the
+/// task's own capability table (a BSP static recorded by `add_user_task` via the
+/// [ADR-0021] raw-pointer bridge), lexically contained to this one `dispatch`
+/// call and never crossing a switch; with no current task it is the empty
+/// `FAILCLOSED_TABLE` (every lookup → `InvalidHandle`) and `task_as` the
+/// never-dereferenced bootstrap-AS placeholder behind an empty window, so a
+/// syscall with no running task names no capability and copies no byte
+/// (UNSAFE-2026-0014 Amendment). **Rejected alternatives.** Passing a `&mut
 /// SyscallTrapFrame` from the asm is impossible (asm has no Rust references);
 /// holding the BSP statics behind a lock would deadlock the interrupts-masked
 /// handler with no soundness gain under single-core cooperative semantics.
 ///
 /// Audit: UNSAFE-2026-0029 (trap-frame asm + frame access) + UNSAFE-2026-0010
-/// (`StaticCell` pattern) + UNSAFE-2026-0014 (momentary `&mut` to kernel state).
+/// (`StaticCell` pattern) + UNSAFE-2026-0014 (momentary `&mut` to kernel state,
+/// incl. the gate-#3 cap-table-pointer deref).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
     // SAFETY: `frame` is valid per the trampoline contract above; read the
@@ -158,29 +152,46 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
         }
     };
 
-    // SAFETY: build the dispatch context from the write-once BSP statics. All
-    // four are initialised in `kernel_entry` before the syscall smoke runs;
-    // single-core + interrupts-masked-in-handler means no aliasing; the
-    // momentary `&mut`s drop at the end of the `dispatch` call and never cross a
-    // switch. Audit: UNSAFE-2026-0010 (StaticCell) + UNSAFE-2026-0014 (momentary
-    // `&mut` to kernel state) + UNSAFE-2026-0029 (the syscall arc).
+    // SAFETY: build the dispatch context from the **running EL0 task's**
+    // bindings, sourced from the scheduler (gate #3 / T-026), or the FAIL-CLOSED
+    // default when no task is current. `SCHED` / `EP_ARENA` / `IPC_QUEUES` /
+    // `CONSOLE` / `MMU` / `AS_ARENA` / `FAILCLOSED_TABLE` / `BOOTSTRAP_AS` are all
+    // published before the (post-`SCHED`-init) smoke runs; single-core +
+    // interrupts-masked ⇒ no aliasing; the momentary `&mut`s drop at the end of
+    // `dispatch` and never cross a switch. The `&mut *table_ptr` is the gate-#3
+    // cap-table dereference (M4 — UNSAFE-2026-0014 Amendment; see this fn's
+    // `# Safety`). Audit: UNSAFE-2026-0010 + UNSAFE-2026-0014 + UNSAFE-2026-0029.
     let effect = unsafe {
+        let sched = (*crate::SCHED.0.get()).assume_init_ref();
+        let current_table = sched.current_user_table();
+        let current_as = sched.current_address_space_handle();
+        let current_window = sched.current_user_window();
+
+        // task_as: the running task's address space (read-only, for the gate-#1
+        // `Mmu::translate`), or the bootstrap AS as a harmless placeholder when
+        // fail-closed (the empty window rejects every non-zero copy first). A
+        // stale / absent AS handle also falls back.
+        let arena = (*crate::AS_ARENA.0.get()).assume_init_ref();
+        let task_as = match current_as.and_then(|h| tyrne_kernel::mm::get_address_space(arena, h)) {
+            Some(asp) => asp.inner(),
+            None => (*crate::BOOTSTRAP_AS.0.get()).assume_init_ref(),
+        };
+        // caller_table: the running task's own recorded table, or the empty
+        // FAILCLOSED_TABLE (every lookup → InvalidHandle) when no task is current.
+        let caller_table = match current_table {
+            Some(table_ptr) => &mut *table_ptr,
+            None => (*crate::FAILCLOSED_TABLE.0.get()).assume_init_mut(),
+        };
+
         let mut ctx = SyscallContext {
             ep_arena: (*crate::EP_ARENA.0.get()).assume_init_mut(),
             queues: (*crate::IPC_QUEUES.0.get()).assume_init_mut(),
-            caller_table: (*crate::SYSCALL_STUB_TABLE.0.get()).assume_init_mut(),
+            caller_table,
             console: (*crate::CONSOLE.0.get()).assume_init_ref(),
-            user_window: UserAccessWindow::new(
-                tyrne_hal::phys_to_kernel_va(crate::PMM_EXTENT_START),
-                SYSCALL_USER_WINDOW_LEN,
-            ),
-            // Gate #1 (ADR-0038): the per-page `Mmu::translate` source. In B5
-            // this is the bootstrap AS the EL1 stub runs in — whose low-identity
-            // table maps no `USER` page, so a stub `console_write` of a kernel
-            // VA is correctly rejected (`FaultAddress`). B6 / gate #3 (T-026)
-            // sources the running EL0 task's AS from the scheduler instead.
+            user_window: current_window.unwrap_or_else(UserAccessWindow::empty),
             mmu: (*crate::MMU.0.get()).assume_init_ref(),
-            task_as: (*crate::BOOTSTRAP_AS.0.get()).assume_init_ref(),
+            task_as,
+            has_current_task: current_table.is_some(),
         };
         dispatch(&mut ctx, args)
     };
@@ -203,23 +214,24 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
             }
         }
         SyscallEffect::Reschedule => {
-            // task_yield. v1 B5 stand-in: there is no scheduler-resident EL0
-            // task issuing this (the smoke runs the stub before `start()`), so
-            // the real `yield_now` wiring lands in B6 once the caller is an EL0
-            // task. The dispatcher-level routing (number 3 → Reschedule) is
-            // host-tested; here we resume with `Ok` (x0 = 0) — task_yield
-            // "always succeeds in v1" per ADR-0031.
+            // task_yield. Post-gate-#3 the dispatcher returns `Reschedule` only
+            // when an EL0 task is current (`has_current_task`); with no current
+            // task it returns `Resume(InvalidHandle)` instead (handled above).
+            // So this arm is reached only for a real running task — **dormant**
+            // until the B6 wire-up (the smoke issues no control-plane `SVC`).
+            // The v1 stand-in resumes `Ok` (x0 = 0) — task_yield "always succeeds
+            // in v1" per ADR-0031; real `yield_now` wiring lands in the wire-up.
             // SAFETY: write x0 only. Audit: UNSAFE-2026-0029.
             unsafe {
                 (*frame).x0_x1[0] = tyrne_kernel::syscall::OK_STATUS;
             }
         }
         SyscallEffect::Terminate(_code) => {
-            // task_exit. The ABI says "does not return", but v1 has no EL0
-            // context register file to drop — real termination lands in B6. The
-            // dispatcher-level routing (number 4 → Terminate) is host-tested;
-            // here we defensively resume with `Ok` so a stray kernel-stub
-            // task_exit cannot wedge the boot before B6 wires real termination.
+            // task_exit. As with `Reschedule`, reached only with a current task
+            // (gate #3 rejects it otherwise) — **dormant** until the B6 wire-up.
+            // The ABI says "does not return", but v1 has no EL0 context to drop;
+            // the v1 stand-in resumes `Ok` so a stray `task_exit` cannot wedge
+            // the boot before the wire-up lands real termination.
             // SAFETY: write x0 only. Audit: UNSAFE-2026-0029.
             unsafe {
                 (*frame).x0_x1[0] = tyrne_kernel::syscall::OK_STATUS;

@@ -1789,6 +1789,58 @@ mod tests {
     }
 
     #[test]
+    fn current_accessors_resolve_running_task_bindings_or_none() {
+        // Gate #3 (T-026): `current_user_table` / `current_address_space_handle`
+        // / `current_user_window` resolve `self.current` → slot → the parallel
+        // arrays. `None` when no task is current (the fail-closed signal); the
+        // recorded binding once a task is the running `current`.
+        let cpu = FakeCpu::new();
+        let mut sched: Scheduler<FakeCpu> = Scheduler::new();
+        // Fresh scheduler: no current task → all None.
+        assert!(sched.current_user_table().is_none());
+        assert!(sched.current_address_space_handle().is_none());
+        assert!(sched.current_user_window().is_none());
+
+        let h = task_handle(0);
+        let mut kstack = AlignedStack::<512>::new();
+        let mut table = CapabilityTable::new();
+        let table_ptr: *mut CapabilityTable = core::ptr::addr_of_mut!(table);
+        let user_entry = 0x0080_0000usize;
+        let user_sp = 0x0080_2000usize;
+        // SAFETY: opaque VAs; `FakeCpu::init_user_context` only records; `table`
+        // is a stack-local the scheduler only stores a pointer to (never derefs
+        // here — no syscall is dispatched).
+        unsafe {
+            sched
+                .add_user_task(
+                    &cpu,
+                    h,
+                    BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    user_entry,
+                    user_sp,
+                    kstack.top(),
+                    table_ptr,
+                )
+                .unwrap();
+        }
+        // Registered (Ready) but not yet the running task → still None.
+        assert!(sched.current_user_table().is_none());
+
+        // Make it the running task (`current` is private but reachable from this
+        // child test module; the scheduler normally sets it in start/yield_now).
+        sched.current = Some(h);
+        assert_eq!(sched.current_user_table(), Some(table_ptr));
+        assert_eq!(
+            sched.current_address_space_handle(),
+            Some(BOOTSTRAP_ADDRESS_SPACE_HANDLE)
+        );
+        assert_eq!(
+            sched.current_user_window(),
+            Some(UserAccessWindow::new(user_entry, user_sp - user_entry))
+        );
+    }
+
+    #[test]
     fn yield_now_switches_context_and_updates_current() {
         let cpu = FakeCpu::new();
         let mut sched: Scheduler<FakeCpu> = Scheduler::new();
