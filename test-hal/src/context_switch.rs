@@ -174,6 +174,11 @@ impl ContextSwitch for FakeContextSwitch {
         stack_top: *mut u8,
     ) {
         ctx.initialized = true;
+        // Fully re-seed as a *kernel* context: clear any user-path markers a
+        // prior `init_user_context` left, so a reused slot does not report
+        // stale `is_user` / `user_sp` (init_context overwrites the context).
+        ctx.is_user = false;
+        ctx.user_sp = 0;
         ctx.entry_addr = entry as *const () as usize;
         ctx.stack_top = stack_top as usize;
         self.locked().init_count += 1;
@@ -268,6 +273,29 @@ mod tests {
         assert_eq!(ctx.stack_top, ktop as usize);
         assert_eq!(cs.init_count(), 1);
         assert_eq!(cs.switch_count(), 0);
+    }
+
+    #[test]
+    fn init_context_clears_prior_user_markers_on_reuse() {
+        // A reused context first seeded as an EL0 task, then re-seeded by the
+        // kernel path, must not report stale is_user / user_sp.
+        let cs = FakeContextSwitch::new();
+        let mut ctx = FakeTaskContext::default();
+        let mut kstack = [0u8; 512];
+        let ktop = kstack.as_mut_ptr().wrapping_add(kstack.len());
+
+        // SAFETY: opaque integers + a one-past-end ptr; the fake only records,
+        // never dereferences them or performs a real EL0 entry.
+        unsafe { cs.init_user_context(&mut ctx, 0x0080_0000, 0x0080_2000, ktop) };
+        assert!(ctx.is_user);
+        assert_eq!(ctx.user_sp, 0x0080_2000);
+
+        // SAFETY: as `init_context`'s doctest — the fake records `entry`/
+        // `stack_top` and never calls/derefs them.
+        unsafe { cs.init_context(&mut ctx, never_returns, ktop) };
+        assert!(ctx.initialized);
+        assert!(!ctx.is_user, "init_context must clear the user-path marker");
+        assert_eq!(ctx.user_sp, 0, "init_context must clear user_sp");
     }
 
     #[test]
