@@ -387,7 +387,11 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
     /// `SP_EL1`); `user_entry` is an EL0-executable userspace VA and `user_sp`
     /// a valid userspace stack top, both mapped and EL0-reachable in
     /// `address_space_handle`'s address space before the task is first
-    /// dispatched.
+    /// dispatched. **That address space must be ACTIVE at first dispatch** —
+    /// its `TTBR0_EL1` installed and `EPD0` cleared (the scheduler's
+    /// activation hook must have fired for it) — so the EL0 entry fetch and
+    /// user-stack access translate; the `enter_el0` trampoline installs no
+    /// `TTBR0` of its own.
     ///
     /// [ADR-0037]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0037-el0-entry-context.md
     pub unsafe fn add_user_task(
@@ -409,6 +413,13 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         debug_assert!(
             !kernel_stack_top.is_null() && (kernel_stack_top as usize).is_multiple_of(16),
             "add_user_task: kernel_stack_top must be non-null and 16-byte aligned (the task's SP_EL1)",
+        );
+        // `user_sp` becomes `SP_EL0`; a misaligned EL0 stack faults on the first
+        // stack access when `SCTLR_EL1.SA0 = 1`. AAPCS64 requires 16-byte SP
+        // alignment — assert it symmetrically with the kernel stack.
+        debug_assert!(
+            user_sp.is_multiple_of(16),
+            "add_user_task: user_sp must be 16-byte aligned (becomes SP_EL0)",
         );
         // SAFETY: caller guarantees the EL0-entry contract per the # Safety doc.
         // Forwarding to the BSP's init_user_context, which seeds the context's

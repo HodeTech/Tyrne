@@ -329,11 +329,19 @@ pub struct Aarch64TaskContext {
 }
 
 // `naked_asm!` in `context_switch_asm` reads `Aarch64TaskContext` at fixed byte
-// offsets (0/80/88/96/104). A size or layout drift between the Rust `repr(C)`
-// definition and the asm offsets would corrupt every cooperative switch.
-// Mirror the discipline applied to `TrapFrame` so the drift fails the build
-// rather than the first IRQ.
+// offsets (0/80/88/96/104), and `init_user_context` + `enter_el0` ride on the
+// same x19/x20/lr/sp slots. A size **or layout** drift between the Rust
+// `repr(C)` definition and those offsets would silently corrupt every
+// cooperative switch *and* the EL0 first-entry hand-off — caught by neither a
+// size-only assert nor the host tests. Pin every offset the asm depends on so
+// a layout-preserving reorder (e.g. swapping `fp`/`lr`) fails the build rather
+// than the first context switch.
 const _: () = assert!(core::mem::size_of::<Aarch64TaskContext>() == 168);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, x19_x28) == 0);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, fp) == 80);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, lr) == 88);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, sp) == 96);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, d8_d15) == 104);
 
 // ─── context_switch_asm ──────────────────────────────────────────────────────
 
@@ -430,9 +438,11 @@ unsafe extern "C" fn context_switch_asm(
 /// `DAIF` is masked across the dispatch (the scheduler holds `IrqGuard`), so
 /// no asynchronous exception interrupts the sequence. The trampoline (1)
 /// installs the EL0 `PSTATE` (`SP_EL0`/`ELR_EL1`/`SPSR_EL1`, consuming
-/// `x19`/`x20` first), (2) **scrubs the entire register file** — zeroes
-/// `x0`–`x30` and the SIMD/FP vector registers `v0`–`v31` — so no kernel
-/// state leaks to EL0, then (3) `ERET`s into the task; it **never returns**
+/// `x19`/`x20` first), (2) **scrubs the EL0-visible register file** — zeroes
+/// `x0`–`x30`, the SIMD/FP vector registers `v0`–`v31`, and the FP
+/// control/status (`FPCR`/`FPSR`) + EL0 thread-ID (`TPIDR_EL0`/`TPIDRRO_EL0`)
+/// registers — so no kernel state leaks and EL0 starts with a defined
+/// environment, then (3) `ERET`s into the task; it **never returns**
 /// (the `ERET` leaves EL1). On every *subsequent* resume the task re-enters
 /// through the syscall/exception return path, not here, so this runs exactly
 /// once.
@@ -541,6 +551,15 @@ unsafe extern "C" fn enter_el0() -> ! {
         "movi v29.2d, #0",
         "movi v30.2d, #0",
         "movi v31.2d, #0",
+        // FP control/status + EL0 thread-ID registers — also EL0-readable, and
+        // on real hardware (Pi 4) their reset value is architecturally UNKNOWN.
+        // Zero them so EL0 starts with a *defined* FP environment (FPCR
+        // rounding / flush-to-zero / default-NaN, FPSR cumulative flags) and
+        // defined TLS bases, rather than inheriting whatever boot left.
+        "msr fpcr, xzr",
+        "msr fpsr, xzr",
+        "msr tpidr_el0, xzr",
+        "msr tpidrro_el0, xzr",
         // (3) Drop to EL0 at ELR_EL1 with the clean file; does not return.
         "eret",
     );

@@ -112,6 +112,11 @@ pub trait ContextSwitch: Send + Sync {
     ///   and EL0-reachable in the task's address space before it is first
     ///   dispatched**. The implementation does not validate them; an unmapped
     ///   `user_entry` faults on the first EL0 instruction fetch.
+    /// - That address space must be **ACTIVE** at first dispatch — its
+    ///   `TTBR0_EL1` installed and `EPD0` cleared (the scheduler's activation
+    ///   hook must have fired for the task) — so the EL0 entry fetch and
+    ///   user-stack access translate. The BSP trampoline that consumes this
+    ///   context installs no `TTBR0` of its own.
     ///
     /// [ADR-0037]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0037-el0-entry-context.md
     unsafe fn init_user_context(
