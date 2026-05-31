@@ -121,7 +121,9 @@ impl FakeContextSwitch {
         self.locked().switch_count
     }
 
-    /// Return the number of [`ContextSwitch::init_context`] calls so far.
+    /// Return the number of [`ContextSwitch::init_context`] **or
+    /// [`ContextSwitch::init_user_context`]** calls so far (a single shared
+    /// counter — both seed a context, so both increment it).
     ///
     /// # Panics
     ///
