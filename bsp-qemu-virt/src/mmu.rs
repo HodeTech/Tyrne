@@ -62,6 +62,7 @@ const ENTRIES_PER_TABLE: usize = PAGE_SIZE / 8;
 
 const DESC_VALID_BIT: u64 = 1 << 0;
 const DESC_TABLE_OR_PAGE_BIT: u64 = 1 << 1;
+const DESC_AF_BIT: u64 = 1 << 10;
 
 /// Address-space representation for [`QemuVirtMmu`].
 ///
@@ -368,6 +369,15 @@ impl Mmu for QemuVirtMmu {
         // A valid L3 entry with the page bit (bit 1) clear is *reserved*
         // (translation fault) per ARM ARM §D5.3 — treat as not mapped.
         if (leaf & DESC_TABLE_OR_PAGE_BIT) == 0 {
+            return Err(MmuError::NotMapped);
+        }
+        // Access Flag clear (AF = 0): the page would take an Access-Flag fault
+        // on a real access (ARM ARM §D5.4.10), so a `translate` query that
+        // mirrors usability treats it as not mapped. v1's `vmsav8` encoders set
+        // `AF = 1` on every leaf, so this never falsely rejects a loader-mapped
+        // page; it hardens `translate` against a future descriptor source (HW-
+        // managed AF, demand paging) that could present an unaccessed leaf.
+        if (leaf & DESC_AF_BIT) == 0 {
             return Err(MmuError::NotMapped);
         }
 

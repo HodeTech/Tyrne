@@ -158,9 +158,14 @@ pub(crate) fn probe_user_pages<M: Mmu>(
         if require_write && !flags.contains(MappingFlags::WRITE) {
             return Err(SyscallError::FaultAddress);
         }
-        page = page
-            .checked_add(PAGE_SIZE)
-            .ok_or(SyscallError::FaultAddress)?;
+        // Advance with `saturating_add`, not `checked_add`: a valid (non-
+        // wrapping) range ending in the very last page of the address space
+        // would otherwise overflow on this final increment and spuriously
+        // fault. Saturating clamps `page` to `usize::MAX` (≥ `end`), so the
+        // `page < end` guard terminates after the last page is probed. The
+        // range's no-wrap property was already proven by the `end` `checked_add`
+        // above; this is purely the cursor walk.
+        page = page.saturating_add(PAGE_SIZE);
     }
     Ok(())
 }
@@ -570,5 +575,22 @@ mod tests {
             window.validate(0x1000, 0x101),
             Err(SyscallError::FaultAddress)
         );
+    }
+
+    #[test]
+    fn copy_from_user_range_ending_in_top_page_does_not_spuriously_fault() {
+        // Regression (reviewer-found): a valid, non-wrapping range ending in the
+        // very last page of the address space must not fault — the probe's
+        // page-cursor advance saturates instead of overflowing.
+        let top_page = usize::MAX & !(PAGE_SIZE - 1); // 0xFFFF_FFFF_FFFF_F000
+        let mem = FakeUserMem::new(top_page, 1, MappingFlags::USER | MappingFlags::WRITE);
+        mem.write(0, &[7, 8, 9, 10]);
+        // Window [top_page, usize::MAX] — len = PAGE_SIZE - 1, non-wrapping (a
+        // full PAGE_SIZE would itself wrap and be rejected by the range gate).
+        let window = UserAccessWindow::new(top_page, PAGE_SIZE - 1);
+        let mut dst = [0u8; 4];
+        copy_from_user(mem.mmu(), mem.address_space(), &window, top_page, &mut dst)
+            .expect("a valid range ending in the top page must not spuriously fault");
+        assert_eq!(dst, [7, 8, 9, 10]);
     }
 }
