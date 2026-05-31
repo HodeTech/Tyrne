@@ -115,7 +115,10 @@ jobs:
           persist-credentials: false
       - name: Install pinned nightly + aarch64 target
         run: |
-          rustup toolchain install $NIGHTLY_PIN --component clippy --no-self-update
+          # llvm-tools-preview provides rust-objcopy for the userland build
+          # step below (ADR-0039); it is pinned in rust-toolchain.toml but this
+          # explicit install does not read that file, so name it here.
+          rustup toolchain install $NIGHTLY_PIN --component clippy --component llvm-tools-preview --no-self-update
           rustup override set $NIGHTLY_PIN
           rustup target add aarch64-unknown-none --toolchain $NIGHTLY_PIN
       - name: Cache cargo registry and build
@@ -129,6 +132,11 @@ jobs:
           key: ${{ runner.os }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-
+      - name: build userland image (ADR-0039)
+        # Produces userland/hello/hello.bin (rust-objcopy of the userland crate)
+        # which the BSP embeds via include_bytes!; MUST run before kernel-build,
+        # whose build.rs panics if the .bin is absent.
+        run: tools/build-userland.sh
       - name: cargo kernel-build
         run: cargo +$NIGHTLY_PIN kernel-build
       - name: cargo kernel-clippy

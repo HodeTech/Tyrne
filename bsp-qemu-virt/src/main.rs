@@ -327,22 +327,26 @@ static BOOTSTRAP_AS_CAP: StaticCell<CapHandle> = StaticCell::new();
 /// untyped / memory-region authority caps.
 static BOOTSTRAP_AS_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 
-// ─── T-019 task loader placeholder image (ADR-0029) ───────────────────────────
+// ─── Userland image (ADR-0029 format / ADR-0039 build pipeline) ───────────────
 
-/// Placeholder userspace image: 8 bytes of aarch64 `mov w0, #42; ret`
-/// per [ADR-0029 §Decision outcome (Build pipeline — B4 / T-019)][adr-0029].
-/// The real B6 "hello" userspace binary lands with `userland/hello/`
-/// per [ADR-0029 §Decision outcome (Build pipeline — B6)][adr-0029];
-/// T-019 ships with this hand-coded blob as the loader's smoke fixture.
+/// The real B6 "hello" userspace image: the raw-flat (`rust-objcopy -O binary`)
+/// output of the [`tyrne-userland-hello`] crate, embedded at compile time per
+/// [ADR-0039][adr-0039]. Entry at offset 0 ([ADR-0029][adr-0029] raw-flat
+/// format), mapped `USER | EXECUTE` by the loader. It replaces the B4/T-019
+/// hand-coded `mov w0, #42; ret` placeholder.
 ///
-/// **Not executed.** T-019 produces a `LoadedImage` describing a
-/// populated AS; running gates on B5 (syscall ABI per ADR-0030) + B6
-/// (first userspace "hello") which together provide the prerequisites
-/// (kernel mappings in userspace AS, EL0-ready context, syscall
-/// entry).
+/// **Build dependency:** produced by `tools/build-userland.sh` (which the
+/// BSP [`build.rs`] requires to have run — it `panic!`s if this `.bin` is
+/// absent) before `cargo kernel-build`. `tools/smoke.sh` and the CI
+/// kernel-build job both run that script first.
+///
+/// **Not yet executed (T-027).** Embedding is T-027; loading it into a real
+/// EL0 task and running the `+0x400` round-trip is the T-028 wire-up. Today the
+/// boot-time loader smoke maps it (proving it loads) and the demo then idles.
 ///
 /// [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
-static USERSPACE_IMAGE: &[u8] = &[0x40, 0x05, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6];
+/// [adr-0039]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0039-userland-build-pipeline.md
+static USERSPACE_IMAGE: &[u8] = include_bytes!("../../userland/hello/hello.bin");
 
 /// Base VA the loader places the image at — userspace VA range per
 /// [ADR-0027 §Decision outcome (a)][adr-0027]'s `TTBR0_EL1` range.

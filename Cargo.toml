@@ -10,11 +10,16 @@ members = [
     "hal",
     "bsp-qemu-virt",
     "test-hal",
+    "userland/tyrne-user",
+    "userland/hello",
 ]
 # Default set for workspace-wide commands (`cargo check`, `cargo test`, etc.):
 # everything host-buildable. The BSP is #![no_std, no_main] and requires the
 # explicit bare-metal target; build it via `cargo kernel-build` (or
-# `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt`).
+# `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt`). The
+# userland crates (tyrne-user lib + the no_main hello bin) are likewise
+# bare-metal-only — built via `tools/build-userland.sh` (ADR-0039), excluded
+# here so host commands (`cargo build`/`test`/`host-clippy`) skip them.
 default-members = [
     "kernel",
     "hal",

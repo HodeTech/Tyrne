@@ -1,0 +1,14 @@
+[package]
+name = "tyrne-user"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tyrne userspace syscall wrappers — safe shims over the EL0 SVC ABI (ADR-0030/0031)."
+
+[lib]
+name = "tyrne_user"
+
+[lints]
+workspace = true

@@ -43,6 +43,19 @@ if ! [[ "$TO" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+# When no explicit ELF is given, build the userland image first (ADR-0039: its
+# raw-flat .bin must exist before the BSP embeds it via include_bytes! — the BSP
+# build.rs panics otherwise) and then the kernel, making this the one-command
+# integration entry point. An explicit ELF argument is used as-is (no build).
+if [[ -z "$KERNEL" ]]; then
+    REL_FLAG=""
+    [[ "$PROFILE" == "release" ]] && REL_FLAG="--release"
+    # shellcheck disable=SC2086  # word-split the optional --release flag
+    "$(dirname "$0")/build-userland.sh" $REL_FLAG
+    # shellcheck disable=SC2086
+    cargo kernel-build $REL_FLAG
+fi
+
 [[ -z "$KERNEL" ]] && KERNEL="target/aarch64-unknown-none/${PROFILE}/tyrne-bsp-qemu-virt"
 if [[ ! -f "$KERNEL" ]]; then
     echo "error: kernel image not found at $KERNEL (run 'cargo kernel-build' first)" >&2
