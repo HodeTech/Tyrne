@@ -174,6 +174,13 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
                 tyrne_hal::phys_to_kernel_va(crate::PMM_EXTENT_START),
                 SYSCALL_USER_WINDOW_LEN,
             ),
+            // Gate #1 (ADR-0038): the per-page `Mmu::translate` source. In B5
+            // this is the bootstrap AS the EL1 stub runs in — whose low-identity
+            // table maps no `USER` page, so a stub `console_write` of a kernel
+            // VA is correctly rejected (`FaultAddress`). B6 / gate #3 (T-026)
+            // sources the running EL0 task's AS from the scheduler instead.
+            mmu: (*crate::MMU.0.get()).assume_init_ref(),
+            task_as: (*crate::BOOTSTRAP_AS.0.get()).assume_init_ref(),
         };
         dispatch(&mut ctx, args)
     };

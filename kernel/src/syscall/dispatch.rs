@@ -30,7 +30,7 @@
 //! [adr-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
 //! [principles]: https://github.com/HodeTech/Tyrne/blob/main/docs/standards/architectural-principles.md
 
-use tyrne_hal::Console;
+use tyrne_hal::{Console, Mmu};
 
 use crate::cap::{CapError, CapHandle, CapKind, CapRights, CapabilityTable};
 use crate::ipc::{ipc_recv, ipc_send, IpcQueues};
@@ -41,7 +41,7 @@ use super::abi::{
     SyscallArgs, SyscallEffect, SyscallNumber, SyscallReturn,
 };
 use super::error::SyscallError;
-use super::user_access::{copy_from_user, UserAccessWindow};
+use super::user_access::{copy_from_user, probe_user_pages, UserAccessWindow};
 
 /// Maximum bytes `console_write` stages through its kernel stack buffer per
 /// chunk. The handler validates the whole `[ptr, ptr + len)` range up front,
@@ -62,13 +62,20 @@ const CONSOLE_WRITE_CHUNK: usize = 256;
 /// `caller_table` is the **current task's** capability table. In B5 the only
 /// `SVC` comes from an EL1 kernel-stub, so the BSP passes a dedicated stub
 /// table; B6 wires the scheduler's current-task table once a real EL0 task
-/// exists. Either way the dispatcher never lets a syscall name a capability
-/// outside this one table — the per-subject unforgeability [ADR-0014][adr-0014]
-/// guarantees.
+/// exists (gate #3 / T-026). Either way the dispatcher never lets a syscall
+/// name a capability outside this one table — the per-subject unforgeability
+/// [ADR-0014][adr-0014] guarantees.
+///
+/// `mmu` + `task_as` are the translation surface `console_write`'s copy-from-user
+/// resolves user pointers through (gate #1 / [ADR-0038][adr-0038]): every user
+/// page is translated through the running task's own address space and checked
+/// for `USER` access before a byte is read. Generic over `M: Mmu` so the
+/// dispatcher stays architecture-agnostic and host-testable against `FakeMmu`.
 ///
 /// [adr-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
 /// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
-pub struct SyscallContext<'a> {
+/// [adr-0038]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0038-mmu-translate-and-user-access.md
+pub struct SyscallContext<'a, M: Mmu> {
     /// The endpoint kernel-object arena `send` / `recv` resolve handles against.
     pub ep_arena: &'a mut EndpointArena,
     /// The IPC waiter-state queues `send` / `recv` advance.
@@ -78,9 +85,15 @@ pub struct SyscallContext<'a> {
     pub caller_table: &'a mut CapabilityTable,
     /// The debug console `console_write` emits to after its capability check.
     pub console: &'a dyn Console,
-    /// The active address space's user-accessible window, validated against by
-    /// `console_write`'s copy-from-user.
+    /// The active address space's user-accessible window — the cheap range
+    /// first-gate `console_write`'s copy-from-user validates against.
     pub user_window: UserAccessWindow,
+    /// The MMU used to translate user pointers per page (gate #1).
+    pub mmu: &'a M,
+    /// The running task's address space — the translation regime user pointers
+    /// are resolved through. Sourced from the scheduler's current task in B6
+    /// (gate #3 / T-026); in B5 it is the EL1 stub's bootstrap AS.
+    pub task_as: &'a M::AddressSpace,
 }
 
 /// Decode and execute one syscall, returning the trampoline's next action.
@@ -91,7 +104,7 @@ pub struct SyscallContext<'a> {
 /// a typed [`SyscallError`] as a value. No register-supplied value can drive
 /// this function to `panic!` / `unwrap` / `expect`.
 #[must_use]
-pub fn dispatch(ctx: &mut SyscallContext<'_>, args: SyscallArgs) -> SyscallEffect {
+pub fn dispatch<M: Mmu>(ctx: &mut SyscallContext<'_, M>, args: SyscallArgs) -> SyscallEffect {
     let Some(number) = SyscallNumber::decode(args.number) else {
         // Number 0 (reserved-invalid), out-of-range, or console_write in a
         // non-debug build (the release debug-gate): no capability is touched.
@@ -113,7 +126,7 @@ pub fn dispatch(ctx: &mut SyscallContext<'_>, args: SyscallArgs) -> SyscallEffec
 /// `x5` = transfer cap handle (or the null sentinel). The endpoint capability
 /// check (`SEND` right, right kind, live object) happens inside [`ipc_send`];
 /// its [`IpcError`][crate::ipc::IpcError] composes into [`SyscallError::Ipc`].
-fn sys_send(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallReturn {
+fn sys_send<M: Mmu>(ctx: &mut SyscallContext<'_, M>, args: [u64; 6]) -> SyscallReturn {
     let ep_cap = decode_required_cap_handle(args[0]);
     let msg = decode_send_message(args);
     let transfer = super::abi::decode_cap_handle(args[5]);
@@ -138,7 +151,7 @@ fn sys_send(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallReturn {
 /// capability pack into `x1`–`x6` per [`encode_recv_outcome`]. The endpoint
 /// capability check (`RECV` right, right kind, live object) happens inside
 /// [`ipc_recv`]; its error composes into [`SyscallError::Ipc`].
-fn sys_recv(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallReturn {
+fn sys_recv<M: Mmu>(ctx: &mut SyscallContext<'_, M>, args: [u64; 6]) -> SyscallReturn {
     let ep_cap = decode_required_cap_handle(args[0]);
     match ipc_recv(
         &mut *ctx.ep_arena,
@@ -169,7 +182,7 @@ fn sys_recv(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallReturn {
     reason = "Tyrne targets are 64-bit (aarch64 kernel / x86-64 host tests); \
               usize == u64, so the u64 register words → usize casts are lossless"
 )]
-fn sys_console_write(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallReturn {
+fn sys_console_write<M: Mmu>(ctx: &mut SyscallContext<'_, M>, args: [u64; 6]) -> SyscallReturn {
     let cons_cap = decode_required_cap_handle(args[0]);
     let ptr = args[1] as usize;
     let len = args[2] as usize;
@@ -181,10 +194,28 @@ fn sys_console_write(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallRet
         return SyscallReturn::error(SyscallError::from(e));
     }
 
-    // Validate the WHOLE range up front so a faulting buffer emits *nothing*
-    // (no partial output before the fault is detected).
+    // Gate 2 — range (cheap first gate). Validate the WHOLE range up front.
     if let Err(e) = ctx.user_window.validate(ptr, len) {
         return SyscallReturn::error(e);
+    }
+
+    // Gate 3 — per-page translation (gate #1, ADR-0038). PROBE every page the
+    // whole buffer spans (translate through the task's AS + require USER) BEFORE
+    // emitting any chunk, so a faulting buffer — including an in-window kernel
+    // (non-USER) VA — emits *nothing* (the confused-deputy defence + all-or-
+    // nothing, §Simulation rows 1/4). The per-chunk `copy_from_user` below
+    // re-validates + re-probes its own chunk for self-containment; this
+    // whole-range probe is what bounds the multi-chunk *emit*.
+    if len > 0 {
+        if let Err(e) = probe_user_pages(
+            ctx.mmu,
+            ctx.task_as,
+            ptr,
+            len,
+            /* require_write */ false,
+        ) {
+            return SyscallReturn::error(e);
+        }
     }
 
     // Copy + emit in bounded chunks through a kernel stack buffer.
@@ -209,7 +240,13 @@ fn sys_console_write(ctx: &mut SyscallContext<'_>, args: [u64; 6]) -> SyscallRet
         let Some(chunk_ptr) = ptr.checked_add(offset) else {
             return SyscallReturn::error(SyscallError::FaultAddress);
         };
-        if let Err(e) = copy_from_user(&ctx.user_window, chunk_ptr, &mut buf[..chunk]) {
+        if let Err(e) = copy_from_user(
+            ctx.mmu,
+            ctx.task_as,
+            &ctx.user_window,
+            chunk_ptr,
+            &mut buf[..chunk],
+        ) {
             return SyscallReturn::error(e);
         }
         ctx.console.write_bytes(&buf[..chunk]);
@@ -259,7 +296,9 @@ fn validate_debug_console_cap(
     clippy::panic,
     clippy::arithmetic_side_effects,
     clippy::cast_possible_truncation,
-    reason = "tests may use pragmas forbidden in production kernel code"
+    clippy::too_many_arguments,
+    reason = "tests may use pragmas forbidden in production kernel code; \
+              run_console_write threads the SyscallContext pieces"
 )]
 mod tests {
     use super::{dispatch, SyscallContext, CONSOLE_WRITE_CHUNK};
@@ -273,7 +312,8 @@ mod tests {
     };
     use crate::syscall::error::SyscallError;
     use crate::syscall::user_access::UserAccessWindow;
-    use tyrne_test_hal::FakeConsole;
+    use tyrne_hal::{MappingFlags, Mmu, PhysAddr, PhysFrame};
+    use tyrne_test_hal::{FakeAddressSpace, FakeConsole, FakeMmu, FakeUserMem};
 
     // ── fixtures ─────────────────────────────────────────────────────────────
 
@@ -298,6 +338,48 @@ mod tests {
         }
     }
 
+    /// A `FakeMmu` + empty address space for syscalls that never copy from user
+    /// (everything except `console_write`). Both returned values must outlive
+    /// the `SyscallContext` that borrows them.
+    fn empty_mmu_as() -> (FakeMmu, <FakeMmu as Mmu>::AddressSpace) {
+        let mmu = FakeMmu::new();
+        // SAFETY: FakeMmu::create_address_space stores the root, never derefs it.
+        let as_ =
+            unsafe { mmu.create_address_space(PhysFrame::from_aligned(PhysAddr(0x1000)).unwrap()) };
+        (mmu, as_)
+    }
+
+    /// Dispatch a `console_write` of `[ptr, len)` (cap word `cap_word`) against
+    /// the given translation surface + window, returning the effect. Folds the
+    /// per-test `ep_arena` / `queues` (unused by `console_write`) + the context
+    /// construction so each console test reads as a one-liner.
+    fn run_console_write(
+        table: &mut CapabilityTable,
+        console: &FakeConsole,
+        mmu: &FakeMmu,
+        task_as: &FakeAddressSpace,
+        window: UserAccessWindow,
+        cap_word: u64,
+        ptr: u64,
+        len: u64,
+    ) -> SyscallEffect {
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: table,
+            console,
+            user_window: window,
+            mmu,
+            task_as,
+        };
+        dispatch(
+            &mut ctx,
+            call(SyscallNumber::ConsoleWrite, [cap_word, ptr, len, 0, 0, 0]),
+        )
+    }
+
     // ── number decode ────────────────────────────────────────────────────────
 
     #[test]
@@ -306,12 +388,15 @@ mod tests {
         let mut queues = IpcQueues::new();
         let mut table = CapabilityTable::new();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         let effect = dispatch(
             &mut ctx,
@@ -335,12 +420,15 @@ mod tests {
         let mut queues = IpcQueues::new();
         let mut table = CapabilityTable::new();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         let effect = dispatch(
             &mut ctx,
@@ -363,12 +451,15 @@ mod tests {
         let mut queues = IpcQueues::new();
         let mut table = CapabilityTable::new();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         assert_eq!(
             dispatch(&mut ctx, call(SyscallNumber::TaskYield, [0; 6])),
@@ -382,12 +473,15 @@ mod tests {
         let mut queues = IpcQueues::new();
         let mut table = CapabilityTable::new();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         assert_eq!(
             dispatch(
@@ -413,12 +507,15 @@ mod tests {
             ))
             .unwrap();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         let effect = dispatch(
@@ -448,12 +545,15 @@ mod tests {
             .insert_root(Capability::new(CapRights::RECV, CapObject::Endpoint(ep)))
             .unwrap();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         let effect = dispatch(
@@ -485,12 +585,15 @@ mod tests {
             ))
             .unwrap();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         // Enqueue a message via the send syscall.
@@ -552,12 +655,15 @@ mod tests {
             ))
             .unwrap();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         let ep_word = encode_cap_handle(Some(ep_cap));
 
@@ -612,12 +718,15 @@ mod tests {
             .insert_root(Capability::new(CapRights::SEND, CapObject::Endpoint(ep)))
             .unwrap();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         // x5 = a handle naming no live slot (index far past CAP_TABLE_CAPACITY).
         let stale_xfer = encode_cap_handle(Some(CapHandle::from_raw(50, 7)));
@@ -649,12 +758,15 @@ mod tests {
             .insert_root(Capability::new(CapRights::RECV, CapObject::Endpoint(ep)))
             .unwrap();
         let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
         let mut ctx = SyscallContext {
             ep_arena: &mut ep_arena,
             queues: &mut queues,
             caller_table: &mut table,
             console: &console,
             user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
         };
         let effect = dispatch(
             &mut ctx,
@@ -679,40 +791,27 @@ mod tests {
     #[cfg(debug_assertions)] // console_write number 5 is debug-gated
     fn console_write_exactly_one_chunk_emits_all_bytes() {
         // Boundary: len == CONSOLE_WRITE_CHUNK exercises the `offset < len` loop
-        // termination exactly — one chunk, then offset == len, no spurious extra
-        // chunk / off-by-one.
-        let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
+        // termination exactly — one chunk, then offset == len.
         let (mut table, cons_cap) = table_with_console_cap();
         let console = FakeConsole::new();
-        let backing: Vec<u8> = (0..CONSOLE_WRITE_CHUNK).map(|i| (i % 251) as u8).collect();
-        let base = backing.as_ptr() as usize;
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base, backing.len()),
-        };
-        let effect = dispatch(
-            &mut ctx,
-            call(
-                SyscallNumber::ConsoleWrite,
-                [
-                    encode_cap_handle(Some(cons_cap)),
-                    base as u64,
-                    backing.len() as u64,
-                    0,
-                    0,
-                    0,
-                ],
-            ),
+        let payload: Vec<u8> = (0..CONSOLE_WRITE_CHUNK).map(|i| (i % 251) as u8).collect();
+        let mem = FakeUserMem::new(0x40_0000, 1, MappingFlags::USER | MappingFlags::WRITE);
+        mem.write(0, &payload);
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            mem.mmu(),
+            mem.address_space(),
+            UserAccessWindow::new(mem.base_va(), mem.region_len()),
+            encode_cap_handle(Some(cons_cap)),
+            mem.base_va() as u64,
+            payload.len() as u64,
         );
         match effect {
             SyscallEffect::Resume(r) => assert_eq!(r.payload[0], CONSOLE_WRITE_CHUNK as u64),
             other => panic!("expected Resume(ok), got {other:?}"),
         }
-        assert_eq!(console.captured(), backing);
+        assert_eq!(console.captured(), payload);
     }
 
     // ── console_write: capability gate ───────────────────────────────────────
@@ -720,26 +819,21 @@ mod tests {
     #[test]
     #[cfg(debug_assertions)] // console_write number 5 is debug-gated; release path tested separately
     fn console_write_with_no_cap_returns_cap_invalid_handle_no_output() {
-        let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
+        // The cap gate fails first, before any range/translate — so an empty
+        // translation surface + a never-read buffer pointer suffice.
         let mut table = CapabilityTable::new(); // empty: handle resolves to nothing
         let console = FakeConsole::new();
-        let backing = b"hello".to_vec();
-        let base = backing.as_ptr() as usize;
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base, backing.len()),
-        };
+        let (mmu, task_as) = empty_mmu_as();
         let bogus = encode_cap_handle(Some(CapHandle::from_raw(0, 0)));
-        let effect = dispatch(
-            &mut ctx,
-            call(
-                SyscallNumber::ConsoleWrite,
-                [bogus, base as u64, backing.len() as u64, 0, 0, 0],
-            ),
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            &mmu,
+            &task_as,
+            UserAccessWindow::empty(),
+            bogus,
+            0x40_0000,
+            5,
         );
         match effect {
             SyscallEffect::Resume(r) => assert_eq!(
@@ -758,7 +852,6 @@ mod tests {
     #[cfg(debug_assertions)] // console_write number 5 is debug-gated; release path tested separately
     fn console_write_with_wrong_kind_cap_returns_cap_wrong_kind() {
         let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
         let mut table = CapabilityTable::new();
         // An endpoint cap where a debug-console cap is required.
         let ep = create_endpoint(&mut ep_arena, Endpoint::new(0)).unwrap();
@@ -769,28 +862,16 @@ mod tests {
             ))
             .unwrap();
         let console = FakeConsole::new();
-        let backing = b"hi".to_vec();
-        let base = backing.as_ptr() as usize;
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base, backing.len()),
-        };
-        let effect = dispatch(
-            &mut ctx,
-            call(
-                SyscallNumber::ConsoleWrite,
-                [
-                    encode_cap_handle(Some(wrong)),
-                    base as u64,
-                    backing.len() as u64,
-                    0,
-                    0,
-                    0,
-                ],
-            ),
+        let (mmu, task_as) = empty_mmu_as();
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            &mmu,
+            &task_as,
+            UserAccessWindow::empty(),
+            encode_cap_handle(Some(wrong)),
+            0x40_0000,
+            2,
         );
         match effect {
             SyscallEffect::Resume(r) => assert_eq!(
@@ -805,36 +886,22 @@ mod tests {
     #[test]
     #[cfg(debug_assertions)] // console_write number 5 is debug-gated; release path tested separately
     fn console_write_without_write_right_returns_insufficient_rights() {
-        let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
         let mut table = CapabilityTable::new();
         // Debug-console cap WITHOUT the CONSOLE_WRITE right.
         let cap = table
             .insert_root(Capability::new(CapRights::empty(), CapObject::DebugConsole))
             .unwrap();
         let console = FakeConsole::new();
-        let backing = b"hi".to_vec();
-        let base = backing.as_ptr() as usize;
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base, backing.len()),
-        };
-        let effect = dispatch(
-            &mut ctx,
-            call(
-                SyscallNumber::ConsoleWrite,
-                [
-                    encode_cap_handle(Some(cap)),
-                    base as u64,
-                    backing.len() as u64,
-                    0,
-                    0,
-                    0,
-                ],
-            ),
+        let (mmu, task_as) = empty_mmu_as();
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            &mmu,
+            &task_as,
+            UserAccessWindow::empty(),
+            encode_cap_handle(Some(cap)),
+            0x40_0000,
+            2,
         );
         match effect {
             SyscallEffect::Resume(r) => assert_eq!(
@@ -851,113 +918,77 @@ mod tests {
     #[test]
     #[cfg(debug_assertions)] // console_write number 5 is debug-gated; release path tested separately
     fn console_write_emits_buffer_and_returns_byte_count() {
-        let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
         let (mut table, cons_cap) = table_with_console_cap();
         let console = FakeConsole::new();
         let message = b"tyrne: hello via console_write\n";
-        let backing = message.to_vec();
-        let base = backing.as_ptr() as usize; // expose provenance
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base, backing.len()),
-        };
-        let effect = dispatch(
-            &mut ctx,
-            call(
-                SyscallNumber::ConsoleWrite,
-                [
-                    encode_cap_handle(Some(cons_cap)),
-                    base as u64,
-                    backing.len() as u64,
-                    0,
-                    0,
-                    0,
-                ],
-            ),
+        let mem = FakeUserMem::new(0x40_0000, 1, MappingFlags::USER | MappingFlags::WRITE);
+        mem.write(0, message);
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            mem.mmu(),
+            mem.address_space(),
+            UserAccessWindow::new(mem.base_va(), mem.region_len()),
+            encode_cap_handle(Some(cons_cap)),
+            mem.base_va() as u64,
+            message.len() as u64,
         );
         match effect {
             SyscallEffect::Resume(r) => {
                 assert_eq!(r.status, 0);
-                assert_eq!(r.payload[0], backing.len() as u64); // x1 = bytes written
+                assert_eq!(r.payload[0], message.len() as u64); // x1 = bytes written
             }
             other => panic!("expected Resume(ok), got {other:?}"),
         }
-        assert_eq!(console.captured(), backing);
+        assert_eq!(console.captured(), message);
     }
 
     #[test]
     #[cfg(debug_assertions)] // console_write number 5 is debug-gated; release path tested separately
     fn console_write_spanning_multiple_chunks_emits_all_bytes() {
-        // Exercise the chunking loop: a buffer larger than one chunk.
-        let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
+        // Exercise the chunking loop: a buffer larger than one chunk (and
+        // larger than one page, so it also exercises the multi-page translate).
         let (mut table, cons_cap) = table_with_console_cap();
         let console = FakeConsole::new();
         let len = CONSOLE_WRITE_CHUNK * 2 + 7;
-        let backing: Vec<u8> = (0..len).map(|i| (i % 251) as u8).collect();
-        let base = backing.as_ptr() as usize;
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base, backing.len()),
-        };
-        let effect = dispatch(
-            &mut ctx,
-            call(
-                SyscallNumber::ConsoleWrite,
-                [
-                    encode_cap_handle(Some(cons_cap)),
-                    base as u64,
-                    backing.len() as u64,
-                    0,
-                    0,
-                    0,
-                ],
-            ),
+        let payload: Vec<u8> = (0..len).map(|i| (i % 251) as u8).collect();
+        let mem = FakeUserMem::new(0x40_0000, 1, MappingFlags::USER | MappingFlags::WRITE);
+        mem.write(0, &payload);
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            mem.mmu(),
+            mem.address_space(),
+            UserAccessWindow::new(mem.base_va(), mem.region_len()),
+            encode_cap_handle(Some(cons_cap)),
+            mem.base_va() as u64,
+            len as u64,
         );
         match effect {
             SyscallEffect::Resume(r) => assert_eq!(r.payload[0], len as u64),
             other => panic!("expected Resume(ok), got {other:?}"),
         }
-        assert_eq!(console.captured(), backing);
+        assert_eq!(console.captured(), payload);
     }
 
     #[test]
     #[cfg(debug_assertions)] // console_write number 5 is debug-gated; release path tested separately
     fn console_write_out_of_range_buffer_faults_without_output() {
-        let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
+        // Cap passes, but the buffer pointer falls outside the window → the
+        // range first-gate rejects before any translate. (No mapping needed.)
         let (mut table, cons_cap) = table_with_console_cap();
         let console = FakeConsole::new();
-        let backing = b"unreachable".to_vec();
-        let base = backing.as_ptr() as usize;
-        // Window covers a different region than the buffer pointer.
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base.wrapping_add(0x1_0000), backing.len()),
-        };
-        let effect = dispatch(
-            &mut ctx,
-            call(
-                SyscallNumber::ConsoleWrite,
-                [
-                    encode_cap_handle(Some(cons_cap)),
-                    base as u64,
-                    backing.len() as u64,
-                    0,
-                    0,
-                    0,
-                ],
-            ),
+        let (mmu, task_as) = empty_mmu_as();
+        // Window covers a different region than the buffer pointer (0x40_0000).
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            &mmu,
+            &task_as,
+            UserAccessWindow::new(0x50_0000, 16),
+            encode_cap_handle(Some(cons_cap)),
+            0x40_0000,
+            11,
         );
         match effect {
             SyscallEffect::Resume(r) => {
@@ -971,40 +1002,98 @@ mod tests {
         );
     }
 
+    // ── gate #1: confused-deputy + all-or-nothing (ADR-0038) ─────────────────
+
+    #[test]
+    #[cfg(debug_assertions)] // console_write number 5 is debug-gated
+    fn console_write_cap_ok_but_non_user_page_emits_nothing() {
+        // THE confused-deputy regression: a holder of a valid debug-console cap
+        // points at an in-window page that is mapped but NOT user-accessible
+        // (the kernel-VA case under the legacy wide window, or any non-USER
+        // leaf). The cap gate passes and the range gate passes, but the per-page
+        // translate USER-check rejects it — nothing is emitted.
+        let (mut table, cons_cap) = table_with_console_cap();
+        let console = FakeConsole::new();
+        let mem = FakeUserMem::new(0x40_0000, 1, MappingFlags::WRITE); // mapped, NO USER bit
+        mem.write(0, b"secret kernel bytes");
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            mem.mmu(),
+            mem.address_space(),
+            UserAccessWindow::new(mem.base_va(), mem.region_len()),
+            encode_cap_handle(Some(cons_cap)),
+            mem.base_va() as u64,
+            19,
+        );
+        match effect {
+            SyscallEffect::Resume(r) => {
+                assert_eq!(r.status, SyscallError::FaultAddress.as_status());
+            }
+            other => panic!("expected Resume(FaultAddress), got {other:?}"),
+        }
+        assert!(
+            console.captured().is_empty(),
+            "a non-USER in-window page must emit nothing — the confused-deputy defence"
+        );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)] // console_write number 5 is debug-gated
+    fn console_write_multipage_second_page_unmapped_emits_nothing() {
+        // All-or-nothing: page 0 is a valid USER page, the buffer spans into an
+        // unmapped page 1. The up-front whole-range probe faults before any
+        // chunk of page 0 is emitted.
+        let (mut table, cons_cap) = table_with_console_cap();
+        let console = FakeConsole::new();
+        let mem = FakeUserMem::new(0x40_0000, 1, MappingFlags::USER | MappingFlags::WRITE);
+        mem.write(0, &[0xEE; 4096]);
+        // Window spans two pages; only page 0 is mapped. The buffer starts late
+        // in page 0 and runs into the unmapped page 1.
+        let wide = UserAccessWindow::new(mem.base_va(), 2 * 4096);
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            mem.mmu(),
+            mem.address_space(),
+            wide,
+            encode_cap_handle(Some(cons_cap)),
+            (mem.base_va() + 4096 - 8) as u64,
+            16, // 8 bytes in page 0, 8 in the unmapped page 1
+        );
+        match effect {
+            SyscallEffect::Resume(r) => {
+                assert_eq!(r.status, SyscallError::FaultAddress.as_status());
+            }
+            other => panic!("expected Resume(FaultAddress), got {other:?}"),
+        }
+        assert!(
+            console.captured().is_empty(),
+            "all-or-nothing: a later unmapped page must emit no prefix from page 0"
+        );
+    }
+
     // ── release debug-gate ───────────────────────────────────────────────────
 
     #[test]
     #[cfg(not(debug_assertions))]
     fn console_write_number_is_bad_syscall_in_release_build() {
         // In a release build the debug-gate drops console_write from the
-        // surface entirely, even for a holder of a valid debug-console cap.
-        let mut ep_arena = EndpointArena::default();
-        let mut queues = IpcQueues::new();
+        // surface entirely, even for a holder of a valid debug-console cap —
+        // the number fails to decode before any cap / range / translate gate.
         let (mut table, cons_cap) = table_with_console_cap();
         let console = FakeConsole::new();
-        let backing = b"nope".to_vec();
-        let base = backing.as_ptr() as usize;
-        let mut ctx = SyscallContext {
-            ep_arena: &mut ep_arena,
-            queues: &mut queues,
-            caller_table: &mut table,
-            console: &console,
-            user_window: UserAccessWindow::new(base, backing.len()),
-        };
+        let (mmu, task_as) = empty_mmu_as();
         // Number 5 directly (SyscallNumber::ConsoleWrite::as_u64() == 5).
-        let effect = dispatch(
-            &mut ctx,
-            SyscallArgs {
-                number: 5,
-                args: [
-                    encode_cap_handle(Some(cons_cap)),
-                    base as u64,
-                    backing.len() as u64,
-                    0,
-                    0,
-                    0,
-                ],
-            },
+        let effect = run_console_write(
+            &mut table,
+            &console,
+            &mmu,
+            &task_as,
+            UserAccessWindow::empty(),
+            encode_cap_handle(Some(cons_cap)),
+            0x40_0000,
+            4,
         );
         match effect {
             SyscallEffect::Resume(r) => {

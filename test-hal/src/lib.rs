@@ -37,5 +37,7 @@ pub use console::FakeConsole;
 pub use context_switch::{FakeContextSwitch, FakeTaskContext};
 pub use cpu::FakeCpu;
 pub use irq_controller::FakeIrqController;
-pub use mmu::{BlockMappedMmu, FakeAddressSpace, FakeMmu, OutOfFramesMmu, VecFrameProvider};
+pub use mmu::{
+    BlockMappedMmu, FakeAddressSpace, FakeMmu, FakeUserMem, OutOfFramesMmu, VecFrameProvider,
+};
 pub use timer::FakeTimer;
