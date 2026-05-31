@@ -130,21 +130,18 @@ impl<M: Mmu> AddressSpace<M> {
         mmu.address_space_root(&self.inner)
     }
 
-    /// Return a reference to the BSP-specific inner value.
+    /// Return a **shared** reference to the BSP-specific inner value.
     ///
-    /// Crate-internal: the activation hook (T-018 commit 4) uses
-    /// this to pass `&Mmu::AddressSpace` to [`Mmu::activate`] on
-    /// the context-switch path. Outside code accesses an
-    /// `AddressSpace<M>` only through the cap-gated surface,
-    /// never through this accessor directly.
+    /// `pub` for read-only consumers that need the concrete `&M::AddressSpace`
+    /// the [`Mmu`] trait's by-shared-ref methods take — notably the BSP
+    /// `syscall_entry` passing the running task's address space to the gate-#1
+    /// `Mmu::translate` copy-user path (gate #3 / T-026), and the activation
+    /// hook passing it to [`Mmu::activate`]. It is `&self` (shared), so it
+    /// grants **no mutation**: all `map` / `unmap` still flow only through the
+    /// cap-gated wrappers via the crate-internal [`inner_mut`][Self::inner_mut].
+    /// Exposing the immutable view therefore bypasses no capability check.
     #[must_use]
-    #[allow(
-        dead_code,
-        reason = "T-018 commit 4 (activation hook in yield_now) is the first \
-                  caller; landed for module-shape completeness so commit 4 \
-                  adds only the scheduler-side hook, not the accessor surface"
-    )]
-    pub(crate) const fn inner(&self) -> &M::AddressSpace {
+    pub const fn inner(&self) -> &M::AddressSpace {
         &self.inner
     }
 
