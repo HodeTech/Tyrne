@@ -95,7 +95,10 @@ pub struct SyscallContext<'a, M: Mmu> {
     /// (gate #3 / T-026); in B5 it is the EL1 stub's bootstrap AS.
     pub task_as: &'a M::AddressSpace,
     /// Whether a running EL0 task is current (gate #3 / T-026). The BSP sets it
-    /// from the scheduler (`current_user_table().is_some()`). The **control-plane**
+    /// `true` only when the running task's capability table, user-access window,
+    /// and (generation-checked) address space **all** resolve from the scheduler
+    /// — the same all-or-nothing unit as the data-plane context; any incomplete
+    /// binding yields `false`. The **control-plane**
     /// syscalls (`task_yield` / `task_exit`) act on the trusted current-task
     /// identity ([ADR-0031][adr-0031]) and consult **no** capability, so the
     /// empty fail-closed `caller_table` cannot guard them — the dispatcher

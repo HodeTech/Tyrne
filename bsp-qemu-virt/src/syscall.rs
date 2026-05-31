@@ -125,11 +125,12 @@ const _: () = assert!(core::mem::size_of::<SyscallTrapFrame>() == 272);
 /// `caller_table` is `&mut *current_user_table()` — a momentary `&mut` to the
 /// task's own capability table (a BSP static recorded by `add_user_task` via the
 /// [ADR-0021] raw-pointer bridge), lexically contained to this one `dispatch`
-/// call and never crossing a switch; with no current task it is the empty
-/// `FAILCLOSED_TABLE` (every lookup → `InvalidHandle`) and `task_as` the
-/// never-dereferenced bootstrap-AS placeholder behind an empty window, so a
-/// syscall with no running task names no capability and copies no byte
-/// (UNSAFE-2026-0014 Amendment). **Rejected alternatives.** Passing a `&mut
+/// call and never crossing a switch; with no current task, missing task window,
+/// or stale / absent task address-space handle, it is the empty `FAILCLOSED_TABLE`
+/// (every lookup → `InvalidHandle`) and `task_as` the never-dereferenced
+/// bootstrap-AS placeholder behind an empty window, so an incomplete running-task
+/// context names no capability and copies no byte (UNSAFE-2026-0014 Amendment).
+/// **Rejected alternatives.** Passing a `&mut
 /// SyscallTrapFrame` from the asm is impossible (asm has no Rust references);
 /// holding the BSP statics behind a lock would deadlock the interrupts-masked
 /// handler with no soundness gain under single-core cooperative semantics.
@@ -154,44 +155,51 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
 
     // SAFETY: build the dispatch context from the **running EL0 task's**
     // bindings, sourced from the scheduler (gate #3 / T-026), or the FAIL-CLOSED
-    // default when no task is current. `SCHED` / `EP_ARENA` / `IPC_QUEUES` /
-    // `CONSOLE` / `MMU` / `AS_ARENA` / `FAILCLOSED_TABLE` / `BOOTSTRAP_AS` are all
-    // published before the (post-`SCHED`-init) smoke runs; single-core +
-    // interrupts-masked ⇒ no aliasing; the momentary `&mut`s drop at the end of
-    // `dispatch` and never cross a switch. The `&mut *table_ptr` is the gate-#3
-    // cap-table dereference (M4 — UNSAFE-2026-0014 Amendment; see this fn's
-    // `# Safety`). Audit: UNSAFE-2026-0010 + UNSAFE-2026-0014 + UNSAFE-2026-0029.
+    // default when the running-task syscall context is incomplete. `SCHED` /
+    // `EP_ARENA` / `IPC_QUEUES` / `CONSOLE` / `MMU` / `AS_ARENA` /
+    // `FAILCLOSED_TABLE` / `BOOTSTRAP_AS` are all published before the
+    // (post-`SCHED`-init) smoke runs; single-core + interrupts-masked ⇒ no
+    // aliasing; the momentary `&mut`s drop at the end of `dispatch` and never
+    // cross a switch. The `&mut *table_ptr` is the gate-#3 cap-table dereference
+    // (M4 — UNSAFE-2026-0014 Amendment; see this fn's `# Safety`). Audit:
+    // UNSAFE-2026-0010 + UNSAFE-2026-0014 + UNSAFE-2026-0029.
     let effect = unsafe {
         let sched = (*crate::SCHED.0.get()).assume_init_ref();
         let current_table = sched.current_user_table();
         let current_as = sched.current_address_space_handle();
         let current_window = sched.current_user_window();
 
-        // task_as: the running task's address space (read-only, for the gate-#1
-        // `Mmu::translate`), or the bootstrap AS as a harmless placeholder when
-        // fail-closed (the empty window rejects every non-zero copy first). A
-        // stale / absent AS handle also falls back.
+        // Accept the running task's syscall context only as a complete unit:
+        // table + user window + generation-checked AS. Any missing / stale piece
+        // makes the whole context all-or-nothing fail-closed — the empty table +
+        // empty window (so data-plane syscalls grant no cap and copy no byte from
+        // a partially bound task) AND `has_current_task = false` (so the
+        // control-plane syscalls, which consult no capability, are rejected too).
         let arena = (*crate::AS_ARENA.0.get()).assume_init_ref();
-        let task_as = match current_as.and_then(|h| tyrne_kernel::mm::get_address_space(arena, h)) {
-            Some(asp) => asp.inner(),
-            None => (*crate::BOOTSTRAP_AS.0.get()).assume_init_ref(),
-        };
-        // caller_table: the running task's own recorded table, or the empty
-        // FAILCLOSED_TABLE (every lookup → InvalidHandle) when no task is current.
-        let caller_table = match current_table {
-            Some(table_ptr) => &mut *table_ptr,
-            None => (*crate::FAILCLOSED_TABLE.0.get()).assume_init_mut(),
-        };
+        let resolved_task_as =
+            current_as.and_then(|h| tyrne_kernel::mm::get_address_space(arena, h));
+        let (caller_table, user_window, task_as, has_current_task) =
+            match (current_table, current_window, resolved_task_as) {
+                (Some(table_ptr), Some(window), Some(asp)) => {
+                    (&mut *table_ptr, window, asp.inner(), true)
+                }
+                _ => (
+                    (*crate::FAILCLOSED_TABLE.0.get()).assume_init_mut(),
+                    UserAccessWindow::empty(),
+                    (*crate::BOOTSTRAP_AS.0.get()).assume_init_ref(),
+                    false,
+                ),
+            };
 
         let mut ctx = SyscallContext {
             ep_arena: (*crate::EP_ARENA.0.get()).assume_init_mut(),
             queues: (*crate::IPC_QUEUES.0.get()).assume_init_mut(),
             caller_table,
             console: (*crate::CONSOLE.0.get()).assume_init_ref(),
-            user_window: current_window.unwrap_or_else(UserAccessWindow::empty),
+            user_window,
             mmu: (*crate::MMU.0.get()).assume_init_ref(),
             task_as,
-            has_current_task: current_table.is_some(),
+            has_current_task,
         };
         dispatch(&mut ctx, args)
     };

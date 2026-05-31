@@ -733,14 +733,9 @@ fn task_a() -> ! {
               register-word casts are lossless"
 )]
 fn syscall_boundary_smoke(console: &Pl011Uart) {
-    // Initialise the empty fail-closed fallback table the dispatcher resolves
-    // against when no EL0 task is current (gate #3). Never minted into.
-    //
-    // SAFETY: `FAILCLOSED_TABLE` lives in `.bss`; this is its single write,
-    // before any `SVC` issues. Audit: UNSAFE-2026-0010 (StaticCell pattern).
-    unsafe {
-        (*FAILCLOSED_TABLE.0.get()).write(CapabilityTable::new());
-    }
+    // `FAILCLOSED_TABLE` is initialised in core setup (see `kernel_main_high`),
+    // not here: the fail-closed fallback is a security mechanism that must be live
+    // independent of this diagnostic. This smoke only *exercises* it.
 
     // (1) console_write via SVC with no current task → fail-closed InvalidHandle.
     // The cap word (`0`) and the buffer are irrelevant: with `SCHED.current ==
@@ -787,6 +782,21 @@ fn syscall_boundary_smoke(console: &Pl011Uart) {
             out("x7") _,
         );
     }
+
+    // Assert the security property, don't just print it: with no current task
+    // both syscalls MUST be rejected (non-OK status). The exact codes
+    // (InvalidHandle / BadSyscallNumber) are pinned by the host dispatcher tests;
+    // here the load-bearing check is that neither returned `OK_STATUS` — a
+    // fail-closed regression would over-grant and report OK. A failed assertion
+    // panics, so boot never reaches "all tasks complete" and the smoke fails.
+    assert!(
+        status != tyrne_kernel::syscall::OK_STATUS,
+        "gate #3: console_write with no current task must fail closed, got OK"
+    );
+    assert!(
+        bad_status != tyrne_kernel::syscall::OK_STATUS,
+        "gate #3: reserved-invalid syscall number must be rejected, got OK"
+    );
 
     let mut w = FmtWriter(console);
     let _ = writeln!(
@@ -1517,6 +1527,15 @@ extern "C" fn kernel_main_high() -> ! {
     unsafe {
         (*EP_ARENA.0.get()).write(ep_arena);
         (*IPC_QUEUES.0.get()).write(IpcQueues::new());
+        // The empty fail-closed fallback table `syscall_entry` resolves against
+        // when no EL0 task is current (gate #3 / T-026). Initialised here in core
+        // setup — alongside the other syscall statics — so the security fallback
+        // is always live and never coupled to whether the diagnostic smoke runs.
+        // INVARIANT: this write must precede `start()` (and the syscall smoke's
+        // first `SVC`), so every `syscall_entry` None-path reads an initialised
+        // table; it does, since both happen later in `kernel_main_high`. Never
+        // minted into.
+        (*FAILCLOSED_TABLE.0.get()).write(CapabilityTable::new());
         (*TABLE_A.0.get()).write(table_a);
         (*TABLE_B.0.get()).write(table_b);
         (*EP_CAP_A.0.get()).write(ep_cap_a);

@@ -469,6 +469,15 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
             user_sp.is_multiple_of(16),
             "add_user_task: user_sp must be 16-byte aligned (becomes SP_EL0)",
         );
+        // `cap_table` is dereferenced by `syscall_entry` (`&mut *table_ptr`) to
+        // resolve the running task's capabilities; a null pointer would be UB on
+        // the first syscall. The # Safety contract forbids null — assert it in
+        // debug, and (at the store below) keep `None` rather than `Some(null)` so
+        // a release build degrades to fail-closed (no usable table) instead.
+        debug_assert!(
+            !cap_table.is_null(),
+            "add_user_task: cap_table must be non-null (the task's capability table)",
+        );
         // SAFETY: caller guarantees the EL0-entry contract per the # Safety doc.
         // Forwarding to the BSP's init_user_context, which seeds the context's
         // x19/x20/lr/sp so the first cooperative restore lands in the enter_el0
@@ -496,7 +505,9 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         // `saturating_sub` yields a zero-length window if the caller violates
         // `user_sp >= user_entry` — fail-closed (every non-zero copy then
         // faults) rather than wrapping.
-        self.task_cap_tables[idx] = Some(cap_table);
+        // Defensive store: `None` for a null pointer so `current_user_table()`
+        // yields `None` (→ fail-closed) rather than a dereferenceable `Some(null)`.
+        self.task_cap_tables[idx] = (!cap_table.is_null()).then_some(cap_table);
         self.task_user_windows[idx] = Some(UserAccessWindow::new(
             user_entry,
             user_sp.saturating_sub(user_entry),
