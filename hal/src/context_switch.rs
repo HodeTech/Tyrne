@@ -80,4 +80,50 @@ pub trait ContextSwitch: Send + Sync {
         entry: fn() -> !,
         stack_top: *mut u8,
     );
+
+    /// Write an initial register state into `ctx` so that the first restore
+    /// begins **dropping to EL0**: the BSP's enter-userspace trampoline sets
+    /// `SP_EL0 = user_sp`, `ELR_EL1 = user_entry`, and `SPSR_EL1` to the EL0
+    /// `PSTATE` (v1: `EL0t` with `DAIF` masked — cooperative, no preemption),
+    /// then `ERET`s into the task at `user_entry`.
+    ///
+    /// Unlike [`init_context`][Self::init_context] — which seeds an EL1
+    /// kernel-thread entry from a `fn() -> !` — this seeds a *userspace*
+    /// first entry. `kernel_stack_top` becomes the task's `SP_EL1`, the
+    /// kernel stack the EL0→EL1 trap path runs on (the same value the
+    /// cooperative restore installs as the running stack, so a subsequent
+    /// `SVC`/exception lands on it — closing the `SP_EL1` gate by
+    /// construction). The trampoline runs exactly once per task (first
+    /// dispatch); later resumes are ordinary cooperative switches. See
+    /// [ADR-0037].
+    ///
+    /// # Safety
+    ///
+    /// - `kernel_stack_top` must be one byte past a 16-byte-aligned kernel
+    ///   stack region valid for the task's entire lifetime; it becomes the
+    ///   task's `SP_EL1`. **Size contract (stronger than
+    ///   [`init_context`][Self::init_context]'s cooperative ≥ 512 bytes):**
+    ///   every EL0→EL1 trap (`+0x400`) lands on this stack and pushes the full
+    ///   ~272-byte syscall/exception trap frame *plus* the kernel handler call
+    ///   tree, so the region must accommodate that trap-time worst case — not
+    ///   merely the cooperative-switch frame.
+    /// - `user_entry` must be a valid, EL0-executable userspace VA, and
+    ///   `user_sp` a valid, 16-byte-aligned userspace stack top, **both mapped
+    ///   and EL0-reachable in the task's address space before it is first
+    ///   dispatched**. The implementation does not validate them; an unmapped
+    ///   `user_entry` faults on the first EL0 instruction fetch.
+    /// - That address space must be **ACTIVE** at first dispatch — its
+    ///   `TTBR0_EL1` installed and `EPD0` cleared (the scheduler's activation
+    ///   hook must have fired for the task) — so the EL0 entry fetch and
+    ///   user-stack access translate. The BSP trampoline that consumes this
+    ///   context installs no `TTBR0` of its own.
+    ///
+    /// [ADR-0037]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0037-el0-entry-context.md
+    unsafe fn init_user_context(
+        &self,
+        ctx: &mut Self::TaskContext,
+        user_entry: usize,
+        user_sp: usize,
+        kernel_stack_top: *mut u8,
+    );
 }

@@ -91,6 +91,7 @@ Cooperative register save/restore for task switching. Settled by [ADR-0020](../d
 - An associated `TaskContext` type — the BSP-specific saved-register layout (`Default + Send`).
 - `context_switch(current, next)` — `unsafe`; atomically saves the calling task's callee-saved register set into `current` and restores `next`. The caller must have interrupts disabled across the call.
 - `init_context(ctx, entry, stack_top)` — `unsafe`; writes an initial register state so the first restore begins executing `entry` on `stack_top`.
+- `init_user_context(ctx, user_entry, user_sp, kernel_stack_top)` — `unsafe`; the **userspace (EL0) sibling** of `init_context` (B6 / [ADR-0037](../decisions/0037-el0-entry-context.md)). Seeds the context so the first restore drops to EL0 at `user_entry`: the BSP's `enter_el0` trampoline sets `SP_EL0`/`ELR_EL1`/`SPSR_EL1`, **scrubs the EL0-visible register file** (`x0`–`x30` + `v0`–`v31` + `FPCR`/`FPSR`/`TPIDR_EL0`/`TPIDRRO_EL0`, so no kernel state leaks and EL0's FP/TLS environment is defined on real HW), and `ERET`s. `kernel_stack_top` becomes the task's `SP_EL1`. Shipped by [T-023](../analysis/tasks/phase-b/T-023-el0-entry-context.md) as a *dormant* mechanism — the first runnable EL0 task arrives with the B6 wire-up.
 
 The scheduler is generic over this trait: `Scheduler<C: ContextSwitch + Cpu>` — the BSP type provides both the CPU control surface and the context-switch primitive, and the scheduler never inspects the saved context's contents (see [scheduler.md](scheduler.md)).
 

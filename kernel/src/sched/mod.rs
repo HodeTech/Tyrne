@@ -364,6 +364,86 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         Ok(())
     }
 
+    /// Register a new **userspace (EL0)** task and enqueue it as ready.
+    ///
+    /// Like [`add_task`][Self::add_task], but seeds the task's context for an
+    /// EL0 first entry via [`ContextSwitch::init_user_context`]: on first
+    /// dispatch the task drops to EL0 at `user_entry` with `user_sp`, running
+    /// the kernel side of any later trap on the `kernel_stack_top` kernel stack
+    /// (its `SP_EL1`). The enter-EL0 trampoline runs exactly once; subsequent
+    /// resumes are ordinary cooperative switches. See [ADR-0037].
+    ///
+    /// # Errors
+    ///
+    /// [`SchedError::QueueFull`] if the ready queue is already at capacity
+    /// (cannot happen when `TASK_ARENA_CAPACITY` slots exist and only one task
+    /// occupies each slot).
+    ///
+    /// # Safety
+    ///
+    /// `user_entry` / `user_sp` / `kernel_stack_top` must satisfy
+    /// [`ContextSwitch::init_user_context`]'s contract: `kernel_stack_top` is a
+    /// 16-byte-aligned, lifetime-valid kernel stack top (becomes the task's
+    /// `SP_EL1`); `user_entry` is an EL0-executable userspace VA and `user_sp`
+    /// a valid userspace stack top, both mapped and EL0-reachable in
+    /// `address_space_handle`'s address space before the task is first
+    /// dispatched. **That address space must be ACTIVE at first dispatch** —
+    /// its `TTBR0_EL1` installed and `EPD0` cleared (the scheduler's
+    /// activation hook must have fired for it) — so the EL0 entry fetch and
+    /// user-stack access translate; the `enter_el0` trampoline installs no
+    /// `TTBR0` of its own.
+    ///
+    /// [ADR-0037]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0037-el0-entry-context.md
+    pub unsafe fn add_user_task(
+        &mut self,
+        cpu: &C,
+        handle: TaskHandle,
+        address_space_handle: AddressSpaceHandle,
+        user_entry: usize,
+        user_sp: usize,
+        kernel_stack_top: *mut u8,
+    ) -> Result<(), SchedError> {
+        let idx = handle.slot().index() as usize;
+        // Gate #2 belt-and-braces: `kernel_stack_top` becomes this task's
+        // `SP_EL1` — the stack every EL0→EL1 trap (`+0x400`) lands on. ADR-0037
+        // closes the gate "by construction" (it is the context's restored
+        // `sp`), but a null or misaligned kernel stack would corrupt the first
+        // 272-byte trap frame, so assert the invariant up front in debug builds
+        // (ADR-0037 §Revision notes — gate #2 reconciliation).
+        debug_assert!(
+            !kernel_stack_top.is_null() && (kernel_stack_top as usize).is_multiple_of(16),
+            "add_user_task: kernel_stack_top must be non-null and 16-byte aligned (the task's SP_EL1)",
+        );
+        // `user_sp` becomes `SP_EL0`; a misaligned EL0 stack faults on the first
+        // stack access when `SCTLR_EL1.SA0 = 1`. AAPCS64 requires 16-byte SP
+        // alignment — assert it symmetrically with the kernel stack.
+        debug_assert!(
+            user_sp.is_multiple_of(16),
+            "add_user_task: user_sp must be 16-byte aligned (becomes SP_EL0)",
+        );
+        // SAFETY: caller guarantees the EL0-entry contract per the # Safety doc.
+        // Forwarding to the BSP's init_user_context, which seeds the context's
+        // x19/x20/lr/sp so the first cooperative restore lands in the enter_el0
+        // `ERET` trampoline. Audit: UNSAFE-2026-0032.
+        unsafe {
+            cpu.init_user_context(
+                &mut self.contexts[idx],
+                user_entry,
+                user_sp,
+                kernel_stack_top,
+            );
+        }
+        // Enqueue before writing task_states / task_handles so a QueueFull
+        // error leaves no partial registration (mirrors add_task).
+        self.ready
+            .enqueue(handle)
+            .map_err(|_| SchedError::QueueFull)?;
+        self.task_states[idx] = TaskState::Ready;
+        self.task_handles[idx] = Some(handle);
+        self.task_address_space_handles[idx] = Some(address_space_handle);
+        Ok(())
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /// Resolve a capability handle to an [`EndpointHandle`].
@@ -1430,6 +1510,24 @@ mod tests {
             // `stack_top` or calls `entry`. (Test-only; see above.)
             unsafe { self.cs.init_context(ctx, entry, stack_top) };
         }
+
+        unsafe fn init_user_context(
+            &self,
+            ctx: &mut Self::TaskContext,
+            user_entry: usize,
+            user_sp: usize,
+            kernel_stack_top: *mut u8,
+        ) {
+            // SAFETY: delegates to the shared
+            // `FakeContextSwitch::init_user_context`, which records the
+            // requested user entry / user SP / kernel stack and never performs
+            // a real EL0 entry or dereferences any of them. (Test-only; exempt
+            // from audit-log entries per unsafe-policy §3 / X3-003.)
+            unsafe {
+                self.cs
+                    .init_user_context(ctx, user_entry, user_sp, kernel_stack_top);
+            }
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1536,6 +1634,51 @@ mod tests {
         assert_eq!(sched.task_states[0], TaskState::Ready);
         assert_eq!(sched.task_handles[0], Some(h));
         assert_eq!(sched.ready.len(), 1);
+    }
+
+    #[test]
+    fn add_user_task_seeds_el0_context_and_enqueues_ready() {
+        let cpu = FakeCpu::new();
+        let mut sched: Scheduler<FakeCpu> = Scheduler::new();
+        let h = task_handle(0);
+        let mut kstack = AlignedStack::<512>::new();
+        let ktop = kstack.top();
+        // Opaque userspace VAs — the fake records but never dereferences them.
+        let user_entry = 0x0080_0000usize;
+        let user_sp = 0x0080_2000usize;
+
+        // SAFETY: `ktop` is one-past a 512-byte, 16-byte-aligned kernel stack
+        // (AlignedStack repr); `FakeCpu::init_user_context` only records, so
+        // `user_entry` / `user_sp` / `ktop` are never dereferenced and no real
+        // EL0 entry occurs.
+        unsafe {
+            sched
+                .add_user_task(
+                    &cpu,
+                    h,
+                    BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    user_entry,
+                    user_sp,
+                    ktop,
+                )
+                .unwrap();
+        };
+
+        // Registered + enqueued exactly like add_task …
+        assert_eq!(sched.task_states[0], TaskState::Ready);
+        assert_eq!(sched.task_handles[0], Some(h));
+        assert_eq!(
+            sched.task_address_space_handles[0],
+            Some(BOOTSTRAP_ADDRESS_SPACE_HANDLE)
+        );
+        assert_eq!(sched.ready.len(), 1);
+        // … but seeded via the EL0 first-entry path (not init_context): the
+        // context carries the user entry / user SP and the kernel stack (its
+        // SP_EL1), with is_user set. Pins the enter_el0 hand-off contract.
+        assert!(sched.contexts[0].is_user);
+        assert_eq!(sched.contexts[0].entry_addr, user_entry);
+        assert_eq!(sched.contexts[0].user_sp, user_sp);
+        assert_eq!(sched.contexts[0].stack_top, ktop as usize);
     }
 
     #[test]
@@ -2176,6 +2319,15 @@ mod tests {
             _ctx: &mut Self::TaskContext,
             _entry: fn() -> !,
             _stack_top: *mut u8,
+        ) {
+        }
+
+        unsafe fn init_user_context(
+            &self,
+            _ctx: &mut Self::TaskContext,
+            _user_entry: usize,
+            _user_sp: usize,
+            _kernel_stack_top: *mut u8,
         ) {
         }
     }

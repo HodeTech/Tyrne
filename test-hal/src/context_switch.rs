@@ -33,11 +33,22 @@ use tyrne_hal::ContextSwitch;
 pub struct FakeTaskContext {
     /// Set when this context was saved as `current` by `context_switch`.
     pub switched: bool,
-    /// Set when this context was seeded by `init_context`.
+    /// Set when this context was seeded by `init_context` **or**
+    /// `init_user_context`.
     pub initialized: bool,
-    /// Entry-point address from the last `init_context` call (as `usize`).
+    /// Set when this context was seeded by `init_user_context` (an EL0 task)
+    /// rather than `init_context` (an EL1 kernel task). Lets a test confirm
+    /// the scheduler chose the userspace first-entry path.
+    pub is_user: bool,
+    /// Entry-point address from the last `init_context` / `init_user_context`
+    /// call (as `usize`): the kernel `fn` entry, or the userspace entry VA.
     pub entry_addr: usize,
-    /// Stack-top pointer from the last `init_context` call (as `usize`).
+    /// Userspace stack top from the last `init_user_context` call (as `usize`);
+    /// `0` for a context seeded by `init_context`.
+    pub user_sp: usize,
+    /// Stack-top pointer (as `usize`) from the last `init_context` call, or the
+    /// kernel stack top (the task's `SP_EL1`) from the last
+    /// `init_user_context` call.
     pub stack_top: usize,
 }
 
@@ -110,7 +121,9 @@ impl FakeContextSwitch {
         self.locked().switch_count
     }
 
-    /// Return the number of [`ContextSwitch::init_context`] calls so far.
+    /// Return the number of [`ContextSwitch::init_context`] **or
+    /// [`ContextSwitch::init_user_context`]** calls so far (a single shared
+    /// counter — both seed a context, so both increment it).
     ///
     /// # Panics
     ///
@@ -161,8 +174,35 @@ impl ContextSwitch for FakeContextSwitch {
         stack_top: *mut u8,
     ) {
         ctx.initialized = true;
+        // Fully re-seed as a *kernel* context: clear any user-path markers a
+        // prior `init_user_context` left, so a reused slot does not report
+        // stale `is_user` / `user_sp` (init_context overwrites the context).
+        ctx.is_user = false;
+        ctx.user_sp = 0;
         ctx.entry_addr = entry as *const () as usize;
         ctx.stack_top = stack_top as usize;
+        self.locked().init_count += 1;
+    }
+
+    /// # Safety
+    ///
+    /// Inherits the [`ContextSwitch::init_user_context`] trait contract. The
+    /// fake records the requested `user_entry` / `user_sp` (as `usize`) and the
+    /// kernel `kernel_stack_top`, marks the context `initialized` + `is_user`,
+    /// and counts it; it performs no real EL0 entry and dereferences neither
+    /// the entry VA, the user stack, nor the kernel stack.
+    unsafe fn init_user_context(
+        &self,
+        ctx: &mut Self::TaskContext,
+        user_entry: usize,
+        user_sp: usize,
+        kernel_stack_top: *mut u8,
+    ) {
+        ctx.initialized = true;
+        ctx.is_user = true;
+        ctx.entry_addr = user_entry;
+        ctx.user_sp = user_sp;
+        ctx.stack_top = kernel_stack_top as usize;
         self.locked().init_count += 1;
     }
 }
@@ -202,8 +242,60 @@ mod tests {
         #[cfg(miri)]
         assert_ne!(ctx.entry_addr, 0);
         assert_eq!(ctx.stack_top, top as usize);
+        assert!(!ctx.is_user);
+        assert_eq!(ctx.user_sp, 0);
         assert_eq!(cs.init_count(), 1);
         assert_eq!(cs.switch_count(), 0);
+    }
+
+    #[test]
+    fn init_user_context_records_user_entry_sp_kernel_stack_and_marks_is_user() {
+        let cs = FakeContextSwitch::new();
+        let mut ctx = FakeTaskContext::default();
+        let mut kstack = [0u8; 512];
+        let ktop = kstack.as_mut_ptr().wrapping_add(kstack.len());
+        // Opaque userspace VAs — the fake records but never dereferences them.
+        let user_entry = 0x0080_0000usize;
+        let user_sp = 0x0080_2000usize;
+
+        // SAFETY:
+        // (a) `init_user_context` is `unsafe` — for a real CPU it would seed an
+        //     EL0 first-entry (SP_EL0 / ELR_EL1 / SPSR_EL1) and `ERET` there.
+        // (b) `ktop` is one-past a live 512-byte kernel stack; `user_entry` /
+        //     `user_sp` are opaque integers the fake only records, never derefs.
+        // (c) The trait method is `unsafe` by contract; no safe shim exists.
+        unsafe { cs.init_user_context(&mut ctx, user_entry, user_sp, ktop) };
+
+        assert!(ctx.initialized);
+        assert!(ctx.is_user);
+        assert_eq!(ctx.entry_addr, user_entry);
+        assert_eq!(ctx.user_sp, user_sp);
+        assert_eq!(ctx.stack_top, ktop as usize);
+        assert_eq!(cs.init_count(), 1);
+        assert_eq!(cs.switch_count(), 0);
+    }
+
+    #[test]
+    fn init_context_clears_prior_user_markers_on_reuse() {
+        // A reused context first seeded as an EL0 task, then re-seeded by the
+        // kernel path, must not report stale is_user / user_sp.
+        let cs = FakeContextSwitch::new();
+        let mut ctx = FakeTaskContext::default();
+        let mut kstack = [0u8; 512];
+        let ktop = kstack.as_mut_ptr().wrapping_add(kstack.len());
+
+        // SAFETY: opaque integers + a one-past-end ptr; the fake only records,
+        // never dereferences them or performs a real EL0 entry.
+        unsafe { cs.init_user_context(&mut ctx, 0x0080_0000, 0x0080_2000, ktop) };
+        assert!(ctx.is_user);
+        assert_eq!(ctx.user_sp, 0x0080_2000);
+
+        // SAFETY: as `init_context`'s doctest — the fake records `entry`/
+        // `stack_top` and never calls/derefs them.
+        unsafe { cs.init_context(&mut ctx, never_returns, ktop) };
+        assert!(ctx.initialized);
+        assert!(!ctx.is_user, "init_context must clear the user-path marker");
+        assert_eq!(ctx.user_sp, 0, "init_context must clear user_sp");
     }
 
     #[test]
@@ -235,7 +327,9 @@ mod tests {
         let ctx = FakeTaskContext::default();
         assert!(!ctx.initialized);
         assert!(!ctx.switched);
+        assert!(!ctx.is_user);
         assert_eq!(ctx.entry_addr, 0);
+        assert_eq!(ctx.user_sp, 0);
         assert_eq!(ctx.stack_top, 0);
     }
 }

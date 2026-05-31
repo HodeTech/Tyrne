@@ -329,11 +329,19 @@ pub struct Aarch64TaskContext {
 }
 
 // `naked_asm!` in `context_switch_asm` reads `Aarch64TaskContext` at fixed byte
-// offsets (0/80/88/96/104). A size or layout drift between the Rust `repr(C)`
-// definition and the asm offsets would corrupt every cooperative switch.
-// Mirror the discipline applied to `TrapFrame` so the drift fails the build
-// rather than the first IRQ.
+// offsets (0/80/88/96/104), and `init_user_context` + `enter_el0` ride on the
+// same x19/x20/lr/sp slots. A size **or layout** drift between the Rust
+// `repr(C)` definition and those offsets would silently corrupt every
+// cooperative switch *and* the EL0 first-entry hand-off — caught by neither a
+// size-only assert nor the host tests. Pin every offset the asm depends on so
+// a layout-preserving reorder (e.g. swapping `fp`/`lr`) fails the build rather
+// than the first context switch.
 const _: () = assert!(core::mem::size_of::<Aarch64TaskContext>() == 168);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, x19_x28) == 0);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, fp) == 80);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, lr) == 88);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, sp) == 96);
+const _: () = assert!(core::mem::offset_of!(Aarch64TaskContext, d8_d15) == 104);
 
 // ─── context_switch_asm ──────────────────────────────────────────────────────
 
@@ -414,6 +422,149 @@ unsafe extern "C" fn context_switch_asm(
     );
 }
 
+// ─── enter_el0 ─────────────────────────────────────────────────────────────────
+
+/// One-shot trampoline that drops a freshly-created task to EL0.
+///
+/// Reached via the cooperative [`context_switch_asm`]'s `ret` the **first**
+/// time the scheduler dispatches a userspace task whose context was seeded by
+/// [`QemuVirtCpu::init_user_context`]. By then the switch has restored, from
+/// that context:
+///
+/// - `x19` = the userspace entry VA,
+/// - `x20` = the userspace stack top,
+/// - `sp`  = the task's kernel stack (which is its `SP_EL1`).
+///
+/// `DAIF` is masked across the dispatch (the scheduler holds `IrqGuard`), so
+/// no asynchronous exception interrupts the sequence. The trampoline (1)
+/// installs the EL0 `PSTATE` (`SP_EL0`/`ELR_EL1`/`SPSR_EL1`, consuming
+/// `x19`/`x20` first), (2) **scrubs the EL0-visible register file** — zeroes
+/// `x0`–`x30`, the SIMD/FP vector registers `v0`–`v31`, and the FP
+/// control/status (`FPCR`/`FPSR`) + EL0 thread-ID (`TPIDR_EL0`/`TPIDRRO_EL0`)
+/// registers — so no kernel state leaks and EL0 starts with a defined
+/// environment, then (3) `ERET`s into the task; it **never returns**
+/// (the `ERET` leaves EL1). On every *subsequent* resume the task re-enters
+/// through the syscall/exception return path, not here, so this runs exactly
+/// once.
+///
+/// **The scrub is load-bearing, not hygiene.** The cooperative
+/// [`context_switch_asm`] restores only the *callee-saved* set, so without
+/// step (2) the first EL0 instruction would observe kernel values left in
+/// the caller-saved GPRs (`x0`/`x1` = context pointers, `x8` = kernel stack,
+/// `x2`–`x7`/`x9`–`x18` = scratch), `x30` (= `enter_el0`, a kernel code
+/// address), and the caller-saved SIMD registers — a kernel-pointer / state
+/// disclosure orthogonal to (and not covered by) ADR-0033's `AP=0b00` /
+/// `UXN=1` *memory* isolation. See [ADR-0037] §Revision notes (2026-05-31).
+///
+/// `SPSR_EL1 = 0x3C0`: `M[3:0] = 0b0000` (`EL0t` — execute at EL0 using
+/// `SP_EL0`), `D`/`A`/`I`/`F` masked (v1 cooperative, no preemption — see
+/// [ADR-0033]/[ADR-0037]). The migration left the kernel in `TTBR1_EL1`; the
+/// task's `TTBR0_EL1` (its user mappings) must already be active.
+///
+/// # Safety
+///
+/// Only valid as the `lr` seeded by [`QemuVirtCpu::init_user_context`]: it
+/// reads `x19`/`x20` expecting the entry VA / user SP the switch just
+/// restored, and assumes a valid `SP_EL1` (the task's kernel stack) and an
+/// active per-task `TTBR0_EL1`. Entering it any other way is undefined.
+///
+/// `#[unsafe(naked)]`: no prologue may run before the asm, so `x19`/`x20`
+/// reach the body exactly as the switch restored them. Audit: UNSAFE-2026-0032.
+///
+/// [ADR-0033]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0033-kernel-high-half-migration.md
+/// [ADR-0037]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0037-el0-entry-context.md
+#[unsafe(naked)]
+unsafe extern "C" fn enter_el0() -> ! {
+    naked_asm!(
+        // (1) Install the EL0 return state — consume x19/x20 (+ x8 scratch).
+        "msr sp_el0, x20",  // userspace stack pointer
+        "msr elr_el1, x19", // userspace entry PC (restored on ERET)
+        "mov x8, #0x3c0",   // SPSR_EL1 value: EL0t (M=0), DAIF masked
+        "msr spsr_el1, x8", // register form (immediate MSR is PSTATE-only)
+        // (2) Scrub the whole register file so NO kernel state reaches EL0:
+        // context_switch_asm restored only callee-saved regs, leaving
+        // caller-saved GPRs (x0/x1 = context ptrs, x8 = kernel stack,
+        // x2–x7/x9–x18 = scratch), x30 (= enter_el0, a kernel code addr),
+        // and caller-saved SIMD holding kernel values. Zero x0–x30 + v0–v31
+        // → EL0 starts with a clean, defined register file (ADR-0037
+        // §Revision notes 2026-05-31; UNSAFE-2026-0032).
+        "mov x0, xzr",
+        "mov x1, xzr",
+        "mov x2, xzr",
+        "mov x3, xzr",
+        "mov x4, xzr",
+        "mov x5, xzr",
+        "mov x6, xzr",
+        "mov x7, xzr",
+        "mov x8, xzr",
+        "mov x9, xzr",
+        "mov x10, xzr",
+        "mov x11, xzr",
+        "mov x12, xzr",
+        "mov x13, xzr",
+        "mov x14, xzr",
+        "mov x15, xzr",
+        "mov x16, xzr",
+        "mov x17, xzr",
+        "mov x18, xzr",
+        "mov x19, xzr",
+        "mov x20, xzr",
+        "mov x21, xzr",
+        "mov x22, xzr",
+        "mov x23, xzr",
+        "mov x24, xzr",
+        "mov x25, xzr",
+        "mov x26, xzr",
+        "mov x27, xzr",
+        "mov x28, xzr",
+        "mov x29, xzr",
+        "mov x30, xzr",
+        "movi v0.2d, #0",
+        "movi v1.2d, #0",
+        "movi v2.2d, #0",
+        "movi v3.2d, #0",
+        "movi v4.2d, #0",
+        "movi v5.2d, #0",
+        "movi v6.2d, #0",
+        "movi v7.2d, #0",
+        "movi v8.2d, #0",
+        "movi v9.2d, #0",
+        "movi v10.2d, #0",
+        "movi v11.2d, #0",
+        "movi v12.2d, #0",
+        "movi v13.2d, #0",
+        "movi v14.2d, #0",
+        "movi v15.2d, #0",
+        "movi v16.2d, #0",
+        "movi v17.2d, #0",
+        "movi v18.2d, #0",
+        "movi v19.2d, #0",
+        "movi v20.2d, #0",
+        "movi v21.2d, #0",
+        "movi v22.2d, #0",
+        "movi v23.2d, #0",
+        "movi v24.2d, #0",
+        "movi v25.2d, #0",
+        "movi v26.2d, #0",
+        "movi v27.2d, #0",
+        "movi v28.2d, #0",
+        "movi v29.2d, #0",
+        "movi v30.2d, #0",
+        "movi v31.2d, #0",
+        // FP control/status + EL0 thread-ID registers — also EL0-readable, and
+        // on real hardware (Pi 4) their reset value is architecturally UNKNOWN.
+        // Zero them so EL0 starts with a *defined* FP environment (FPCR
+        // rounding / flush-to-zero / default-NaN, FPSR cumulative flags) and
+        // defined TLS bases, rather than inheriting whatever boot left.
+        "msr fpcr, xzr",
+        "msr fpsr, xzr",
+        "msr tpidr_el0, xzr",
+        "msr tpidrro_el0, xzr",
+        // (3) Drop to EL0 at ELR_EL1 with the clean file; does not return.
+        "eret",
+    );
+}
+
 // ─── ContextSwitch impl ───────────────────────────────────────────────────────
 
 impl ContextSwitch for QemuVirtCpu {
@@ -445,6 +596,33 @@ impl ContextSwitch for QemuVirtCpu {
         // Audit: UNSAFE-2026-0009.
         ctx.lr = entry as usize as u64;
         ctx.sp = stack_top as u64;
+    }
+
+    unsafe fn init_user_context(
+        &self,
+        ctx: &mut Self::TaskContext,
+        user_entry: usize,
+        user_sp: usize,
+        kernel_stack_top: *mut u8,
+    ) {
+        // The cooperative `context_switch_asm` restores x19–x28 then `ret`s to
+        // `lr`. Seed the context so the first restore lands in `enter_el0` with
+        // the EL0-entry params in the two callee-saved slots it reads:
+        //   x19 (x19_x28[0]) = user_entry, x20 (x19_x28[1]) = user_sp,
+        //   lr = enter_el0, sp = kernel_stack_top (= the task's SP_EL1).
+        // No `Aarch64TaskContext` field is added — the 168-byte layout and the
+        // `context_switch_asm` byte offsets are unchanged (ADR-0037 §Decision).
+        // This body performs only plain field writes + an `fn`-address read
+        // (no `unsafe` op); the actual hardware unsafety lives in `enter_el0`'s
+        // `ERET` asm and in the caller's param contract (`# Safety` above).
+        // Audit: UNSAFE-2026-0032.
+        ctx.x19_x28[0] = user_entry as u64;
+        ctx.x19_x28[1] = user_sp as u64;
+        // `as *const ()` first: a direct fn-item→integer cast trips
+        // `function_casts_as_integer` (matches the `kernel_main_high` pattern
+        // in `main.rs`).
+        ctx.lr = enter_el0 as *const () as u64;
+        ctx.sp = kernel_stack_top as u64;
     }
 }
 
