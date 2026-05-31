@@ -329,8 +329,8 @@ pub fn copy_to_user<M: Mmu>(
 mod tests {
     use super::{copy_from_user, copy_to_user, UserAccessWindow};
     use crate::syscall::error::SyscallError;
-    use tyrne_hal::{MappingFlags, PAGE_SIZE};
-    use tyrne_test_hal::FakeUserMem;
+    use tyrne_hal::{MappingFlags, Mmu, PhysAddr, PhysFrame, VirtAddr, PAGE_SIZE};
+    use tyrne_test_hal::{BlockMappedMmu, FakeUserMem};
 
     // The translate-based copy resolves a user VA to a `PhysFrame`, rebases it
     // via `phys_frame_kernel_ptr` (identity on host) and reads / writes the
@@ -503,6 +503,26 @@ mod tests {
             [0; 4],
             "no byte written to a read-only page"
         );
+    }
+
+    #[test]
+    fn copy_from_user_block_mapped_page_faults() {
+        // A 2 MiB block-mapped leaf (e.g. the bootstrap kernel map) is not a
+        // 4 KiB user page; `translate` returns `BlockMapped`, which the probe
+        // maps to `FaultAddress` — the same reject as an unmapped page. Closes
+        // the copy-path coverage of the probe's `BlockMapped` translate-error
+        // arm (the `BlockMappedMmu` decorator injects it).
+        let mmu = BlockMappedMmu::with_blocked([VirtAddr(UVA)]);
+        // SAFETY: the inner FakeMmu stores `root` without dereferencing it.
+        let as_ =
+            unsafe { mmu.create_address_space(PhysFrame::from_aligned(PhysAddr(0x1000)).unwrap()) };
+        let window = UserAccessWindow::new(UVA, PAGE_SIZE);
+        let mut dst = [0u8; 8];
+        assert_eq!(
+            copy_from_user(&mmu, &as_, &window, UVA, &mut dst),
+            Err(SyscallError::FaultAddress)
+        );
+        assert_eq!(dst, [0; 8], "no byte copied from a block-mapped leaf");
     }
 
     // ── range gate (window) ────────────────────────────────────────────────────
