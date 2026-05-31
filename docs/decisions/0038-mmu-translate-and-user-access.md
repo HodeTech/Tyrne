@@ -1,6 +1,6 @@
 # 0038 — `Mmu::translate` read-only walk + per-task user-access translation (B6 gate #1)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-05-31
 - **Deciders:** @cemililik
 
@@ -59,7 +59,7 @@ It is additive, takes `&Self::AddressSpace` (read-only — no `FrameProvider`, n
 The kernel copy-user policy ([`user_access.rs`](../../kernel/src/syscall/user_access.rs)):
 
 - `copy_from_user` / `copy_to_user` become generic over `<M: Mmu>` and take `mmu: &M` plus the task's `&M::AddressSpace`. Their **contract** (validate, then move bytes; `FaultAddress` on failure; zero-length short-circuit) is unchanged.
-- The int-to-pointer dereference is replaced by a per-page loop: for each page the `[ptr, ptr + len)` range spans, `mmu.translate(task_as, page_va)` → require `MappingFlags::USER` (and additionally `WRITE` for `copy_to_user`) → rebase the frame to a kernel pointer via [`crate::mm::phys_frame_kernel_ptr`](../../kernel/src/mm/mod.rs) + the in-page offset → copy that page's byte sub-run. **Any `translate` error, or a leaf lacking `USER`, → `SyscallError::FaultAddress`, copying nothing observable.**
+- The int-to-pointer dereference is replaced by a **two-pass** per-page walk (all-or-nothing): **pass 1 probes** every page the `[ptr, ptr + len)` range spans — `mmu.translate(task_as, page_va)` → require `MappingFlags::USER` (and additionally `WRITE` for `copy_to_user`); only if *every* page passes does **pass 2 copy**, rebasing each frame to a kernel pointer via [`crate::mm::phys_frame_kernel_ptr`](../../kernel/src/mm/mod.rs) + the in-page offset and moving its byte sub-run. **Any `translate` error, or a leaf lacking `USER`, on the probe pass → `SyscallError::FaultAddress`, copying/emitting nothing (no prefix on a mid-range fault).**
 - The [`UserAccessWindow`](../../kernel/src/syscall/user_access.rs) survives as a cheap **first gate** (range containment, wrap rejection, zero-length short-circuit), now derived **per task** from `[entry_va, stack_top_va)` (the loader's contiguous image+stack span) rather than the RAM extent. The window bounds the range; **`translate`'s `USER` check proves ownership + permission** — the necessary-and-sufficient pair gate #1 demands.
 
 This composes [ADR-0009](0009-mmu-trait.md) (the trait's home), [ADR-0033](0033-kernel-high-half-migration.md) (the high-half direct map `phys_frame_kernel_ptr` rebases through), and [ADR-0030](0030-syscall-abi.md) (the `UserAccessWindow` + `FaultAddress` copy-user contract this plugs into). The additive trait method is also recorded as a §Revision-notes rider on ADR-0009, per that ADR's `MapperFlush` precedent.
