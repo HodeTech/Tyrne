@@ -261,6 +261,19 @@ impl Mmu for FakeMmu {
             .ok_or(MmuError::NotMapped)
     }
 
+    fn translate(
+        &self,
+        as_: &FakeAddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+        // Read-only lookup keyed by the page base — the trait contract is
+        // the frame *containing* `va`, so an interior offset resolves to its
+        // page. The flat `HashMap` has no block descriptors, so `FakeMmu`
+        // never returns `MmuError::BlockMapped`.
+        let page_base = VirtAddr(va.0 & !(PAGE_SIZE - 1));
+        as_.lookup(page_base).ok_or(MmuError::NotMapped)
+    }
+
     fn invalidate_tlb_address(&self, va: VirtAddr) {
         self.locked().tlb_address_invalidations.push(va);
     }
@@ -394,6 +407,16 @@ impl Mmu for OutOfFramesMmu {
         va: VirtAddr,
     ) -> Result<(MapperFlush, PhysFrame), MmuError> {
         self.inner.unmap(as_, va)
+    }
+
+    fn translate(
+        &self,
+        as_: &FakeAddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+        // `OutOfFrames` is a map-time allocation failure; a read-only
+        // translate is unaffected, so delegate unchanged.
+        self.inner.translate(as_, va)
     }
 
     fn invalidate_tlb_address(&self, va: VirtAddr) {
@@ -531,6 +554,22 @@ impl Mmu for BlockMappedMmu {
             return Err(MmuError::BlockMapped);
         }
         self.inner.unmap(as_, va)
+    }
+
+    fn translate(
+        &self,
+        as_: &FakeAddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+        // A blocked VA models a 2 MiB block descriptor: the walk hits the
+        // block and cannot serve a 4 KiB leaf, so translate surfaces
+        // `BlockMapped` (checked on the page base so any in-page offset
+        // does too). Non-blocked VAs delegate to the inner `FakeMmu`.
+        let page_base = VirtAddr(va.0 & !(tyrne_hal::PAGE_SIZE - 1));
+        if self.is_blocked(page_base) {
+            return Err(MmuError::BlockMapped);
+        }
+        self.inner.translate(as_, va)
     }
 
     fn invalidate_tlb_address(&self, va: VirtAddr) {
@@ -974,5 +1013,66 @@ mod tests {
             .unmap(&mut as_, VirtAddr(0x6000))
             .expect_err("missing VA must be NotMapped, not BlockMapped");
         assert_eq!(err, MmuError::NotMapped);
+    }
+
+    // ── translate (ADR-0038 / T-025) ──────────────────────────────────────────
+
+    #[test]
+    fn fake_translate_returns_mapping_and_aligns_interior_offset() {
+        let mmu = FakeMmu::new();
+        // SAFETY: page-aligned by construction.
+        let mut as_ = unsafe { mmu.create_address_space(frame(0x1000)) };
+        let mut fp = VecFrameProvider::new(vec![]);
+        mmu.map(
+            &mut as_,
+            VirtAddr(0x4000),
+            frame(0x8000),
+            MappingFlags::USER | MappingFlags::WRITE,
+            &mut fp,
+        )
+        .expect("map must succeed")
+        .ignore();
+
+        // Exact page base resolves to the mapped frame + flags.
+        let (pa, flags) = mmu
+            .translate(&as_, VirtAddr(0x4000))
+            .expect("translate page base");
+        assert_eq!(pa, frame(0x8000));
+        assert!(flags.contains(MappingFlags::USER));
+        assert!(flags.contains(MappingFlags::WRITE));
+
+        // An interior offset resolves to the same page frame.
+        let (pa2, _) = mmu
+            .translate(&as_, VirtAddr(0x4ABC))
+            .expect("translate interior offset");
+        assert_eq!(pa2, frame(0x8000));
+    }
+
+    #[test]
+    fn fake_translate_unmapped_is_not_mapped() {
+        let mmu = FakeMmu::new();
+        // SAFETY: page-aligned by construction.
+        let as_ = unsafe { mmu.create_address_space(frame(0x1000)) };
+        let err = mmu
+            .translate(&as_, VirtAddr(0x4000))
+            .expect_err("unmapped VA must fault");
+        assert_eq!(err, MmuError::NotMapped);
+    }
+
+    #[test]
+    fn block_mapped_mmu_translate_injects_block_mapped() {
+        let mmu = BlockMappedMmu::with_blocked([VirtAddr(0x20_0000)]);
+        // SAFETY: the inner FakeMmu never dereferences `root`.
+        let as_ = unsafe { mmu.create_address_space(frame(0x1000)) };
+        // A blocked page surfaces BlockMapped, even at an interior offset.
+        assert_eq!(
+            mmu.translate(&as_, VirtAddr(0x20_0FFF)).unwrap_err(),
+            MmuError::BlockMapped
+        );
+        // A different, unmapped page is NotMapped — distinct from BlockMapped.
+        assert_eq!(
+            mmu.translate(&as_, VirtAddr(0x21_0000)).unwrap_err(),
+            MmuError::NotMapped
+        );
     }
 }

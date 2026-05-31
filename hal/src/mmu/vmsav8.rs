@@ -23,6 +23,11 @@
 //! - `flags_to_descriptor_bits` — translates [`MappingFlags`] to the
 //!   `(attr_idx, ap, sh, pxn, uxn, ng)` tuple the descriptor encoders
 //!   accept
+//! - `descriptor_bits_to_flags` — the inverse: decodes a leaf descriptor's
+//!   permission/attribute bits back into [`MappingFlags`] (consumed by
+//!   [`Mmu::translate`](super::Mmu::translate); [ADR-0038][adr-0038])
+//!
+//! [adr-0038]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0038-mmu-translate-and-user-access.md
 //!
 //! All helpers are pure: no state, no `unsafe`, no MMIO. The functions
 //! that actually write descriptors to memory (and therefore inherit a
@@ -357,6 +362,74 @@ pub const fn flags_to_descriptor_bits(flags: MappingFlags) -> DescriptorBits {
     }
 }
 
+/// Decode a leaf descriptor's permission/attribute bits back into a
+/// [`MappingFlags`] — the inverse of [`flags_to_descriptor_bits`] for the
+/// five named flags.
+///
+/// Consumed by [`Mmu::translate`](super::Mmu::translate) (added by
+/// [ADR-0038]): the BSP walker reaches a valid L3 page descriptor, then this
+/// recovers the leaf's `USER` / `WRITE` / `EXECUTE` / `DEVICE` / `GLOBAL`
+/// bits so the syscall copy-user path can enforce `USER` (the confused-deputy
+/// defence). `desc` is expected to be a valid leaf descriptor; this function
+/// inspects only the permission/attribute fields and does **not** validate
+/// the V or page bit (the walker has already done so).
+///
+/// Field recovery (the exact inverse of the encoder above):
+/// - **`DEVICE`** ← `AttrIndx[4:2] == ATTR_IDX_DEVICE`.
+/// - **`USER`** ← `AP[1]` (bit 6) set (`AP = 0b_1` ⇒ user-accessible).
+/// - **`WRITE`** ← `AP[2]` (bit 7) clear (`AP = 0b0_` ⇒ read-write).
+/// - **`EXECUTE`** ← for a user leaf, `UXN == 0`; for a kernel leaf,
+///   `PXN == 0` (the EL that may execute the page is the one whose XN is
+///   clear). A `DEVICE` leaf has `PXN = UXN = 1`, so `EXECUTE` decodes
+///   clear, mirroring the encoder's rejection of `DEVICE | EXECUTE`.
+/// - **`GLOBAL`** ← `nG` (bit 11) clear.
+///
+/// **Lock-shut:** the result is built solely from the five named
+/// [`MappingFlags`] constants, so no bit ≥ 5 can ever appear in the output —
+/// an arbitrary (even adversarial) descriptor can never decode to a flag the
+/// kernel does not recognise. The
+/// [`descriptor_bits_to_flags_is_lock_shut`] test pins this; the
+/// [`descriptor_bits_to_flags_round_trips_valid_flags`] test pins symmetry
+/// with the encoder over every valid flag combination.
+///
+/// [ADR-0038]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0038-mmu-translate-and-user-access.md
+#[must_use]
+pub const fn descriptor_bits_to_flags(desc: u64) -> MappingFlags {
+    // AttrIndx[2:0] at bits [4:2]; AP[2:1] at bits [7:6].
+    let attr_idx = ((desc >> 2) & 0x7) as u8;
+    let ap = ((desc >> 6) & 0x3) as u8;
+
+    let device = attr_idx == ATTR_IDX_DEVICE;
+    // AP encoding: bit 0 (AP[1]) = user-accessible; bit 1 (AP[2]) = read-only.
+    let user = (ap & 0b01) != 0;
+    let write = (ap & 0b10) == 0;
+    let pxn = (desc & DESC_PXN_BIT) != 0;
+    let uxn = (desc & DESC_UXN_BIT) != 0;
+    // The executing EL is the one whose XN is clear: user leaves consult UXN,
+    // kernel leaves consult PXN.
+    let execute = if user { !uxn } else { !pxn };
+    let global = (desc & DESC_NG_BIT) == 0;
+
+    // Build from the named constants only — this is the lock-shut guarantee.
+    let mut flags = MappingFlags::empty();
+    if write {
+        flags = flags.union(MappingFlags::WRITE);
+    }
+    if execute {
+        flags = flags.union(MappingFlags::EXECUTE);
+    }
+    if user {
+        flags = flags.union(MappingFlags::USER);
+    }
+    if device {
+        flags = flags.union(MappingFlags::DEVICE);
+    }
+    if global {
+        flags = flags.union(MappingFlags::GLOBAL);
+    }
+    flags
+}
+
 // ── Descriptor encoders ────────────────────────────────────────────────────────
 
 /// Encode an L2 block descriptor (2 MiB block at level 2 with 4 KiB
@@ -433,10 +506,10 @@ pub const fn table_descriptor(next_level_pa: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        block_descriptor, flags_to_descriptor_bits, page_descriptor, table_descriptor,
-        AP_KERNEL_RO, AP_KERNEL_RW, AP_USER_RO, AP_USER_RW, ATTR_IDX_DEVICE, ATTR_IDX_NORMAL,
-        MAIR_EL1_VALUE, SCTLR_EL1_MMU_ENABLE_MASK, SH_INNER_SHAREABLE, SH_NON_SHAREABLE,
-        TCR_EL1_VALUE, TCR_EL1_VALUE_HIGH_HALF,
+        block_descriptor, descriptor_bits_to_flags, flags_to_descriptor_bits, page_descriptor,
+        table_descriptor, AP_KERNEL_RO, AP_KERNEL_RW, AP_USER_RO, AP_USER_RW, ATTR_IDX_DEVICE,
+        ATTR_IDX_NORMAL, MAIR_EL1_VALUE, SCTLR_EL1_MMU_ENABLE_MASK, SH_INNER_SHAREABLE,
+        SH_NON_SHAREABLE, TCR_EL1_VALUE, TCR_EL1_VALUE_HIGH_HALF,
     };
     use crate::MappingFlags;
 
@@ -587,6 +660,72 @@ mod tests {
     fn global_flag_clears_ng_bit() {
         let bits = flags_to_descriptor_bits(MappingFlags::WRITE | MappingFlags::GLOBAL);
         assert!(!bits.ng, "GLOBAL set → nG=0 (entry is global across ASIDs)");
+    }
+
+    // ── descriptor_bits_to_flags (inverse decoder; ADR-0038 / T-025) ────────────
+
+    #[test]
+    fn descriptor_bits_to_flags_round_trips_valid_flags() {
+        // The decoder is the exact inverse of `flags_to_descriptor_bits`
+        // (through a page descriptor) for every VALID named-flag combination.
+        // `DEVICE | EXECUTE` is excluded: the encoder forces device leaves to
+        // PXN=UXN=1, so EXECUTE is non-recoverable and the combination is
+        // rejected upstream (`MmuError::InvalidFlags`).
+        for combo in 0u32..32 {
+            let mut f = MappingFlags::empty();
+            if combo & 0b0_0001 != 0 {
+                f = f.union(MappingFlags::WRITE);
+            }
+            if combo & 0b0_0010 != 0 {
+                f = f.union(MappingFlags::EXECUTE);
+            }
+            if combo & 0b0_0100 != 0 {
+                f = f.union(MappingFlags::USER);
+            }
+            if combo & 0b0_1000 != 0 {
+                f = f.union(MappingFlags::DEVICE);
+            }
+            if combo & 0b1_0000 != 0 {
+                f = f.union(MappingFlags::GLOBAL);
+            }
+            if f.contains(MappingFlags::DEVICE) && f.contains(MappingFlags::EXECUTE) {
+                continue; // invalid: the encoder rejects DEVICE | EXECUTE
+            }
+            let desc = page_descriptor(0x4040_1000, flags_to_descriptor_bits(f));
+            assert_eq!(
+                descriptor_bits_to_flags(desc),
+                f,
+                "round-trip failed for flags {f:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn descriptor_bits_to_flags_is_lock_shut() {
+        // Decoding ANY u64 — including adversarial all-ones / alternating
+        // patterns — yields a `MappingFlags` with only the five named bits
+        // (0–4) possibly set; a stray hardware bit can never widen
+        // permissions. (Confused-deputy hardening, ADR-0038.)
+        let named = (MappingFlags::WRITE
+            | MappingFlags::EXECUTE
+            | MappingFlags::USER
+            | MappingFlags::DEVICE
+            | MappingFlags::GLOBAL)
+            .raw();
+        for desc in [
+            0u64,
+            u64::MAX,
+            0xAAAA_AAAA_AAAA_AAAA,
+            0x5555_5555_5555_5555,
+            0x0000_FFFF_FFFF_FFFF,
+        ] {
+            let decoded = descriptor_bits_to_flags(desc).raw();
+            assert_eq!(
+                decoded & !named,
+                0,
+                "stray bit leaked decoding {desc:#018x}"
+            );
+        }
     }
 
     // ── block_descriptor ───────────────────────────────────────────────────────

@@ -39,8 +39,8 @@
 use core::arch::asm;
 
 use tyrne_hal::mmu::vmsav8::{
-    flags_to_descriptor_bits, page_descriptor, table_descriptor, PAGE_OA_MASK_L3, TABLE_NLA_MASK,
-    TCR_EL1_EPD0_BIT,
+    descriptor_bits_to_flags, flags_to_descriptor_bits, page_descriptor, table_descriptor,
+    PAGE_OA_MASK_L3, TABLE_NLA_MASK, TCR_EL1_EPD0_BIT,
 };
 use tyrne_hal::{
     phys_to_kernel_va, FrameProvider, MapperFlush, MappingFlags, Mmu, MmuError, PhysAddr,
@@ -320,6 +320,61 @@ impl Mmu for QemuVirtMmu {
             )
         }?;
         Ok((MapperFlush::new(va), pa))
+    }
+
+    fn translate(
+        &self,
+        as_: &Self::AddressSpace,
+        va: VirtAddr,
+    ) -> Result<(PhysFrame, MappingFlags), MmuError> {
+        let l0_idx = va_index(va, VA_L0_SHIFT);
+        let l1_idx = va_index(va, VA_L1_SHIFT);
+        let l2_idx = va_index(va, VA_L2_SHIFT);
+        let l3_idx = va_index(va, VA_L3_SHIFT);
+
+        // Read-only L0 → L2 walk. `walk_or_alloc_table(.., unmap = true)` is
+        // the no-allocate, read-only level step: it returns `NotMapped` for
+        // an empty slot and `BlockMapped` for a block descriptor, and never
+        // touches its `FrameProvider` (hence `NullFrameProvider`). `translate`
+        // neither maps nor unmaps — it reuses the audited walker purely to
+        // read, writing no descriptor.
+        // SAFETY: `as_.root` is a valid VMSAv8 root per
+        // `create_address_space`'s contract; each returned frame is a valid
+        // table frame discovered at the prior level; every index is
+        // `(va >> shift) & 0x1FF < ENTRIES_PER_TABLE`; all accesses are reads
+        // through the high-half direct map and no descriptor is written.
+        // Audit: UNSAFE-2026-0025 (read-only walk).
+        let l3_table = unsafe {
+            let l1 = walk_or_alloc_table(
+                as_.root,
+                l0_idx,
+                &mut NullFrameProvider,
+                /* unmap */ true,
+            )?;
+            let l2 = walk_or_alloc_table(l1, l1_idx, &mut NullFrameProvider, true)?;
+            walk_or_alloc_table(l2, l2_idx, &mut NullFrameProvider, true)?
+        };
+
+        // Read the L3 leaf descriptor through the high-half direct map.
+        let l3_ptr = phys_to_kernel_va(l3_table.as_usize()) as *const u64;
+        // SAFETY: `l3_table` is a 4 KiB frame; `l3_idx < ENTRIES_PER_TABLE`;
+        // read-only, in-bounds, through the high-half direct map. Audit:
+        // UNSAFE-2026-0025.
+        let leaf = unsafe { core::ptr::read_volatile(l3_ptr.add(l3_idx)) };
+
+        if (leaf & DESC_VALID_BIT) == 0 {
+            return Err(MmuError::NotMapped);
+        }
+        // A valid L3 entry with the page bit (bit 1) clear is *reserved*
+        // (translation fault) per ARM ARM §D5.3 — treat as not mapped.
+        if (leaf & DESC_TABLE_OR_PAGE_BIT) == 0 {
+            return Err(MmuError::NotMapped);
+        }
+
+        let leaf_pa = leaf & PAGE_OA_MASK_L3;
+        let frame = PhysFrame::from_aligned(PhysAddr(leaf_pa as usize))
+            .ok_or(MmuError::MisalignedAddress)?;
+        Ok((frame, descriptor_bits_to_flags(leaf)))
     }
 
     fn invalidate_tlb_address(&self, va: VirtAddr) {
