@@ -893,7 +893,7 @@ pub enum TaskCreateError {
 /// `task_rights`, which govern *capability management* (duplicate / derive /
 /// transfer / revoke the Task cap). There is **no Task-*operation* right** in
 /// v1 — this mirrors the `CapKind::AddressSpace` kind-only model (see
-/// [`cap_map`][crate::mm::cap_map], where the cap *kind* grants the authority).
+/// [`cap_map`], where the cap *kind* grants the authority).
 /// Per-operation Task rights (a future run / suspend / kill authority) are
 /// deferred to a later ADR.
 ///
@@ -930,7 +930,10 @@ pub fn task_create_from_image(
         }
     };
 
-    // 2 — mint the Task kernel object bound to that AS.
+    // 2 — mint the Task kernel object bound to that AS. `create_task` only ever
+    //     returns `ObjError::ArenaFull` (its body is `arena.allocate(..).ok_or(
+    //     ObjError::ArenaFull)`), so collapsing its error to `TaskArenaFull` is
+    //     exhaustive by that contract — not a lossy catch-all.
     let task_handle = create_task(task_arena, Task::new(id, as_handle))
         .map_err(|_| TaskCreateError::TaskArenaFull)?;
 
