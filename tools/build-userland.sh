@@ -34,16 +34,24 @@ else
 fi
 
 # Resolve rust-objcopy from the active toolchain's llvm-tools (no Cargo dep).
-SYSROOT="$(rustc --print sysroot)"
-OBJCOPY="$(find "$SYSROOT" -type f -name 'rust-objcopy' 2>/dev/null | head -n1)"
-if [[ -z "$OBJCOPY" ]]; then
-    echo "error: rust-objcopy not found under $SYSROOT" >&2
+# Resolve rust-objcopy deterministically: target-libdir is
+# .../rustlib/<host>/lib, whose sibling bin/ holds the llvm-tools binaries.
+# Fall back to a sysroot search for unusual layouts.
+OBJCOPY="$(rustc --print target-libdir)/../bin/rust-objcopy"
+if [[ ! -x "$OBJCOPY" ]]; then
+    OBJCOPY="$(find "$(rustc --print sysroot)" -type f -name 'rust-objcopy' 2>/dev/null | head -n1)"
+fi
+if [[ -z "$OBJCOPY" || ! -x "$OBJCOPY" ]]; then
+    echo "error: rust-objcopy not found in the active toolchain" >&2
     echo "       install the llvm-tools-preview component (pinned in rust-toolchain.toml):" >&2
     echo "       rustup component add llvm-tools-preview" >&2
     exit 1
 fi
 
-ELF="target/aarch64-unknown-none/${PROFILE}/hello"
+# Respect CARGO_TARGET_DIR (set in some CI / nested-build layouts); default to
+# the workspace `target/` dir cargo uses otherwise.
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+ELF="${TARGET_DIR}/aarch64-unknown-none/${PROFILE}/hello"
 BIN="userland/hello/hello.bin"
 if [[ ! -f "$ELF" ]]; then
     echo "error: expected userland ELF not found at $ELF" >&2

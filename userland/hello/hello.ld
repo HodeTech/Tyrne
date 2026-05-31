@@ -32,15 +32,20 @@ SECTIONS {
         *(.rodata .rodata.*)
     }
 
-    /* v1 forbids writable data (image is USER|EXECUTE, no WRITE). Collect any
-     * stray .data/.bss so the ASSERTs can prove they are empty. */
+    /* v1 forbids writable data (image is USER|EXECUTE, no WRITE) and is
+     * non-PIC (fixed VA — no relocations). Collect any stray .data/.bss/.got so
+     * the ASSERTs can prove they are empty rather than let a writable byte or a
+     * PIC artifact silently slip into the raw-flat image. */
     .data : { *(.data .data.*) }
     .bss  : { *(.bss .bss.* COMMON) }
+    .got  : { *(.got .got.plt) }
 
     ASSERT(SIZEOF(.data) == 0,
         "userland hello: .data must be empty (image maps USER|EXECUTE, no WRITE)")
     ASSERT(SIZEOF(.bss) == 0,
         "userland hello: .bss must be empty (image maps USER|EXECUTE, no WRITE)")
+    ASSERT(SIZEOF(.got) == 0,
+        "userland hello: .got must be empty (v1 is non-PIC, fixed-VA — no relocations)")
 
     /* Drop metadata/unwind/debug sections — not part of the raw-flat image. */
     /DISCARD/ : {
