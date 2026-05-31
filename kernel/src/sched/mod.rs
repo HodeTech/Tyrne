@@ -55,6 +55,7 @@ use crate::ipc::{
 use crate::mm::AddressSpaceHandle;
 use crate::obj::endpoint::EndpointArena;
 use crate::obj::{EndpointHandle, TaskHandle, TASK_ARENA_CAPACITY};
+use crate::syscall::user_access::UserAccessWindow;
 
 // ─── SchedQueue ───────────────────────────────────────────────────────────────
 
@@ -267,6 +268,35 @@ pub struct Scheduler<C: ContextSwitch + Cpu> {
     /// [ADR-0028 §Simulation row 3]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
     /// [`Mmu::activate`]: tyrne_hal::Mmu::activate
     task_address_space_handles: [Option<AddressSpaceHandle>; TASK_ARENA_CAPACITY],
+    /// Per-task **capability-table** pointer, parallel to `task_handles`.
+    /// Written by [`add_user_task`][Self::add_user_task]; read by the BSP
+    /// `syscall_entry` (via [`current_user_table`][Self::current_user_table])
+    /// so a syscall resolves capabilities in the **running EL0 task's own**
+    /// table — gate #3 (T-026), the per-subject unforgeability of
+    /// [ADR-0014][adr-0014]. A **raw `*mut`**: the table is owned by the BSP
+    /// (a static), not the scheduler; the scheduler only records the binding,
+    /// consistent with the [ADR-0021][adr-0021] raw-pointer bridge — no
+    /// ownership transfer, and the momentary `&mut` the BSP materialises lives
+    /// only across one `dispatch` call, never across a context switch. `None`
+    /// for kernel-mode tasks ([`add_task`][Self::add_task]), which make no EL0
+    /// syscall; a `None` lookup is the fail-closed signal (never an ambient
+    /// table). The raw pointer makes `Scheduler` `!Send`/`!Sync`; it is only
+    /// ever held inside the BSP's unconditionally-`Sync` `StaticCell` and
+    /// reached through the ADR-0021 `*mut Scheduler` bridge, so no `Send`/`Sync`
+    /// bound is broken.
+    ///
+    /// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+    /// [adr-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
+    task_cap_tables: [Option<*mut CapabilityTable>; TASK_ARENA_CAPACITY],
+    /// Per-task user-access window `[entry_va, stack_top_va)`, parallel to
+    /// `task_handles`. Written by [`add_user_task`][Self::add_user_task] from
+    /// its `user_entry` / `user_sp` params; read by the BSP `syscall_entry`
+    /// (via [`current_user_window`][Self::current_user_window]) as the cheap
+    /// range first-gate the gate-#1 translate-based copy-user validates against
+    /// ([ADR-0038][adr-0038]). `None` for kernel-mode tasks.
+    ///
+    /// [adr-0038]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0038-mmu-translate-and-user-access.md
+    task_user_windows: [Option<UserAccessWindow>; TASK_ARENA_CAPACITY],
     current: Option<TaskHandle>,
     /// Idle-task fallback slot per [ADR-0026]. Written exclusively by
     /// [`register_idle`]; read by the dispatch sites
@@ -316,6 +346,8 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
             task_states: [TaskState::Idle; TASK_ARENA_CAPACITY],
             task_handles: [None; TASK_ARENA_CAPACITY],
             task_address_space_handles: [None; TASK_ARENA_CAPACITY],
+            task_cap_tables: [None; TASK_ARENA_CAPACITY],
+            task_user_windows: [None; TASK_ARENA_CAPACITY],
             current: None,
             idle: None,
             contexts: core::array::from_fn(|_| C::TaskContext::default()),
@@ -393,7 +425,22 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
     /// user-stack access translate; the `enter_el0` trampoline installs no
     /// `TTBR0` of its own.
     ///
+    /// `cap_table` must be a valid pointer to a [`CapabilityTable`] that
+    /// outlives the task and is not aliased by a live `&mut` across any
+    /// context switch (the [ADR-0021][adr-0021] raw-pointer-bridge discipline):
+    /// the scheduler only **records** it (a binding for `syscall_entry` to
+    /// resolve the task's own capabilities through, gate #3 / T-026); the BSP
+    /// materialises a momentary `&mut` to it only across one `dispatch` call.
+    /// It is **not** dereferenced here.
+    ///
     /// [ADR-0037]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0037-el0-entry-context.md
+    /// [adr-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "EL0 task registration genuinely needs these distinct inputs \
+                  (handle, AS, user entry/SP, kernel SP_EL1, cap-table binding); \
+                  bundling into a struct would only relocate the same fields"
+    )]
     pub unsafe fn add_user_task(
         &mut self,
         cpu: &C,
@@ -402,6 +449,7 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         user_entry: usize,
         user_sp: usize,
         kernel_stack_top: *mut u8,
+        cap_table: *mut CapabilityTable,
     ) -> Result<(), SchedError> {
         let idx = handle.slot().index() as usize;
         // Gate #2 belt-and-braces: `kernel_stack_top` becomes this task's
@@ -420,6 +468,15 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         debug_assert!(
             user_sp.is_multiple_of(16),
             "add_user_task: user_sp must be 16-byte aligned (becomes SP_EL0)",
+        );
+        // `cap_table` is dereferenced by `syscall_entry` (`&mut *table_ptr`) to
+        // resolve the running task's capabilities; a null pointer would be UB on
+        // the first syscall. The # Safety contract forbids null — assert it in
+        // debug, and (at the store below) keep `None` rather than `Some(null)` so
+        // a release build degrades to fail-closed (no usable table) instead.
+        debug_assert!(
+            !cap_table.is_null(),
+            "add_user_task: cap_table must be non-null (the task's capability table)",
         );
         // SAFETY: caller guarantees the EL0-entry contract per the # Safety doc.
         // Forwarding to the BSP's init_user_context, which seeds the context's
@@ -441,7 +498,55 @@ impl<C: ContextSwitch + Cpu> Scheduler<C> {
         self.task_states[idx] = TaskState::Ready;
         self.task_handles[idx] = Some(handle);
         self.task_address_space_handles[idx] = Some(address_space_handle);
+        // Gate #3 (T-026): record the task's capability-table binding + its
+        // user-access window so `syscall_entry` resolves the *running* task's
+        // own caps + bounds its buffers per task. The window is the contiguous
+        // image+stack span `[entry_va, stack_top_va) = [user_entry, user_sp)`;
+        // `saturating_sub` yields a zero-length window if the caller violates
+        // `user_sp >= user_entry` — fail-closed (every non-zero copy then
+        // faults) rather than wrapping.
+        // Defensive store: `None` for a null pointer so `current_user_table()`
+        // yields `None` (→ fail-closed) rather than a dereferenceable `Some(null)`.
+        self.task_cap_tables[idx] = (!cap_table.is_null()).then_some(cap_table);
+        self.task_user_windows[idx] = Some(UserAccessWindow::new(
+            user_entry,
+            user_sp.saturating_sub(user_entry),
+        ));
         Ok(())
+    }
+
+    /// The running task's capability-table pointer (gate #3), or `None` if
+    /// there is no current task or it has no bound table (a kernel-mode task).
+    ///
+    /// The BSP `syscall_entry` resolves a syscall's capabilities in **this**
+    /// table; a `None` is the **fail-closed** signal — the caller must dispatch
+    /// against an empty table (every lookup → `InvalidHandle`) or short-circuit,
+    /// never fall back to an ambient table ([ADR-0014][adr-0014] per-subject
+    /// unforgeability). The returned `*mut` rides the [ADR-0021] bridge: the
+    /// caller materialises a momentary `&mut` only across one `dispatch`.
+    ///
+    /// [adr-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+    #[must_use]
+    pub fn current_user_table(&self) -> Option<*mut CapabilityTable> {
+        let idx = self.current?.slot().index() as usize;
+        self.task_cap_tables[idx]
+    }
+
+    /// The running task's [`AddressSpaceHandle`] — the translation regime the
+    /// gate-#1 per-page `Mmu::translate` resolves user pointers through. `None`
+    /// when there is no current task or the slot is unregistered.
+    #[must_use]
+    pub fn current_address_space_handle(&self) -> Option<AddressSpaceHandle> {
+        let idx = self.current?.slot().index() as usize;
+        self.task_address_space_handles[idx]
+    }
+
+    /// The running task's [`UserAccessWindow`] (the cheap range first-gate),
+    /// or `None` if there is no current task or it has no bound window.
+    #[must_use]
+    pub fn current_user_window(&self) -> Option<UserAccessWindow> {
+        let idx = self.current?.slot().index() as usize;
+        self.task_user_windows[idx]
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -1646,11 +1751,16 @@ mod tests {
         // Opaque userspace VAs — the fake records but never dereferences them.
         let user_entry = 0x0080_0000usize;
         let user_sp = 0x0080_2000usize;
+        // A capability-table the binding points at — never dereferenced here
+        // (no syscall is dispatched in this test).
+        let mut table = CapabilityTable::new();
+        let table_ptr: *mut CapabilityTable = core::ptr::addr_of_mut!(table);
 
         // SAFETY: `ktop` is one-past a 512-byte, 16-byte-aligned kernel stack
         // (AlignedStack repr); `FakeCpu::init_user_context` only records, so
         // `user_entry` / `user_sp` / `ktop` are never dereferenced and no real
-        // EL0 entry occurs.
+        // EL0 entry occurs; `table_ptr` is a valid pointer to a stack-local
+        // table the scheduler only records (gate #3).
         unsafe {
             sched
                 .add_user_task(
@@ -1660,6 +1770,7 @@ mod tests {
                     user_entry,
                     user_sp,
                     ktop,
+                    table_ptr,
                 )
                 .unwrap();
         };
@@ -1671,6 +1782,13 @@ mod tests {
             sched.task_address_space_handles[0],
             Some(BOOTSTRAP_ADDRESS_SPACE_HANDLE)
         );
+        // … and the gate-#3 bindings are recorded: the cap-table pointer + the
+        // [entry_va, stack_top_va) user-access window.
+        assert_eq!(sched.task_cap_tables[0], Some(table_ptr));
+        assert_eq!(
+            sched.task_user_windows[0],
+            Some(UserAccessWindow::new(user_entry, user_sp - user_entry))
+        );
         assert_eq!(sched.ready.len(), 1);
         // … but seeded via the EL0 first-entry path (not init_context): the
         // context carries the user entry / user SP and the kernel stack (its
@@ -1679,6 +1797,58 @@ mod tests {
         assert_eq!(sched.contexts[0].entry_addr, user_entry);
         assert_eq!(sched.contexts[0].user_sp, user_sp);
         assert_eq!(sched.contexts[0].stack_top, ktop as usize);
+    }
+
+    #[test]
+    fn current_accessors_resolve_running_task_bindings_or_none() {
+        // Gate #3 (T-026): `current_user_table` / `current_address_space_handle`
+        // / `current_user_window` resolve `self.current` → slot → the parallel
+        // arrays. `None` when no task is current (the fail-closed signal); the
+        // recorded binding once a task is the running `current`.
+        let cpu = FakeCpu::new();
+        let mut sched: Scheduler<FakeCpu> = Scheduler::new();
+        // Fresh scheduler: no current task → all None.
+        assert!(sched.current_user_table().is_none());
+        assert!(sched.current_address_space_handle().is_none());
+        assert!(sched.current_user_window().is_none());
+
+        let h = task_handle(0);
+        let mut kstack = AlignedStack::<512>::new();
+        let mut table = CapabilityTable::new();
+        let table_ptr: *mut CapabilityTable = core::ptr::addr_of_mut!(table);
+        let user_entry = 0x0080_0000usize;
+        let user_sp = 0x0080_2000usize;
+        // SAFETY: opaque VAs; `FakeCpu::init_user_context` only records; `table`
+        // is a stack-local the scheduler only stores a pointer to (never derefs
+        // here — no syscall is dispatched).
+        unsafe {
+            sched
+                .add_user_task(
+                    &cpu,
+                    h,
+                    BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    user_entry,
+                    user_sp,
+                    kstack.top(),
+                    table_ptr,
+                )
+                .unwrap();
+        }
+        // Registered (Ready) but not yet the running task → still None.
+        assert!(sched.current_user_table().is_none());
+
+        // Make it the running task (`current` is private but reachable from this
+        // child test module; the scheduler normally sets it in start/yield_now).
+        sched.current = Some(h);
+        assert_eq!(sched.current_user_table(), Some(table_ptr));
+        assert_eq!(
+            sched.current_address_space_handle(),
+            Some(BOOTSTRAP_ADDRESS_SPACE_HANDLE)
+        );
+        assert_eq!(
+            sched.current_user_window(),
+            Some(UserAccessWindow::new(user_entry, user_sp - user_entry))
+        );
     }
 
     #[test]

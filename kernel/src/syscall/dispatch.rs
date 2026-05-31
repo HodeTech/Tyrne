@@ -94,6 +94,20 @@ pub struct SyscallContext<'a, M: Mmu> {
     /// are resolved through. Sourced from the scheduler's current task in B6
     /// (gate #3 / T-026); in B5 it is the EL1 stub's bootstrap AS.
     pub task_as: &'a M::AddressSpace,
+    /// Whether a running EL0 task is current (gate #3 / T-026). The BSP sets it
+    /// `true` only when the running task's capability table, user-access window,
+    /// and (generation-checked) address space **all** resolve from the scheduler
+    /// — the same all-or-nothing unit as the data-plane context; any incomplete
+    /// binding yields `false`. The **control-plane**
+    /// syscalls (`task_yield` / `task_exit`) act on the trusted current-task
+    /// identity ([ADR-0031][adr-0031]) and consult **no** capability, so the
+    /// empty fail-closed `caller_table` cannot guard them — the dispatcher
+    /// instead rejects them with `InvalidHandle` when this is `false` (H2). A
+    /// data-plane syscall with no current task fails closed via the empty table
+    /// regardless of this flag.
+    ///
+    /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
+    pub has_current_task: bool,
 }
 
 /// Decode and execute one syscall, returning the trampoline's next action.
@@ -113,9 +127,30 @@ pub fn dispatch<M: Mmu>(ctx: &mut SyscallContext<'_, M>, args: SyscallArgs) -> S
     match number {
         SyscallNumber::Send => SyscallEffect::Resume(sys_send(ctx, args.args)),
         SyscallNumber::Recv => SyscallEffect::Resume(sys_recv(ctx, args.args)),
-        // Control-plane: act on the caller's own task; see SyscallEffect.
-        SyscallNumber::TaskYield => SyscallEffect::Reschedule,
-        SyscallNumber::TaskExit => SyscallEffect::Terminate(args.args[0]),
+        // Control-plane: act on the caller's own task. These consult no
+        // capability, so the empty fail-closed `caller_table` does not guard
+        // them — gate #3 (T-026, H2) rejects them here when no EL0 task is
+        // current (nothing to yield / exit). With a current task they return
+        // the directive the BSP applies (real `yield_now` / termination is the
+        // B6 wire-up).
+        SyscallNumber::TaskYield => {
+            if ctx.has_current_task {
+                SyscallEffect::Reschedule
+            } else {
+                SyscallEffect::Resume(SyscallReturn::error(SyscallError::from(
+                    CapError::InvalidHandle,
+                )))
+            }
+        }
+        SyscallNumber::TaskExit => {
+            if ctx.has_current_task {
+                SyscallEffect::Terminate(args.args[0])
+            } else {
+                SyscallEffect::Resume(SyscallReturn::error(SyscallError::from(
+                    CapError::InvalidHandle,
+                )))
+            }
+        }
         SyscallNumber::ConsoleWrite => SyscallEffect::Resume(sys_console_write(ctx, args.args)),
     }
 }
@@ -373,6 +408,7 @@ mod tests {
             user_window: window,
             mmu,
             task_as,
+            has_current_task: true,
         };
         dispatch(
             &mut ctx,
@@ -397,6 +433,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let effect = dispatch(
             &mut ctx,
@@ -429,6 +466,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let effect = dispatch(
             &mut ctx,
@@ -460,6 +498,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         assert_eq!(
             dispatch(&mut ctx, call(SyscallNumber::TaskYield, [0; 6])),
@@ -482,6 +521,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         assert_eq!(
             dispatch(
@@ -490,6 +530,129 @@ mod tests {
             ),
             SyscallEffect::Terminate(0x2A)
         );
+    }
+
+    // ── control-plane fail-closed (gate #3 / T-026, H2) ──────────────────────
+
+    #[test]
+    fn task_yield_with_no_current_task_fails_closed() {
+        // Control-plane consults no capability, so the empty fail-closed table
+        // cannot guard it; the dispatcher rejects task_yield with InvalidHandle
+        // when no EL0 task is current (nothing to yield) — not Reschedule.
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new();
+        let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
+            has_current_task: false,
+        };
+        let effect = dispatch(&mut ctx, call(SyscallNumber::TaskYield, [0; 6]));
+        match effect {
+            SyscallEffect::Resume(r) => assert_eq!(
+                r.status,
+                SyscallError::Cap(crate::cap::CapError::InvalidHandle).as_status()
+            ),
+            other => panic!("expected Resume(InvalidHandle), not Reschedule, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn task_exit_with_no_current_task_fails_closed() {
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new();
+        let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
+            has_current_task: false,
+        };
+        let effect = dispatch(
+            &mut ctx,
+            call(SyscallNumber::TaskExit, [0x2A, 0, 0, 0, 0, 0]),
+        );
+        match effect {
+            SyscallEffect::Resume(r) => assert_eq!(
+                r.status,
+                SyscallError::Cap(crate::cap::CapError::InvalidHandle).as_status()
+            ),
+            other => panic!("expected Resume(InvalidHandle), not Terminate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[cfg(debug_assertions)] // exercises console_write (number 5), which is debug-gated
+    fn incomplete_binding_context_fails_closed_on_both_planes() {
+        // Models the context the BSP `syscall_entry` builds on an INCOMPLETE
+        // running-task binding (any of table / window / generation-checked AS
+        // missing or stale): the empty `FAILCLOSED_TABLE` + an empty window +
+        // `has_current_task = false`. The BSP match that assembles it is
+        // no_std / no_main and not host-testable directly; this pins the
+        // dispatcher's handling of that exact context — **both** planes must
+        // fail closed in the *same* context: the data-plane `console_write` via
+        // the empty table (InvalidHandle, no output) and the control-plane
+        // `task_yield` via the `has_current_task` gate (InvalidHandle, not
+        // Reschedule). Closes the incomplete-context coverage gate #3's BSP
+        // fallback arm cannot unit-test itself (T-026 review-round).
+        let mut ep_arena = EndpointArena::default();
+        let mut queues = IpcQueues::new();
+        let mut table = CapabilityTable::new(); // empty: the FAILCLOSED_TABLE analog
+        let console = FakeConsole::new();
+        let (mmu, task_as) = empty_mmu_as();
+        let mut ctx = SyscallContext {
+            ep_arena: &mut ep_arena,
+            queues: &mut queues,
+            caller_table: &mut table,
+            console: &console,
+            user_window: UserAccessWindow::empty(),
+            mmu: &mmu,
+            task_as: &task_as,
+            has_current_task: false,
+        };
+
+        // Data-plane: console_write fails closed via the empty table (the cap
+        // gate rejects before the window / translate is ever consulted).
+        let bogus = encode_cap_handle(Some(CapHandle::from_raw(0, 0)));
+        match dispatch(
+            &mut ctx,
+            call(SyscallNumber::ConsoleWrite, [bogus, 0x40_0000, 5, 0, 0, 0]),
+        ) {
+            SyscallEffect::Resume(r) => assert_eq!(
+                r.status,
+                SyscallError::Cap(crate::cap::CapError::InvalidHandle).as_status(),
+                "data-plane console_write must fail closed on an incomplete binding"
+            ),
+            other => panic!("expected Resume(InvalidHandle), got {other:?}"),
+        }
+        assert!(
+            console.captured().is_empty(),
+            "no byte may be emitted from the incomplete-binding fallback context"
+        );
+
+        // Control-plane: task_yield fails closed via the has_current_task gate
+        // (the empty table cannot guard it — it consults no capability).
+        match dispatch(&mut ctx, call(SyscallNumber::TaskYield, [0; 6])) {
+            SyscallEffect::Resume(r) => assert_eq!(
+                r.status,
+                SyscallError::Cap(crate::cap::CapError::InvalidHandle).as_status(),
+                "control-plane task_yield must fail closed on an incomplete binding"
+            ),
+            other => panic!("expected Resume(InvalidHandle), not Reschedule, got {other:?}"),
+        }
     }
 
     // ── send / recv ──────────────────────────────────────────────────────────
@@ -516,6 +679,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         let effect = dispatch(
@@ -554,6 +718,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         let effect = dispatch(
@@ -594,6 +759,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let cap_word = encode_cap_handle(Some(ep_cap));
         // Enqueue a message via the send syscall.
@@ -664,6 +830,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let ep_word = encode_cap_handle(Some(ep_cap));
 
@@ -727,6 +894,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         // x5 = a handle naming no live slot (index far past CAP_TABLE_CAPACITY).
         let stale_xfer = encode_cap_handle(Some(CapHandle::from_raw(50, 7)));
@@ -767,6 +935,7 @@ mod tests {
             user_window: UserAccessWindow::empty(),
             mmu: &mmu,
             task_as: &task_as,
+            has_current_task: true,
         };
         let effect = dispatch(
             &mut ctx,

@@ -415,15 +415,20 @@ static EP_CAP_A: StaticCell<CapHandle> = StaticCell::new();
 /// Task B's endpoint capability handle (index into `TABLE_B`).
 static EP_CAP_B: StaticCell<CapHandle> = StaticCell::new();
 
-// ─── T-021 syscall-boundary smoke ─────────────────────────────────────────────
+// ─── Syscall-boundary fail-closed fallback table (T-026 / gate #3) ────────────
 
-/// The EL1 kernel-stub's capability table — the `caller_table` the syscall
-/// dispatcher resolves capabilities in for the B5 `SVC` smoke (see
-/// [`syscall::syscall_entry`]). In B5 the only `SVC` comes from a kernel-stub,
-/// so it has a dedicated table holding a single debug-console capability;
-/// B6 replaces this with the scheduler's current-task table once a real EL0
-/// task exists. Distinct from `TABLE_A` / `TABLE_B` (the IPC-demo tables).
-static SYSCALL_STUB_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
+/// The **empty** capability table the syscall dispatcher resolves against when
+/// [`syscall::syscall_entry`] cannot resolve a running EL0 task from the
+/// scheduler (its `current_user_table()` returns `None`) — the **fail-closed**
+/// default for gate #3 (T-026). Every cap lookup against it returns
+/// `CapError::InvalidHandle`, so a syscall issued with no running task names no
+/// capability — never an ambient table (the [ADR-0014] per-subject
+/// unforgeability holds). It is **never minted into**: a real EL0 task brings
+/// its own table, recorded in the scheduler by `add_user_task` and dereferenced
+/// by `syscall_entry`. Distinct from `TABLE_A` / `TABLE_B` (the IPC-demo tables).
+///
+/// [ADR-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
+static FAILCLOSED_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 
 /// Task kernel-object arena — global per [ADR-0016]. Although the v1 demo
 /// never reads this arena after `create_task` has returned the two
@@ -694,84 +699,62 @@ fn task_a() -> ! {
     }
 }
 
-// ─── T-021 syscall-boundary smoke ──────────────────────────────────────────────
+// ─── Syscall-boundary smoke — gate #3 fail-closed (T-026) ─────────────────────
 
-/// EL1 kernel-stub `SVC` smoke for the B5 syscall boundary ([T-021]).
+/// EL1 `SVC` smoke for the syscall boundary, demonstrating **gate #3
+/// fail-closed** ([T-026]).
 ///
-/// Issues two `SVC #0` traps **from EL1** — exercising the current-EL
-/// `VBAR_EL1 + 0x200` sync vector and the full save → decode → dispatch →
-/// `ERET` round-trip (an `SVC` issued at EL1 cannot take the lower-EL `+0x400`
-/// vector; that real-EL0 path is B6's smoke per [ADR-0030 §Simulation]):
+/// Issues two `SVC #0` traps from EL1 (the current-EL `VBAR_EL1 + 0x200` sync
+/// vector — an EL1 `SVC` cannot take the lower-EL `+0x400` path; the real-EL0
+/// round-trip is the B6 wire-up). It runs **after `SCHED` is published but
+/// before `start()`**, so `SCHED.current` is `None` — no running EL0 task. The
+/// dispatcher therefore **fails closed**: with no current task it resolves
+/// capabilities against the empty [`FAILCLOSED_TABLE`] and bounds user buffers
+/// with an empty window, so a syscall carries **no authority**:
 ///
-/// 1. **`console_write`** (number `5`) through a granted debug-console
-///    capability — the dispatcher's capability check passes, `copy_from_user`
-///    validates the buffer against the active address space, and the bytes are
-///    emitted on the serial console (the round-trip + emitted-bytes half of B5
-///    acceptance criterion #7).
-/// 2. a **reserved-invalid number** (`0`) — the panic-free error path returns
-///    `SyscallError::BadSyscallNumber` (status `0x1`) without touching any
-///    capability.
+/// 1. **`console_write`** (number `5`) → the cap (any handle) is looked up in
+///    the empty table → `SyscallError::Cap(InvalidHandle)` (status `0x102`),
+///    nothing emitted. Gate #1's per-page `Mmu::translate` boundary (T-025) is
+///    never reached — the cap gate rejects first; the positive copy path is
+///    host-tested and runs at the B6 wire-up.
+/// 2. a **reserved-invalid number** (`0`) → `SyscallError::BadSyscallNumber`
+///    (status `0x1`), panic-free, capability untouched.
 ///
-/// Runs after the IPC statics are published (the dispatcher's
-/// [`SyscallContext`][tyrne_kernel::syscall::SyscallContext] borrows
-/// `EP_ARENA` / `IPC_QUEUES`) and before `start()`. `task_yield` / `task_exit`
-/// are not driven here — their dispatcher routing is host-tested; their real
-/// EL0 semantics land in B6.
+/// Both `ERET` cleanly (the `SVC` mechanism is exercised); neither over-grants.
+/// `task_yield` / `task_exit` are not driven here — their gate-#3 control-plane
+/// fail-closed is host-tested. This supersedes the B5 "stub mints a console cap
+/// and emits a greeting" smoke: post-gate-#3 a syscall with no running task is
+/// rejected, which is the security property worth demonstrating.
 ///
-/// [T-021]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-021-syscall-dispatch.md
-/// [ADR-0030 §Simulation]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0030-syscall-abi.md
+/// [T-026]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-026-current-task-cap-table.md
 #[allow(
     clippy::cast_possible_truncation,
     reason = "Tyrne's BSP target is 64-bit aarch64; pointer/usize → u64 \
               register-word casts are lossless"
 )]
 fn syscall_boundary_smoke(console: &Pl011Uart) {
-    // Mint a debug-console capability into the kernel-stub's table.
-    //
-    // SAFETY: `SYSCALL_STUB_TABLE` lives in `.bss`; this is its single write,
-    // performed before any `SVC` issues. The momentary `&mut` for the
-    // `insert_root` drops before the trap. Audit: UNSAFE-2026-0010 (StaticCell)
-    // + UNSAFE-2026-0014 (momentary `&mut`).
-    let cons_cap = unsafe {
-        (*SYSCALL_STUB_TABLE.0.get()).write(CapabilityTable::new());
-        let table = (*SYSCALL_STUB_TABLE.0.get()).assume_init_mut();
-        table
-            .insert_root(Capability::new(
-                CapRights::CONSOLE_WRITE,
-                CapObject::DebugConsole,
-            ))
-            .expect("debug-console cap mint in empty table cannot fail")
-    };
-    let cons_cap_word = tyrne_kernel::syscall::encode_cap_handle(Some(cons_cap));
+    // `FAILCLOSED_TABLE` is initialised in core setup (see `kernel_main_high`),
+    // not here: the fail-closed fallback is a security mechanism that must be live
+    // independent of this diagnostic. This smoke only *exercises* it.
 
-    // (1) console_write via SVC: x8 = 5, x0 = cap, x1 = buffer VA, x2 = length.
-    //
-    // Gate #1 demonstration (ADR-0038 / T-025): the stub passes a **kernel**
-    // .rodata VA. The dispatcher's per-page `Mmu::translate` resolves it through
-    // the bootstrap AS — whose low-identity table maps no `USER` page — so the
-    // copy is rejected with `SyscallError::FaultAddress` and **nothing is
-    // emitted**. This is the confused-deputy defence working: even a holder of a
-    // valid debug-console cap cannot make the kernel copy a non-user (kernel) VA
-    // to the console. (A real EL0 task with a genuine USER buffer is the B6
-    // wire-up; before T-025 this same `SVC` emitted the greeting via the old
-    // identity-map deref. The mechanism is exhaustively host-tested — see the
-    // kernel `syscall::user_access` / `syscall::dispatch` tests.)
-    let kernel_buf: &[u8] = b"tyrne: (gate #1 rejects this kernel-VA buffer)\n";
-    let ptr = kernel_buf.as_ptr() as u64;
-    let len = kernel_buf.len() as u64;
+    // (1) console_write via SVC with no current task → fail-closed InvalidHandle.
+    // The cap word (`0`) and the buffer are irrelevant: with `SCHED.current ==
+    // None` the dispatcher resolves against the empty `FAILCLOSED_TABLE`, so the
+    // cap lookup rejects before the window / per-page translate is ever reached.
+    let buf: &[u8] = b"tyrne: (no current task; gate #3 fail-closed)\n";
+    let cap_word = 0u64;
     let status: u64;
-    let written: u64;
     // SAFETY: `SVC #0` traps to the EL1 current-EL sync vector (+0x200), runs
     // the panic-free dispatcher, and `ERET`s back here. x8 = number, x0..x2 =
-    // args; the handler writes x0 = status, x1 = bytes written, clobbers
-    // x0..x7, preserves x8..x30 + SP_EL0. Audit: UNSAFE-2026-0029.
+    // args; the handler writes x0 = status, clobbers x0..x7, preserves
+    // x8..x30 + SP_EL0. Audit: UNSAFE-2026-0029.
     unsafe {
         core::arch::asm!(
             "svc #0",
             in("x8") 5u64,
-            inout("x0") cons_cap_word => status,
-            inout("x1") ptr => written,
-            in("x2") len,
+            inout("x0") cap_word => status,
+            inout("x1") buf.as_ptr() as u64 => _,
+            in("x2") buf.len() as u64,
             out("x3") _,
             out("x4") _,
             out("x5") _,
@@ -800,10 +783,25 @@ fn syscall_boundary_smoke(console: &Pl011Uart) {
         );
     }
 
+    // Assert the security property, don't just print it: with no current task
+    // both syscalls MUST be rejected (non-OK status). The exact codes
+    // (InvalidHandle / BadSyscallNumber) are pinned by the host dispatcher tests;
+    // here the load-bearing check is that neither returned `OK_STATUS` — a
+    // fail-closed regression would over-grant and report OK. A failed assertion
+    // panics, so boot never reaches "all tasks complete" and the smoke fails.
+    assert!(
+        status != tyrne_kernel::syscall::OK_STATUS,
+        "gate #3: console_write with no current task must fail closed, got OK"
+    );
+    assert!(
+        bad_status != tyrne_kernel::syscall::OK_STATUS,
+        "gate #3: reserved-invalid syscall number must be rejected, got OK"
+    );
+
     let mut w = FmtWriter(console);
     let _ = writeln!(
         w,
-        "tyrne: syscall smoke ok (gate #1 rejected kernel-VA console_write: status={status:#x} bytes={written}; bad-number status={bad_status:#x})"
+        "tyrne: syscall smoke ok (gate #3 fail-closed — no current task: console_write status={status:#x}; bad-number status={bad_status:#x})"
     );
 }
 
@@ -1529,20 +1527,20 @@ extern "C" fn kernel_main_high() -> ! {
     unsafe {
         (*EP_ARENA.0.get()).write(ep_arena);
         (*IPC_QUEUES.0.get()).write(IpcQueues::new());
+        // The empty fail-closed fallback table `syscall_entry` resolves against
+        // when no EL0 task is current (gate #3 / T-026). Initialised here in core
+        // setup — alongside the other syscall statics — so the security fallback
+        // is always live and never coupled to whether the diagnostic smoke runs.
+        // INVARIANT: this write must precede `start()` (and the syscall smoke's
+        // first `SVC`), so every `syscall_entry` None-path reads an initialised
+        // table; it does, since both happen later in `kernel_main_high`. Never
+        // minted into.
+        (*FAILCLOSED_TABLE.0.get()).write(CapabilityTable::new());
         (*TABLE_A.0.get()).write(table_a);
         (*TABLE_B.0.get()).write(table_b);
         (*EP_CAP_A.0.get()).write(ep_cap_a);
         (*EP_CAP_B.0.get()).write(ep_cap_b);
     }
-
-    // ── Syscall-boundary smoke — T-021 ────────────────────────────────────────
-    //
-    // Exercise the EL0→EL1 `SVC` trap → panic-free dispatcher → `ERET`
-    // round-trip via an EL1 kernel-stub (the current-EL `+0x200` vector). Runs
-    // here, after the IPC statics the dispatcher's context borrows are live, and
-    // before `start()` hands control to the cooperative demo. The real EL0
-    // (`+0x400`) round-trip is B6's smoke.
-    syscall_boundary_smoke(console);
 
     // ── Scheduler setup ───────────────────────────────────────────────────────
 
@@ -1599,6 +1597,16 @@ extern "C" fn kernel_main_high() -> ! {
     unsafe {
         (*SCHED.0.get()).write(sched);
     }
+
+    // ── Syscall-boundary smoke — gate #3 fail-closed (T-026) ──────────────────
+    //
+    // Sequenced **after `SCHED` is published** (above) but **before `start()`**:
+    // `syscall_entry` now sources the caller's table / AS / window from
+    // `SCHED.current` (gate #3), so `SCHED` must be initialised — and `current`
+    // is `None` here (the scheduler is published but not started), which is
+    // exactly the fail-closed case this smoke demonstrates. The real EL0
+    // `+0x400` round-trip (with a running task) is the B6 wire-up.
+    syscall_boundary_smoke(console);
 
     console.write_bytes(b"tyrne: starting cooperative scheduler\n");
 
