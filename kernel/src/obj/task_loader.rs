@@ -893,9 +893,14 @@ pub enum TaskCreateError {
 /// `task_rights`, which govern *capability management* (duplicate / derive /
 /// transfer / revoke the Task cap). There is **no Task-*operation* right** in
 /// v1 — this mirrors the `CapKind::AddressSpace` kind-only model (see
-/// [`cap_map`], where the cap *kind* grants the authority).
-/// Per-operation Task rights (a future run / suspend / kill authority) are
-/// deferred to a later ADR.
+/// [`cap_map`], where the cap *kind* grants the authority). Callers should
+/// therefore pass only cap-management rights; object-operation rights
+/// (`SEND` / `RECV` / `NOTIFY` / `CONSOLE_WRITE`) are **inert** on a Task cap —
+/// no operation gates on them — and are deliberately **not** masked here (the
+/// caller chooses the rights at mint, matching the cap model's convention; a
+/// uniform Task-cap rights policy, if ever wanted, is an ADR, not a silent
+/// per-site mask). Per-operation Task rights (a future run / suspend / kill
+/// authority) are deferred to a later ADR.
 ///
 /// # Errors
 ///
@@ -937,13 +942,24 @@ pub fn task_create_from_image(
     let task_handle = create_task(task_arena, Task::new(id, as_handle))
         .map_err(|_| TaskCreateError::TaskArenaFull)?;
 
-    // 3 — install a root Task capability. On a full cap-table, roll the task
-    //     object back so no orphaned arena slot leaks (the handle was just
-    //     created, so `destroy_task` succeeds; the recovered `Task` is dropped).
+    // 3 — install a root Task capability.
     let cap = Capability::new(task_rights, CapObject::Task(task_handle));
     match table.insert_root(cap) {
         Ok(task_cap) => Ok(task_cap),
         Err(e) => {
+            // `insert_root` only ever returns `CapsExhausted` (cap/table.rs);
+            // pin that so a future widening of its contract is caught here in
+            // debug rather than silently mislabelled as `CapTableExhausted`.
+            debug_assert!(
+                matches!(e, CapError::CapsExhausted),
+                "insert_root returned a non-CapsExhausted error: {e:?}",
+            );
+            // Roll the task object back so a full cap-table leaks no arena slot.
+            // Called UNCONDITIONALLY (deliberately NOT inside `debug_assert!`,
+            // which would strip the call in release builds and leak the slot);
+            // the handle was just created by `create_task`, so `destroy_task`
+            // cannot fail (it deallocates a live, generation-matched slot and
+            // performs no reachability check — task.rs).
             let _ = destroy_task(task_arena, task_handle);
             Err(TaskCreateError::CapTableExhausted(e))
         }
@@ -1208,6 +1224,26 @@ mod tests {
             reused.slot().index(),
             0,
             "rolled-back arena slot 0 must be reused"
+        );
+    }
+
+    #[test]
+    fn task_create_from_image_rejects_when_task_arena_full() {
+        // Step 2 fails when the task arena has no free slot → TaskArenaFull,
+        // before any cap is inserted into the table.
+        let (mut table, as_cap, _mmu, _arena, _pmm, _b) = fixture(16);
+        let ash = match table.lookup(as_cap).unwrap().object() {
+            CapObject::AddressSpace(h) => h,
+            other => panic!("not an AS cap: {other:?}"),
+        };
+        let mut task_arena = TaskArena::default();
+        // Fill the task arena until create_task reports it full.
+        while create_task(&mut task_arena, Task::new(0, ash)).is_ok() {}
+        let loaded = loaded_image_with(as_cap);
+
+        assert_eq!(
+            task_create_from_image(&loaded, &mut table, &mut task_arena, 1, CapRights::empty()),
+            Err(TaskCreateError::TaskArenaFull),
         );
     }
 
