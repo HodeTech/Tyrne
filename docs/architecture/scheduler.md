@@ -70,6 +70,8 @@ stateDiagram-v2
 
 `add_task(cpu, handle, entry, stack_top)` initialises a task's context (delegates to `cpu.init_context`), enqueues the handle on `ready`, and writes `task_states[idx] = Ready` and `task_handles[idx] = Some(handle)`. The order is deliberate: the enqueue happens first so that an enqueue failure (logically impossible at present, structurally guarded against) leaves no partial registration in `task_states` or `task_handles`.
 
+`add_user_task(cpu, handle, as_handle, user_entry, user_sp, kernel_stack_top)` is the **userspace (EL0) sibling** of `add_task` (B6 / [ADR-0037](../decisions/0037-el0-entry-context.md)): same register/enqueue discipline, but it delegates to `cpu.init_user_context`, so the task's first dispatch drops to EL0 (via the BSP's `enter_el0` trampoline) instead of beginning at an EL1 `fn` entry. `kernel_stack_top` becomes the task's `SP_EL1` (a `debug_assert` pins non-null + 16-byte alignment). Shipped dormant by [T-023](../analysis/tasks/phase-b/T-023-el0-entry-context.md); the first runnable EL0 task arrives with the B6 wire-up (after the security-critical gate #1 / gate #3 close).
+
 `unblock_receiver_on(ep)` scans `task_states` for a `Blocked { on: ep }` slot and moves that single task back to `Ready` + the ready queue. The scan is `O(N)` over `TASK_ARENA_CAPACITY`, which is acceptable at the current cap of 16 (per ADR-0019). Multi-waiter wake-up is deferred to a future ADR — only one task waits per endpoint at a time in v1.
 
 ### Idle task and structural non-emptiness
@@ -85,7 +87,7 @@ Because idle is always `Ready`, every `yield_now` that would otherwise see an em
 The HAL splits "what a CPU can do" across two traits per [ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md):
 
 - `Cpu` — small, mostly-`safe` operations: current core id, IRQ disable / restore, `wait_for_interrupt`, instruction barrier.
-- `ContextSwitch` — the unsafe register save/restore primitive plus the `init_context` setup primitive. Carries an associated `TaskContext` type the BSP defines.
+- `ContextSwitch` — the unsafe register save/restore primitive plus the `init_context` (EL1 kernel-task) and `init_user_context` (EL0 userspace-task, B6) setup primitives. Carries an associated `TaskContext` type the BSP defines.
 
 The split lets the scheduler require both (`C: ContextSwitch + Cpu`) without forcing every Cpu impl to expose a context-switch primitive, and it keeps the audit-log entries for the assembly-heavy primitives confined to the `ContextSwitch` impl.
 
