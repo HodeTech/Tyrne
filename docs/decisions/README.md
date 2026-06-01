@@ -68,7 +68,7 @@ Each ADR contains:
 | 0038 | [`Mmu::translate` read-only walk + per-task user-access translation (B6 gate #1)](0038-mmu-translate-and-user-access.md) | Accepted | 2026-05-31 |
 | 0039 | [Userland build pipeline (B6 — `userland/hello` + `tyrne-user` + raw-flat embed orchestration)](0039-userland-build-pipeline.md) | Accepted | 2026-05-31 |
 
-> **Numbering gaps.** Slot **0034** is intentionally reserved, not missing: 0034 (kernel-image section permissions) is a named-but-unallocated placeholder forward-flagged in ADR-0027. No file exists for it yet; it opens when the corresponding work surfaces (the first attacker-observable EL0 execution — likely B6). (Slot **0033** (high-half migration) was filed `Proposed` on 2026-05-29 to open B6 and `Accepted` on 2026-05-30, and is no longer a gap; slots **0030**/**0031** were filed and `Accepted` on 2026-05-29 for B5.) ADR numbers are stable history and are never renumbered.
+> **Numbering gaps.** Slot **0034** is intentionally reserved, not missing: 0034 (kernel-image section permissions — `.text` RX / `.rodata` R / `.bss`+`.data` RW at 4 KiB granularity) is a named-but-unallocated placeholder forward-flagged in ADR-0027. No file exists for it yet; it was deferred at B6 closure (B6 mapped everything as a coarse 2 MiB block; the hardening was not a functional blocker for `userland/hello`) and is now a **Phase C carry-forward**. It opens with the first C-phase task whose threat model makes kernel W+X a meaningful surface. (Slot **0033** (high-half migration) was filed `Proposed` on 2026-05-29 to open B6 and `Accepted` on 2026-05-30, and is no longer a gap; slots **0030**/**0031** were filed and `Accepted` on 2026-05-29 for B5.) ADR numbers are stable history and are never renumbered.
 
 ## Creating a new ADR
 

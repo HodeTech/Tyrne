@@ -11,7 +11,9 @@ Every action a component takes is authorised by a capability it was explicitly g
 Drivers, filesystems, and network stacks live in userspace; the kernel concerns itself only with capabilities, IPC, scheduling, memory, and interrupt dispatch.
 
 The project is pre-alpha.
-The kernel boots end-to-end on QEMU `virt` aarch64 today, runs a capability-gated IPC demo, and is mid-way through the Phase B work that lifts it from a single privileged address space into per-task userspace.
+The kernel boots end-to-end on QEMU `virt` aarch64 today, runs a capability-gated IPC demo, and serves the first real userspace task in EL0 via a capability-gated syscall boundary.
+Phase B is **complete** (closed 2026-06-01) — EL1/EL0 privilege separation, the capability-gated syscall ABI, per-task address spaces, and the first real userspace binary are all done.
+Phase C (multi-core) is next.
 
 ---
 
@@ -27,7 +29,8 @@ The kernel boots end-to-end on QEMU `virt` aarch64 today, runs a capability-gate
 | Per-task `AddressSpace` kernel object | **Done** — cap-gated `cap_create_address_space` / `cap_map` / `cap_unmap`. |
 | Task loader (load half) | **Done** — `load_image` produces a `LoadedImage` describing a populated address space for a `.rodata`-resident raw-flat blob. |
 | Syscall ABI + dispatcher | **Done** — Phase B5; `SVC` trap → panic-free dispatcher → typed `SyscallError`; five-syscall v1 set; capability-gated `console_write` (debug-gated); validated copy-from/to-user. |
-| First userspace "hello" (EL0) | **Next** — Phase B6; turns `LoadedImage` into a runnable EL0 `Task` and exercises the real EL0↔EL1 round-trip. |
+| First userspace task (EL0) | **Done** — Phase B6 (closed 2026-06-01); `userland/hello` runs in its own address space, calls `console_write` through the real lower-EL `+0x400` vector, and exits via `task_exit`; per-page user-VA translation + per-task capability table in place. |
+| Multi-core + preemption | **Next** — Phase C; secondary core bring-up (PSCI), per-core state, preemptive scheduling, cross-core IPC, multi-core TLB shootdown. |
 
 The active task and its current state live in [`docs/roadmap/current.md`](docs/roadmap/current.md).
 Full phase plans are under [`docs/roadmap/phases/`](docs/roadmap/phases/).
@@ -86,15 +89,18 @@ You should see, in order (the exact frame counts and addresses are representativ
 ```text
 tyrne: hello from kernel_main
 tyrne: mmu activated
+tyrne: high-half active
 tyrne: pmm initialized (32599 frames available; 169 reserved)
 tyrne: address-space-arena ready (1 / 8 slots used; bootstrap AS root = 0x40095000)
-tyrne: image loaded (entry = 0x800000; sp = 0x802000; image bytes 8; stack bytes 4096; AS cap = idx 1)
+tyrne: image loaded (entry = 0x800000; sp = 0x802000; image bytes 117; stack bytes 4096; AS cap = idx 1)
 tyrne: timer ready (62500000 Hz, resolution 16 ns)
 tyrne: starting cooperative scheduler
 tyrne: task B — waiting for IPC
 tyrne: task A -- sending IPC
 tyrne: task B — received IPC (label=0xaaaa); replying
 tyrne: task A — received reply (label=0xbbbb); done
+hello from userspace
+tyrne: userspace task exited
 tyrne: all tasks complete
 tyrne: boot-to-end elapsed = ... ns
 ```
@@ -116,7 +122,7 @@ cargo fmt --check
 ## Architecture at a glance
 
 Three layers.
-The kernel runs at EL1; userspace will run at EL0 once the syscall ABI lands.
+The kernel runs at EL1; userspace runs at EL0 via a capability-gated `SVC` boundary.
 
 ```mermaid
 flowchart TB
@@ -127,7 +133,7 @@ flowchart TB
         HW["Hardware<br/>CPU · MMU · GIC · UART · timer · MMIO"]
         Kernel --> HAL --> BSP --> HW
     end
-    subgraph User["EL0 — Userspace (Phase B5+)"]
+    subgraph User["EL0 — Userspace"]
         Init["init task"]
         Drivers["Driver tasks<br/>(UART · block · net)"]
         Services["System services<br/>(log · fs · net · service manager)"]
