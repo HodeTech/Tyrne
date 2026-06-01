@@ -263,7 +263,7 @@ static TASK_IDLE_STACK: TaskStack = TaskStack::new();
 /// handler on this stack (the trap frame + the gate-#1 dispatch call tree); a
 /// uniform 4 KiB `TaskStack` is ample (≫ the ~272-byte frame + walk depth) and
 /// satisfies `add_user_task`'s ≥1-page / 16-byte-aligned `SP_EL1` contract.
-#[cfg(not(feature = "perf-bench"))]
+/// Reused as the EL0 bench task's `SP_EL1` under `perf-bench` (T-029 Phase 2).
 static USER_TASK_STACK: TaskStack = TaskStack::new();
 
 // ─── Global kernel state ──────────────────────────────────────────────────────
@@ -469,7 +469,8 @@ static FAILCLOSED_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 /// `console_write` against **its own** caps (gate #3 / T-026). BSP-owned; the
 /// scheduler only records the `*mut` per [ADR-0021]. Distinct from the
 /// kernel-side `BOOTSTRAP_AS_TABLE` (which holds the AS + Task management caps).
-#[cfg(not(feature = "perf-bench"))]
+/// Under `perf-bench` (T-029 Phase 2) it is the EL0 bench task's table, seeded
+/// **empty** — the bench's rejected no-op `svc` touches no capability.
 static USER_TASK_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 
 /// Task kernel-object arena — global per [ADR-0016]. Although the v1 demo

@@ -46,17 +46,19 @@
 //! [ADR-0021]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0021-raw-pointer-scheduler-ipc-bridge.md
 
 use core::fmt::Write;
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
-use tyrne_hal::{Cpu, FmtWriter, Timer};
+use tyrne_hal::{Cpu, FmtWriter, Timer, VirtAddr};
 use tyrne_kernel::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
 use tyrne_kernel::ipc::{IpcQueues, Message};
 use tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE;
 use tyrne_kernel::obj::endpoint::{create_endpoint, Endpoint, EndpointArena};
 use tyrne_kernel::obj::task::{create_task, Task, TaskArena};
+use tyrne_kernel::obj::task_loader::{load_image, task_create_from_image};
 use tyrne_kernel::sched::{
     ipc_recv_and_yield, ipc_send_and_yield, register_idle, start, yield_now, Scheduler,
 };
+use tyrne_kernel::syscall::SyscallEffect;
 
 use crate::console::Pl011Uart;
 use crate::cpu::QemuVirtCpu;
@@ -86,9 +88,62 @@ static PHASE: AtomicU8 = AtomicU8::new(PHASE_CTX);
 /// `insert_root` lands at index 0 / generation 0 — asserted in [`run`].
 const BENCH_EP_CAP: CapHandle = CapHandle::from_raw(0, 0);
 
-/// Set up the two bench tasks and start the scheduler. Never returns: after the
-/// driver prints its results it parks, so the measurement build halts (the QEMU
-/// harness captures the `tyrne: perf …` lines and stops the guest).
+// ── EL0 syscall round-trip bench (Phase 2) ───────────────────────────────────
+
+/// Timed EL0 syscall round-trips; after this many the kernel terminates the EL0
+/// bench task (see [`el0_roundtrip_tick`]) and hands off to the ctx/IPC benches.
+const N_EL0_ROUNDTRIPS: u64 = 50_000;
+/// Untimed EL0 round-trips before the timed window (steady state).
+const EL0_WARMUP: u64 = 256;
+
+/// Compile-time guard: each per-op mean divides by one of these iteration
+/// counts, so none may be zero — a future edit setting one to 0 would be a
+/// division-by-zero panic at runtime. Caught here at build time instead.
+const _: () = assert!(
+    N_CTX_ROUNDTRIPS > 0 && N_IPC_CYCLES > 0 && N_EL0_ROUNDTRIPS > 0,
+    "perf-bench iteration counts must be non-zero (mean = total / N)"
+);
+
+/// A minimal raw-flat EL0 program (entry at offset 0, [ADR-0029] format) that
+/// loops a **rejected** syscall, so the kernel can time the EL0↔EL1↔EL0
+/// round-trip from `syscall_entry` (T-029 Phase 2 / AC#4) **without** exposing
+/// `CNTVCT_EL0` to EL0. Hand-assembled aarch64:
+///
+/// ```text
+///   _start: mov x8, #0   ; D2800008 — syscall number 0 = reserved-invalid
+///   loop:   svc #0       ; D4000001 — trap to EL1 → BadSyscallNumber → Resume
+///           b   loop     ; 17FFFFFF — branch back to the svc (offset −4)
+/// ```
+///
+/// Number 0 decodes to `BadSyscallNumber` **before** any capability is touched
+/// (no cap lookup, no yield, no log), so each `svc` is the *pure* fixed
+/// round-trip overhead (trap + 272-byte frame save + decode + return) with no
+/// side effect — and the task never switches away, so `syscall_entry` sees
+/// back-to-back entries until the kernel forces termination after N.
+#[rustfmt::skip]
+static BENCH_EL0_IMAGE: [u8; 12] = [
+    0x08, 0x00, 0x80, 0xd2, // mov x8, #0
+    0x01, 0x00, 0x00, 0xd4, // svc #0
+    0xff, 0xff, 0xff, 0x17, // b .-4  (back to the svc)
+];
+
+/// Timestamp of the previous `syscall_entry` (0 = "no previous yet"). The
+/// entry-to-entry delta is one full EL0 round-trip.
+static EL0_PREV_NS: AtomicU64 = AtomicU64::new(0);
+/// Count of `syscall_entry` entries seen so far (the EL0 bench task is the only
+/// `SVC` source, so every entry is one of its round-trips).
+static EL0_ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
+/// Accumulated ns across the N timed deltas (mean = this / `N_EL0_ROUNDTRIPS`).
+static EL0_ACCUM_NS: AtomicU64 = AtomicU64::new(0);
+
+/// Set up the EL0 bench task + the two kernel bench tasks and start the
+/// scheduler. Never returns: after the driver prints its results it parks, so
+/// the measurement build halts (the QEMU harness captures the `tyrne: perf …`
+/// lines and stops the guest).
+#[allow(
+    clippy::too_many_lines,
+    reason = "linear measurement-build setup top-to-bottom for auditability — mirrors `kernel_main_high`; splitting into helpers would scatter the load→create→publish→schedule order each step depends on"
+)]
 pub fn run(cpu: &QemuVirtCpu, console: &Pl011Uart) -> ! {
     {
         let mut w = FmtWriter(console);
@@ -98,16 +153,50 @@ pub fn run(cpu: &QemuVirtCpu, console: &Pl011Uart) -> ! {
         );
     }
 
-    // Task arena + the three task handles (driver, partner, idle).
+    // Task arena.
     // SAFETY: `.bss`-resident StaticCell; single-core and the scheduler is not
     // started, so this write-once publish is unaliased. Audit: UNSAFE-2026-0001.
     unsafe {
         (*crate::TASK_ARENA.0.get()).write(TaskArena::default());
     }
-    // SAFETY: `TASK_ARENA` was just written; the momentary `&mut` is scoped to
-    // these `create_task` calls and drops before any task runs (no cross-switch
-    // borrow per [ADR-0021]). Audit: UNSAFE-2026-0014.
-    let (driver_h, partner_h, idle_h) = unsafe {
+
+    // Load the EL0 bench image into a fresh address space, reusing the
+    // bootstrap-AS loader path — PMM / MMU / AS arena / the bootstrap AS
+    // authority cap are all initialised before `kernel_main_high`'s workload
+    // fork. The image just loops a rejected `svc` (see `BENCH_EL0_IMAGE`); the
+    // kernel times consecutive `syscall_entry` entries and terminates it.
+    // SAFETY: those five statics are written before the fork (single-core, no
+    // task running); the momentary `&mut`/`&`s drop at this block's end and
+    // never cross a switch ([ADR-0021]). Audit: UNSAFE-2026-0010 +
+    // UNSAFE-2026-0014 (+ the loader's own UNSAFE-2026-0025/0026/0027 for the
+    // page-table writes / frame zero-fill / image byte-copy).
+    let loaded = unsafe {
+        let pmm = (*crate::PMM.0.get()).assume_init_mut();
+        let mmu = (*crate::MMU.0.get()).assume_init_ref();
+        let table = (*crate::BOOTSTRAP_AS_TABLE.0.get()).assume_init_mut();
+        let arena = (*crate::AS_ARENA.0.get()).assume_init_mut();
+        let parent_cap = *(*crate::BOOTSTRAP_AS_CAP.0.get()).assume_init_ref();
+        load_image(
+            &BENCH_EL0_IMAGE,
+            pmm,
+            mmu,
+            table,
+            arena,
+            parent_cap,
+            CapRights::empty(),
+            VirtAddr(crate::USERSPACE_IMAGE_BASE_VA),
+            crate::USERSPACE_STACK_PAGES,
+        )
+        .expect("perf-bench: load EL0 bench image failed")
+    };
+
+    // The three kernel task handles (driver, partner, idle) + the EL0 bench task
+    // (turned into a runnable Task via the T-024 bridge, then resolved to a
+    // `TaskHandle`).
+    // SAFETY: `TASK_ARENA` + `BOOTSTRAP_AS_TABLE` are written above; the momentary
+    // `&mut`s are scoped to this block and drop before any task runs (no
+    // cross-switch borrow per [ADR-0021]). Audit: UNSAFE-2026-0010 + UNSAFE-2026-0014.
+    let (driver_h, partner_h, idle_h, el0_task_h, el0_as_h) = unsafe {
         let arena = &mut *crate::TASK_ARENA.as_mut_ptr();
         let d = create_task(arena, Task::new(0, BOOTSTRAP_ADDRESS_SPACE_HANDLE))
             .expect("perf-bench: create driver task failed");
@@ -115,7 +204,35 @@ pub fn run(cpu: &QemuVirtCpu, console: &Pl011Uart) -> ! {
             .expect("perf-bench: create partner task failed");
         let i = create_task(arena, Task::new(2, BOOTSTRAP_ADDRESS_SPACE_HANDLE))
             .expect("perf-bench: create idle task failed");
-        (d, p, i)
+
+        let bootstrap_table = (*crate::BOOTSTRAP_AS_TABLE.0.get()).assume_init_mut();
+        let el0_as_h = {
+            let cap = bootstrap_table
+                .lookup(loaded.as_cap)
+                .expect("perf-bench: loaded AS cap is stale");
+            match cap.object() {
+                CapObject::AddressSpace(h) => h,
+                _ => panic!("perf-bench: loaded.as_cap is not an AddressSpace cap"),
+            }
+        };
+        let task_cap = task_create_from_image(
+            &loaded,
+            bootstrap_table,
+            arena,
+            3,
+            CapRights::DUPLICATE | CapRights::DERIVE | CapRights::REVOKE,
+        )
+        .expect("perf-bench: task_create_from_image failed");
+        let el0_task_h = {
+            let cap = bootstrap_table
+                .lookup(task_cap)
+                .expect("perf-bench: minted Task cap is stale");
+            match cap.object() {
+                CapObject::Task(h) => h,
+                _ => panic!("perf-bench: task_create_from_image returned a non-Task cap"),
+            }
+        };
+        (d, p, i, el0_task_h, el0_as_h)
     };
 
     // One endpoint: the driver holds SEND, the partner holds RECV. Least
@@ -139,25 +256,43 @@ pub fn run(cpu: &QemuVirtCpu, console: &Pl011Uart) -> ! {
         "perf-bench: endpoint caps must resolve to (index 0, generation 0)"
     );
 
-    // Publish the IPC state + the two tables before the scheduler starts.
+    // Publish the IPC state + the two tables + the EL0 task's own (empty) table.
     // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
     unsafe {
         (*crate::EP_ARENA.0.get()).write(ep_arena);
         (*crate::IPC_QUEUES.0.get()).write(IpcQueues::new());
         (*crate::TABLE_A.0.get()).write(table_d);
         (*crate::TABLE_B.0.get()).write(table_p);
+        // Gate #3 sources this for the EL0 bench task; left empty — the rejected
+        // no-op `svc` (number 0 → BadSyscallNumber) looks up no capability.
+        (*crate::USER_TASK_TABLE.0.get()).write(CapabilityTable::new());
     }
 
-    // Scheduler: the driver is added first so it runs first and drives the
-    // sequence; the partner cooperates; idle sits in the dispatcher fallback
-    // slot ([ADR-0026]) and is never reached while either task is Ready.
+    // Scheduler: the EL0 bench task is added FIRST so `start` dispatches it
+    // first; it monopolises the CPU (its rejected `svc` is `Resume`, never
+    // yields) until the kernel terminates it after N round-trips, which then
+    // dispatches the driver — so the ctx/IPC benches run next. Idle sits in the
+    // dispatcher fallback slot ([ADR-0026]).
     let mut sched = Scheduler::<QemuVirtCpu>::new();
-    // SAFETY: `add_task` / `register_idle` call `init_context`; each stack top
-    // is 16-byte aligned (TaskStack repr) and outlives the run; entries are
-    // `fn() -> !`. The momentary `&mut Scheduler` does not cross a switch
-    // ([ADR-0021]). Audit: UNSAFE-2026-0009 + UNSAFE-2026-0011 (`top()`) +
-    // UNSAFE-2026-0014.
+    // SAFETY: `add_user_task` / `add_task` / `register_idle` call
+    // `init_user_context` / `init_context`; each stack top is 16-byte aligned
+    // (TaskStack repr) and outlives the run; kernel entries are `fn() -> !`; the
+    // EL0 task's `user_sp` (loader page-aligned) + `kernel_stack_top` are
+    // 16-byte-aligned + non-null (debug-asserted by `add_user_task`). No `&mut
+    // Scheduler` crosses a switch ([ADR-0021]). Audit: UNSAFE-2026-0009 +
+    // UNSAFE-2026-0011 (`top()`) + UNSAFE-2026-0014 + UNSAFE-2026-0032 (`enter_el0`).
     unsafe {
+        sched
+            .add_user_task(
+                cpu,
+                el0_task_h,
+                el0_as_h,
+                loaded.entry_va.0,
+                loaded.stack_top_va.0,
+                crate::USER_TASK_STACK.top(),
+                crate::USER_TASK_TABLE.as_mut_ptr(),
+            )
+            .expect("perf-bench: add EL0 bench task failed");
         sched
             .add_task(
                 cpu,
@@ -194,7 +329,7 @@ pub fn run(cpu: &QemuVirtCpu, console: &Pl011Uart) -> ! {
         let mut w = FmtWriter(console);
         let _ = writeln!(
             w,
-            "tyrne: perf-bench starting scheduler (ctx-switch + IPC, N={N_CTX_ROUNDTRIPS}/{N_IPC_CYCLES}, warmup={WARMUP})"
+            "tyrne: perf-bench starting scheduler (el0-roundtrip + ctx-switch + IPC, N={N_EL0_ROUNDTRIPS}/{N_CTX_ROUNDTRIPS}/{N_IPC_CYCLES}, warmup={EL0_WARMUP}/{WARMUP})"
         );
     }
 
@@ -357,4 +492,51 @@ fn partner_recv(cpu: &QemuVirtCpu) {
         )
         .expect("perf-bench: ipc_recv_and_yield failed");
     }
+}
+
+/// Per-entry hook called by `syscall_entry` (feature-gated) for the EL0 bench
+/// task — the only `SVC` source in this build, so every entry is one of its
+/// round-trips. Times the entry-to-entry delta (one full EL0↔EL1↔EL0 round-trip,
+/// hook-to-hook), skips the first delta + `EL0_WARMUP`, accumulates the next
+/// `N_EL0_ROUNDTRIPS`, then prints the mean and returns
+/// [`SyscallEffect::Terminate`] — which ends the EL0 bench (`task_exit_current`)
+/// and hands off to the driver/partner ctx+IPC benches. Otherwise returns
+/// `effect` unchanged (the rejected `svc`'s `Resume`), so the EL0 task loops.
+///
+/// `Relaxed` atomics: single-core and `syscall_entry` runs with IRQs masked, so
+/// entries are strictly serial — there is no concurrent access to order.
+pub fn el0_roundtrip_tick(effect: SyscallEffect) -> SyscallEffect {
+    // SAFETY: `CPU` / `CONSOLE` are initialised before `start()`; single-core
+    // cooperative, IRQs masked in the SVC handler. Audit: UNSAFE-2026-0010.
+    let cpu = unsafe { (*crate::CPU.0.get()).assume_init_ref() };
+    let now = cpu.now_ns();
+    let prev = EL0_PREV_NS.swap(now, Ordering::Relaxed);
+    let n = EL0_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
+
+    // n == 0: first entry — no previous timestamp, so no delta yet.
+    // 1..=EL0_WARMUP: warm-up deltas (skipped).
+    // EL0_WARMUP+1 ..= EL0_WARMUP+N: the N timed deltas.
+    if n == 0 || n <= EL0_WARMUP {
+        return effect;
+    }
+    EL0_ACCUM_NS.fetch_add(now.saturating_sub(prev), Ordering::Relaxed);
+    // `>=` (not `==`) so the bench still terminates if `n` ever overshoots the
+    // target — defensive against a future preemptive/SMP `syscall_entry` where
+    // entries might not increment strictly by one. Serial today, so it fires at
+    // exactly `EL0_WARMUP + N_EL0_ROUNDTRIPS` (N timed deltas accumulated).
+    if n >= EL0_WARMUP + N_EL0_ROUNDTRIPS {
+        let total = EL0_ACCUM_NS.load(Ordering::Relaxed);
+        // SAFETY: as above — `CONSOLE` initialised before `start()`. UNSAFE-2026-0010.
+        let console = unsafe { (*crate::CONSOLE.0.get()).assume_init_ref() };
+        let mut w = FmtWriter(console);
+        let _ = writeln!(
+            w,
+            "tyrne: perf el0 syscall round-trip = {} ns/syscall (kernel-side, hook-to-hook; rejected no-op svc; N={N_EL0_ROUNDTRIPS}, {total} ns total)",
+            total / N_EL0_ROUNDTRIPS
+        );
+        // End the EL0 bench task; `syscall_entry`'s Terminate arm switches to the
+        // next ready task (the driver) → the ctx/IPC benches run next.
+        return SyscallEffect::Terminate(0);
+    }
+    effect
 }
