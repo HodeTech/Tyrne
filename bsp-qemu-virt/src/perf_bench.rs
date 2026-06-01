@@ -48,7 +48,7 @@
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU8, Ordering};
 
-use tyrne_hal::{FmtWriter, Timer};
+use tyrne_hal::{Cpu, FmtWriter, Timer};
 use tyrne_kernel::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
 use tyrne_kernel::ipc::{IpcQueues, Message};
 use tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE;
@@ -75,9 +75,10 @@ const PHASE_DONE: u8 = 2;
 
 /// The current bench phase. The driver advances it; the partner reads it each
 /// loop iteration to switch between "bounce a `yield_now`" and "receive a
-/// message". Single-core cooperative — `SeqCst` is conservative (a plain
-/// `Relaxed` load/store would suffice, since the only writer/reader interleave
-/// is across a cooperative switch), kept strict so the intent is unambiguous.
+/// message". `Relaxed` is sufficient: this is single-core cooperative, and the
+/// only writer→reader handoff is across a cooperative context switch, whose
+/// register save/restore is a full barrier — there is no cross-core race to
+/// order.
 static PHASE: AtomicU8 = AtomicU8::new(PHASE_CTX);
 
 /// The bench endpoint cap handle in each task's own table. Both `TABLE_A`
@@ -239,7 +240,7 @@ fn bench_driver() -> ! {
     }
 
     // ── IPC send→recv cycle micro-bench ───────────────────────────────────────
-    PHASE.store(PHASE_IPC, Ordering::SeqCst);
+    PHASE.store(PHASE_IPC, Ordering::Relaxed);
     // Prime: yield once so the partner observes PHASE_IPC, enters its receive
     // loop, and blocks (RecvWaiting) — so the first timed send is Delivered.
     driver_yield(cpu);
@@ -261,13 +262,17 @@ fn bench_driver() -> ! {
     }
 
     // ── Done — park ───────────────────────────────────────────────────────────
-    PHASE.store(PHASE_DONE, Ordering::SeqCst);
+    PHASE.store(PHASE_DONE, Ordering::Relaxed);
     {
         let mut w = FmtWriter(console);
         let _ = writeln!(w, "tyrne: perf-bench complete");
     }
+    // Park in low-power WFI rather than a busy-spin: the measurement is done and
+    // the kernel never exits on its own (the harness stops the guest). IRQs are
+    // masked and no IRQ source is enabled in this build, so WFI sleeps until
+    // QEMU is killed — no host-CPU spin. Mirrors `idle_entry`'s park.
     loop {
-        core::hint::spin_loop();
+        cpu.wait_for_interrupt();
     }
 }
 
@@ -278,10 +283,13 @@ fn bench_partner() -> ! {
     // Audit: UNSAFE-2026-0010.
     let cpu = unsafe { (*crate::CPU.0.get()).assume_init_ref() };
     loop {
-        match PHASE.load(Ordering::SeqCst) {
+        match PHASE.load(Ordering::Relaxed) {
             PHASE_CTX => driver_yield(cpu),
             PHASE_IPC => partner_recv(cpu),
-            _ => core::hint::spin_loop(),
+            // Done — low-power WFI park (see `bench_driver`). In practice the
+            // partner is blocked in its last `ipc_recv_and_yield` when the
+            // driver finishes, so this arm is a defensive park, not the hot path.
+            _ => cpu.wait_for_interrupt(),
         }
     }
 }
