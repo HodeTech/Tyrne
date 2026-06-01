@@ -241,11 +241,19 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
             // Audit: UNSAFE-2026-0008 + UNSAFE-2026-0014 + UNSAFE-2026-0029.
             unsafe {
                 let cpu = (*crate::CPU.0.get()).assume_init_ref();
-                // Err is only `NoCurrentTask` (precluded here); resume EL0 Ok.
-                let _ = tyrne_kernel::sched::yield_now(
+                let res = tyrne_kernel::sched::yield_now(
                     crate::SCHED.as_mut_ptr(),
                     cpu,
                     crate::activate_address_space,
+                );
+                // `yield_now`'s only `Err` is `NoCurrentTask`, which gate #3
+                // precludes here (this arm is reached only with a current task).
+                // Assert it so a broken invariant surfaces in debug instead of
+                // being masked by the `OK_STATUS` below. task_yield "always
+                // succeeds in v1" (ADR-0031), so EL0 still resumes Ok.
+                debug_assert!(
+                    res.is_ok(),
+                    "task_yield: yield_now failed unexpectedly (NoCurrentTask should be precluded by gate #3): {res:?}"
                 );
                 (*frame).x0_x1[0] = tyrne_kernel::syscall::OK_STATUS;
             }
