@@ -112,11 +112,19 @@ pub struct SyscallContext<'a, M: Mmu> {
 
 /// Decode and execute one syscall, returning the trampoline's next action.
 ///
-/// **Panic-free on every input.** An unrecognised number (including `0` and the
-/// debug-gated `console_write` in release) yields
+/// **Panic-free on every syscall input.** An unrecognised number (including `0`
+/// and the debug-gated `console_write` in release) yields
 /// [`SyscallError::BadSyscallNumber`]; every capability / pointer failure yields
 /// a typed [`SyscallError`] as a value. No register-supplied value can drive
 /// this function to `panic!` / `unwrap` / `expect`.
+///
+/// Scope: this property is **syscall-input-scoped** — it covers the
+/// dispatcher's response to the register frame of an `SVC`. It is distinct from
+/// EL0 **execution-time faults**: a non-`SVC` synchronous fault (illegal
+/// instruction, unmapped deref by running EL0 code) is *not* handled here and in
+/// v1 routes to the kernel panic handler — a denial-of-self (the faulting task
+/// harms only itself), not an escalation. Containing such faults is the deferred
+/// K3-4 item.
 #[must_use]
 pub fn dispatch<M: Mmu>(ctx: &mut SyscallContext<'_, M>, args: SyscallArgs) -> SyscallEffect {
     let Some(number) = SyscallNumber::decode(args.number) else {
