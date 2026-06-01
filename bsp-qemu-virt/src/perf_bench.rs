@@ -96,6 +96,14 @@ const N_EL0_ROUNDTRIPS: u64 = 50_000;
 /// Untimed EL0 round-trips before the timed window (steady state).
 const EL0_WARMUP: u64 = 256;
 
+/// Compile-time guard: each per-op mean divides by one of these iteration
+/// counts, so none may be zero — a future edit setting one to 0 would be a
+/// division-by-zero panic at runtime. Caught here at build time instead.
+const _: () = assert!(
+    N_CTX_ROUNDTRIPS > 0 && N_IPC_CYCLES > 0 && N_EL0_ROUNDTRIPS > 0,
+    "perf-bench iteration counts must be non-zero (mean = total / N)"
+);
+
 /// A minimal raw-flat EL0 program (entry at offset 0, [ADR-0029] format) that
 /// loops a **rejected** syscall, so the kernel can time the EL0↔EL1↔EL0
 /// round-trip from `syscall_entry` (T-029 Phase 2 / AC#4) **without** exposing
@@ -512,7 +520,11 @@ pub fn el0_roundtrip_tick(effect: SyscallEffect) -> SyscallEffect {
         return effect;
     }
     EL0_ACCUM_NS.fetch_add(now.saturating_sub(prev), Ordering::Relaxed);
-    if n == EL0_WARMUP + N_EL0_ROUNDTRIPS {
+    // `>=` (not `==`) so the bench still terminates if `n` ever overshoots the
+    // target — defensive against a future preemptive/SMP `syscall_entry` where
+    // entries might not increment strictly by one. Serial today, so it fires at
+    // exactly `EL0_WARMUP + N_EL0_ROUNDTRIPS` (N timed deltas accumulated).
+    if n >= EL0_WARMUP + N_EL0_ROUNDTRIPS {
         let total = EL0_ACCUM_NS.load(Ordering::Relaxed);
         // SAFETY: as above — `CONSOLE` initialised before `start()`. UNSAFE-2026-0010.
         let console = unsafe { (*crate::CONSOLE.0.get()).assume_init_ref() };

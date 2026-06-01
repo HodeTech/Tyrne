@@ -1,7 +1,7 @@
 # T-029 — feature-gated micro-bench (EL0 round-trip / IPC / context-switch)
 
 - **Phase:** B (perf instrumentation; follow-up to the [B6 closure perf baseline](../../reviews/performance-optimization-reviews/2026-06-01-B6-closure.md))
-- **Status:** Both phases implemented (Phase 1 ctx-switch + IPC merged via PR #44; Phase 2 EL0 syscall round-trip in review). All acceptance criteria met. Split into two phases per the maintainer (measure-then-halt build; methodical pace).
+- **Status:** **Phase 1 (context-switch + IPC) — Done** (merged via PR #44). **Phase 2 (EL0 syscall round-trip) — In Review** (PR #45). All acceptance criteria are implemented and pass their gates; AC#4/#6 close on Phase 2 merge. Split into two phases per the maintainer (measure-then-halt build; methodical pace).
 - **Created:** 2026-06-01
 - **Author:** @cemililik (+ Claude Opus 4.8 agent)
 - **Dependencies:** the timer ([ADR-0010](../../../decisions/0010-timer-trait.md) — `Cpu::now_ns` / `CNTVCT_EL0`); the scheduler (`yield_now` / `context_switch`), IPC (`ipc_send`/`ipc_recv`), and the EL0 syscall path ([T-028](T-028-el0-userspace-wireup.md)).
