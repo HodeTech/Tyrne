@@ -16,6 +16,13 @@ path = "src/main.rs"
 tyrne-hal = { path = "../hal" }
 tyrne-kernel = { path = "../kernel" }
 
+[features]
+# Off by default. Turns the BSP into a MEASUREMENT BUILD (T-029): instead of the
+# cooperative IPC demo + the first EL0 task, the kernel runs the context-switch
+# and IPC micro-benches (src/perf_bench.rs), prints the per-op ns, and parks.
+# With the feature off the kernel binary is byte-identical to before T-029.
+perf-bench = []
+
 # Inherits the workspace `[lints]` table, which sets the deny-heavy posture
 # the BSP's `unsafe`-audit discipline relies on — notably
 # `clippy::undocumented_unsafe_blocks` and `clippy::missing_safety_doc`

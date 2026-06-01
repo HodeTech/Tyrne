@@ -24,6 +24,20 @@
 // Binary crate: `pub` items serve the linker (`#[no_mangle]`) rather than
 // external consumers; `unreachable_pub` is therefore expected throughout.
 #![allow(unreachable_pub, reason = "binary crate; pub items are for the linker")]
+// Under the `perf-bench` MEASUREMENT BUILD (T-029) the production workload —
+// the cooperative demo, the task loader, GIC IRQ setup, the EL0 task — is
+// compiled out (`kernel_main_high`'s `#[cfg]` split), so its support code,
+// constants, and imports are intentionally unused. This allow is scoped to the
+// feature via `cfg_attr` and therefore never affects the production
+// (feature-off) build, whose dead-code posture stays fully `-D warnings`.
+#![cfg_attr(
+    feature = "perf-bench",
+    allow(
+        dead_code,
+        unused_imports,
+        reason = "measurement build compiles out the production workload"
+    )
+)]
 
 use core::arch::global_asm;
 use core::cell::UnsafeCell;
@@ -51,6 +65,11 @@ mod gic;
 mod mmu;
 mod mmu_bootstrap;
 mod syscall;
+
+/// Feature-gated perf micro-bench (T-029). Compiled in only under `perf-bench`,
+/// which turns the BSP into a measurement build (see [`perf_bench`]).
+#[cfg(feature = "perf-bench")]
+mod perf_bench;
 
 use console::Pl011Uart;
 use cpu::QemuVirtCpu;
@@ -244,6 +263,7 @@ static TASK_IDLE_STACK: TaskStack = TaskStack::new();
 /// handler on this stack (the trap frame + the gate-#1 dispatch call tree); a
 /// uniform 4 KiB `TaskStack` is ample (≫ the ~272-byte frame + walk depth) and
 /// satisfies `add_user_task`'s ≥1-page / 16-byte-aligned `SP_EL1` contract.
+#[cfg(not(feature = "perf-bench"))]
 static USER_TASK_STACK: TaskStack = TaskStack::new();
 
 // ─── Global kernel state ──────────────────────────────────────────────────────
@@ -420,9 +440,11 @@ static TABLE_A: StaticCell<CapabilityTable> = StaticCell::new();
 static TABLE_B: StaticCell<CapabilityTable> = StaticCell::new();
 
 /// Task A's endpoint capability handle (index into `TABLE_A`).
+#[cfg(not(feature = "perf-bench"))]
 static EP_CAP_A: StaticCell<CapHandle> = StaticCell::new();
 
 /// Task B's endpoint capability handle (index into `TABLE_B`).
+#[cfg(not(feature = "perf-bench"))]
 static EP_CAP_B: StaticCell<CapHandle> = StaticCell::new();
 
 // ─── Syscall-boundary fail-closed fallback table (T-026 / gate #3) ────────────
@@ -447,6 +469,7 @@ static FAILCLOSED_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 /// `console_write` against **its own** caps (gate #3 / T-026). BSP-owned; the
 /// scheduler only records the `*mut` per [ADR-0021]. Distinct from the
 /// kernel-side `BOOTSTRAP_AS_TABLE` (which holds the AS + Task management caps).
+#[cfg(not(feature = "perf-bench"))]
 static USER_TASK_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 
 /// Task kernel-object arena — global per [ADR-0016]. Although the v1 demo
@@ -531,6 +554,7 @@ fn idle_entry() -> ! {
 /// `ipc_recv_and_yield` picks up the reply without blocking and runs to its
 /// own spin loop. The tail-end `loop { spin_loop() }` therefore satisfies the
 /// `fn() -> !` return type but is structurally unreachable.
+#[cfg(not(feature = "perf-bench"))]
 fn task_b() -> ! {
     // SAFETY: CONSOLE is fully initialised in `kernel_entry` before `start()`;
     // single-core cooperative scheduling prevents concurrent access.
@@ -631,6 +655,7 @@ fn task_b() -> ! {
 
 /// IPC demo — initiator side. Sends a message to Task B, then waits for
 /// the reply. On receiving the reply, prints the Phase A completion banner.
+#[cfg(not(feature = "perf-bench"))]
 fn task_a() -> ! {
     // SAFETY: CONSOLE initialised in kernel_entry; single-core cooperative.
     // Audit: UNSAFE-2026-0010.
@@ -1196,431 +1221,442 @@ extern "C" fn kernel_main_high() -> ! {
         );
     }
 
-    // ── Task loader smoke — T-019 / ADR-0029 ──────────────────────────────────
-    //
-    // First runtime exerciser of the loader half of B4: load the
-    // embedded raw-flat userspace placeholder blob into a fresh
-    // address space and print a one-line metadata banner. **Does NOT
-    // execute the loaded image** — runnability gates on B5/B6 per
-    // phase-b §B4 §Revision-notes. This block is the first post-
-    // bootstrap caller of `cap_create_address_space` + `cap_map`, so
-    // it exercises UNSAFE-2026-0025 (page-table descriptor writes)
-    // and UNSAFE-2026-0026 (PMM frame zero-fill) for real, and is
-    // the introducing site for UNSAFE-2026-0027 (the loader's
-    // copy_nonoverlapping byte-copy).
-    //
-    // SAFETY:
-    // **Why unsafe is required.** The block materialises momentary
-    // `&mut`/`&` references to the five write-once static cells
-    // `PMM` / `MMU` / `AS_ARENA` / `BOOTSTRAP_AS_TABLE` /
-    // `BOOTSTRAP_AS_CAP` via `assume_init_{mut,ref}` on
-    // `MaybeUninit<T>`. The compiler cannot prove these cells are
-    // already initialised at this point, nor that no concurrent peer
-    // holds an alias — that reasoning lives in the BSP boot flow's
-    // initialisation order and the v1 single-core cooperative model.
-    //
-    // **Invariants upheld.**
-    // (1) **Initialisation order.** All five cells are written exactly
-    //     once earlier in `kernel_entry`, before this block runs:
-    //     `PMM` (post-`mmu_bootstrap` PMM-init step); `MMU` and
-    //     `AS_ARENA` (T-018 AS-arena init step); `BOOTSTRAP_AS_TABLE`
-    //     and `BOOTSTRAP_AS_CAP` (bootstrap-AS-cap mint step). Each
-    //     `assume_init_*` therefore satisfies `MaybeUninit`'s
-    //     initialised-payload contract.
-    // (2) **No concurrent aliasing.** v1 is single-core + cooperative
-    //     and the scheduler has not been started yet (`SCHED` is not
-    //     written and `start()` not invoked until far below this
-    //     block), so no peer task or interrupt handler can observe
-    //     the cells while this block runs.
-    // (3) **Scope-limited &mut.** The four `&mut`s (`pmm`, `table`,
-    //     `arena`, plus the `&` for `mmu` and the by-value copy for
-    //     `parent_cap`) are local `let` bindings inside the
-    //     `unsafe { ... }` expression. They drop at the closing
-    //     brace and do **not** cross any cooperative switch — the
-    //     borrow lifetimes are bounded by the single `load_image`
-    //     call inside this same block per ADR-0021's no-`&mut`-
-    //     across-switch discipline.
-    // (4) **Audit IDs.** Pattern is covered by UNSAFE-2026-0010
-    //     (`StaticCell`'s `Sync` marker + write-once contract) and
-    //     UNSAFE-2026-0014 (momentary `&mut` to just-initialised
-    //     state across the cooperative-switch boundary).
-    //
-    // **Why safer alternatives were rejected.** A `Box<Mutex<T>>` /
-    // `RwLock<T>` would require either a heap allocator (v1's
-    // bare-metal kernel has none) or a spin lock that is itself
-    // `unsafe` to construct + adds boot-time overhead with no
-    // soundness win under single-core cooperative semantics.
-    // `OnceCell` / `LazyCell` from `core` require a constructor
-    // closure invoked at access time, which cannot express the
-    // boot-flow ordering constraints this block depends on (PMM
-    // must be initialised before MMU before AS arena before
-    // cap-table). The `StaticCell` + write-once pattern is the
-    // minimal `Sync` shape that matches the actual boot semantics;
-    // every access path is `unsafe` so the audit log can name
-    // exactly which invariants each call site relies on.
-    let loaded = unsafe {
-        let pmm = (*PMM.0.get()).assume_init_mut();
-        let mmu = (*MMU.0.get()).assume_init_ref();
-        let table = (*BOOTSTRAP_AS_TABLE.0.get()).assume_init_mut();
-        let arena = (*AS_ARENA.0.get()).assume_init_mut();
-        let parent_cap = *(*BOOTSTRAP_AS_CAP.0.get()).assume_init_ref();
-        // `new_rights = CapRights::empty()` is intentional in v1: the
-        // address-space cap-rights model is **kind-only** today, not
-        // per-operation. `resolve_address_space_cap`'s doc-comment
-        // (`kernel/src/mm/address_space.rs`) records the v1 contract
-        // — "this helper checks the cap *kind* only — not the specific
-        // rights bits; per-operation rights (`MAP`, `UNMAP`, `ACTIVATE`)
-        // are deferred to B5+ and will require an ADR". The
-        // `CapRights` enum (`kernel/src/cap/rights.rs`) accordingly
-        // exposes `DUPLICATE / DERIVE / REVOKE / TRANSFER / SEND / RECV /
-        // NOTIFY` only — no `MAP` / `UNMAP` bit exists to pass here.
-        // When the future ADR introduces them, this call site updates
-        // to `CapRights::MAP | CapRights::UNMAP` (the minimum set the
-        // loader exercises on the new cap: `cap_map` for installs +
-        // `cap_unmap` for rollback); the change is purely additive at
-        // this site.
-        load_image(
-            USERSPACE_IMAGE,
-            pmm,
-            mmu,
-            table,
-            arena,
-            parent_cap,
-            CapRights::empty(),
-            VirtAddr(USERSPACE_IMAGE_BASE_VA),
-            USERSPACE_STACK_PAGES,
-        )
-        .expect("task_loader::load_image failed on BSP smoke")
-    };
+    // ── Workload select (T-029): cooperative demo, OR the perf micro-bench ────
+    // With `perf-bench` (off by default) this is a MEASUREMENT BUILD — it runs
+    // the context-switch + IPC micro-benches and parks; the entire cooperative
+    // demo + EL0 task below is compiled out (the `#[cfg(not(...))]` block), so
+    // the production kernel (feature off) is byte-identical to before T-029.
+    #[cfg(feature = "perf-bench")]
+    perf_bench::run(cpu, console);
 
-    // `loaded` is consumed by the EL0 task wire-up below (T-028): it is turned
-    // into a runnable Task (`task_create_from_image`) + scheduled
-    // (`add_user_task`) after `TASK_ARENA` is published. (B4/B5 only printed +
-    // discarded it; B6 runs it.)
-
-    // ── GIC init + DAIF unmask — T-012 (now post-MMU) ─────────────────────────
-    //
-    // Sequence (per docs/architecture/exceptions.md §"Implementation map"):
-    //   1. Construct + init the GIC v2 controller. `init` disables every
-    //      SPI, sets default priorities, routes SPIs to CPU 0, then
-    //      enables the distributor + CPU interface. No IRQ source is
-    //      enabled at this point — `enable(IrqNumber)` is a separate call.
-    //      MMIO writes go through the device-nGnRnE mapping installed
-    //      by `mmu_bootstrap`.
-    //   2. Unmask DAIF.I (clear the I bit only — D, A, F stay masked).
-    //      With nothing enabled at the GIC, this is a no-op for IRQ
-    //      delivery; future `enable` calls will deliver IRQs through the
-    //      now-installed vector table.
-
-    // SAFETY: QEMU virt's GICv2 distributor + CPU interface live at
-    // their well-known MMIO bases (per ADR-0011 references and the
-    // QemuVirtGic module-level docs); single-core v1 means no
-    // concurrent writer exists. The construction itself does no MMIO.
-    // Audit: UNSAFE-2026-0019.
-    let gic = unsafe {
-        QemuVirtGic::new(
-            tyrne_hal::phys_to_kernel_va(QEMU_VIRT_GIC_DISTRIBUTOR_BASE),
-            tyrne_hal::phys_to_kernel_va(QEMU_VIRT_GIC_CPU_INTERFACE_BASE),
-        )
-    };
-    // SAFETY: single-core; no concurrent writer to GIC static yet.
-    // Audit: UNSAFE-2026-0001 (StaticCell pattern) + UNSAFE-2026-0019.
-    unsafe { (*GIC.0.get()).write(gic) };
-
-    // SAFETY: GIC was just published. `init` performs the boot-time
-    // MMIO programming sequence per its doc; DAIF still masked, so no
-    // IRQ can fire mid-init. Audit: UNSAFE-2026-0019.
-    unsafe {
-        let gic_ref = (*GIC.0.get()).assume_init_ref();
-        gic_ref.init();
-    }
-
-    // SAFETY: With the vector table installed and the GIC initialised
-    // (but no IRQ enabled at the GIC), unmasking DAIF.I is safe — no
-    // IRQ source can fire until a later `gic.enable(...)` call. The
-    // other DAIF bits (D, A, F) stay masked.
-    //
-    // `MSR DAIFClr, #0x2` clears the I bit specifically (bit value
-    // matches PSTATE.DAIF[1]; cf. ARM ARM §C5.2.7). `options(nostack,
-    // nomem)` is correct.
-    // Audit: UNSAFE-2026-0020.
-    unsafe {
-        core::arch::asm!("msr daifclr, #0x2", options(nostack, nomem),);
-    }
-
-    // ── Timer banner — T-009 (now post-MMU) ──────────────────────────────────
-    //
-    // The CPU's Timer impl is live the moment `QemuVirtCpu::new` returned
-    // (it sampled CNTFRQ_EL0 and cached the resolution). Print the timer
-    // parameters so QEMU output makes the measurement visible. The UART
-    // write goes through the device-nGnRnE mapping installed by
-    // `mmu_bootstrap`. The boot-to-end baseline (`BOOT_NS`) was captured just
-    // above — *post* high-half migration — so it measures the high-half steady
-    // state and therefore *excludes* the MMU-activation + migration cost (see
-    // the `boot_ns` snapshot comment above for the metric-meaning shift vs the
-    // pre-T-022 baseline, which included MMU activation).
+    #[cfg(not(feature = "perf-bench"))]
     {
-        let mut w = FmtWriter(console);
-        let _ = writeln!(
-            w,
-            "tyrne: timer ready ({} Hz, resolution {} ns)",
-            cpu.frequency_hz(),
-            cpu.resolution_ns()
-        );
-    }
-
-    // ── Kernel-object setup ───────────────────────────────────────────────────
-
-    // Publish the Task arena before any `create_task` call — subsequent
-    // access is via raw pointer per the ADR-0021 discipline, even though
-    // the arena sees no post-setup use in the v1 demo.
-    // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
-    unsafe {
-        (*TASK_ARENA.0.get()).write(TaskArena::default());
-    }
-    // SAFETY: `TASK_ARENA` was just written above; momentary `&mut` is
-    // scoped to these three `create_task` calls and drops before any task
-    // runs. Audit: UNSAFE-2026-0014.
-    let (handle_a, handle_b, handle_idle, user_task_handle, user_as_handle) = unsafe {
-        let arena = &mut *TASK_ARENA.as_mut_ptr();
-        let ha = create_task(
-            arena,
-            Task::new(0, tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE),
-        )
-        .expect("create_task A failed");
-        let hb = create_task(
-            arena,
-            Task::new(1, tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE),
-        )
-        .expect("create_task B failed");
-        let hi = create_task(
-            arena,
-            Task::new(2, tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE),
-        )
-        .expect("create_task idle failed");
-
-        // ── First EL0 userspace task (T-028) ──────────────────────────────
-        // Turn the `loaded` `hello` image (from `load_image` above) into a
-        // runnable Task: resolve its fresh AS cap, mint the Task via the T-024
-        // `task_create_from_image` bridge (create_task + a root Task cap), then
-        // resolve that Task cap back to the `TaskHandle` `add_user_task` needs.
-        // The AS + Task caps live in `BOOTSTRAP_AS_TABLE` (kernel-side object
-        // management); the EL0 task's OWN caps (the debug console) are seeded
-        // into `USER_TASK_TABLE` (in the scheduler block below).
+        // ── Task loader smoke — T-019 / ADR-0029 ──────────────────────────────
         //
-        // SAFETY: `BOOTSTRAP_AS_TABLE` was written in the bootstrap-AS block
-        // far above; v1 is single-core + the scheduler is not yet started, so
-        // this momentary `&mut` is unaliased and drops at this block's end (no
-        // cross-switch). Audit: UNSAFE-2026-0010 + UNSAFE-2026-0014.
-        let bootstrap_table = (*BOOTSTRAP_AS_TABLE.0.get()).assume_init_mut();
-        let user_as_handle = {
-            let cap = bootstrap_table
-                .lookup(loaded.as_cap)
-                .expect("EL0 task: loaded AS cap is stale");
-            match cap.object() {
-                CapObject::AddressSpace(h) => h,
-                _ => panic!("EL0 task: loaded.as_cap is not an AddressSpace cap"),
-            }
-        };
-        let task_cap = task_create_from_image(
-            &loaded,
-            bootstrap_table,
-            arena,
-            3,
-            CapRights::DUPLICATE | CapRights::DERIVE | CapRights::REVOKE,
-        )
-        .expect("EL0 task: task_create_from_image failed");
-        let user_task_handle = {
-            let cap = bootstrap_table
-                .lookup(task_cap)
-                .expect("EL0 task: minted Task cap is stale");
-            match cap.object() {
-                CapObject::Task(h) => h,
-                _ => panic!("EL0 task: task_create_from_image returned a non-Task cap"),
-            }
-        };
-
-        (ha, hb, hi, user_task_handle, user_as_handle)
-    };
-
-    // ── IPC infrastructure ────────────────────────────────────────────────────
-
-    let mut ep_arena = EndpointArena::default();
-    let ep_handle =
-        create_endpoint(&mut ep_arena, Endpoint::new(0)).expect("create_endpoint failed");
-
-    // Least privilege: both tasks need both directions on the same endpoint —
-    // A sends the initial message and receives the reply; B receives the
-    // initial message and sends the reply. Neither task duplicates or
-    // transfers the endpoint capability (every `ipc_*` call passes `None`),
-    // so DUPLICATE and TRANSFER rights are deliberately omitted.
-    let ep_rights = CapRights::SEND | CapRights::RECV;
-
-    let mut table_a = CapabilityTable::new();
-    let mut table_b = CapabilityTable::new();
-
-    let cap_a = Capability::new(ep_rights, CapObject::Endpoint(ep_handle));
-    let cap_b = Capability::new(ep_rights, CapObject::Endpoint(ep_handle));
-
-    let ep_cap_a = table_a
-        .insert_root(cap_a)
-        .expect("table A: insert_root failed");
-    let ep_cap_b = table_b
-        .insert_root(cap_b)
-        .expect("table B: insert_root failed");
-
-    // The EL0 task's OWN capability table (T-028): a single `DebugConsole` cap
-    // at the root slot, so the `hello` program's `console_write` resolves
-    // against its own caps (gate #3). A fresh table's first `insert_root` yields
-    // index 0 / generation 0 — the handle `tyrne_user::HELLO_CONSOLE_CAP` (= 0)
-    // that `hello` passes in `x0`.
-    let mut user_task_table = CapabilityTable::new();
-    let console_cap = user_task_table
-        .insert_root(Capability::new(
-            CapRights::CONSOLE_WRITE,
-            CapObject::DebugConsole,
-        ))
-        .expect("EL0 task: console cap insert_root failed");
-    // The T-027 <-> T-028 interface: `hello` hard-codes HELLO_CONSOLE_CAP = 0, so
-    // the seeded cap MUST resolve to (index 0, generation 0). Guaranteed by the
-    // fresh table, but asserted so a future change to `insert_root`'s allocation
-    // can't drift the contract silently (a mismatch would make the EL0
-    // `console_write` fail closed with InvalidHandle).
-    assert!(
-        console_cap.index() == 0 && console_cap.generation() == 0,
-        "EL0 task: DebugConsole cap must resolve to HELLO_CONSOLE_CAP (index 0, generation 0)"
-    );
-
-    // Publish IPC state before the scheduler starts.
-    // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
-    unsafe {
-        (*EP_ARENA.0.get()).write(ep_arena);
-        (*IPC_QUEUES.0.get()).write(IpcQueues::new());
-        // The empty fail-closed fallback table `syscall_entry` resolves against
-        // when no EL0 task is current (gate #3 / T-026). Initialised here in core
-        // setup — alongside the other syscall statics — so the security fallback
-        // is always live and never coupled to whether the diagnostic smoke runs.
-        // INVARIANT: this write must precede `start()` (and the syscall smoke's
-        // first `SVC`), so every `syscall_entry` None-path reads an initialised
-        // table; it does, since both happen later in `kernel_main_high`. Never
-        // minted into.
-        (*FAILCLOSED_TABLE.0.get()).write(CapabilityTable::new());
-        (*TABLE_A.0.get()).write(table_a);
-        (*TABLE_B.0.get()).write(table_b);
-        (*EP_CAP_A.0.get()).write(ep_cap_a);
-        (*EP_CAP_B.0.get()).write(ep_cap_b);
-        // The EL0 task's own table — published before `add_user_task` records
-        // its `*mut` (gate #3) and before `start()`.
-        (*USER_TASK_TABLE.0.get()).write(user_task_table);
-    }
-
-    // ── Scheduler setup ───────────────────────────────────────────────────────
-
-    let mut sched = Scheduler::<QemuVirtCpu>::new();
-
-    // Task B is added FIRST so the scheduler runs B before A. B calls
-    // ipc_recv_and_yield and enters RecvWaiting; only then does A call
-    // ipc_send_and_yield, ensuring Delivered (not Enqueued) on the first send.
-    // The idle task is registered via `register_idle` (NOT `add_task`) per
-    // [ADR-0026]: idle lives in the dispatcher's fallback slot
-    // (`Scheduler::idle`) and is dispatched only when the ready queue is
-    // empty. This is the structural fix for the 2026-05-06 smoke regression
-    // — idle is no longer a FIFO resident that round-robin can dispatch
-    // ahead of a just-unblocked receiver.
-    //
-    // SAFETY: add_task / register_idle call init_context; stack tops are
-    // 16-byte aligned (guaranteed by TaskStack's repr) and remain valid
-    // for the process lifetime. Entry functions are `fn() -> !`. Audit:
-    // UNSAFE-2026-0009 (init_context site) + UNSAFE-2026-0014
-    // (register_idle's momentary `&mut Scheduler<C>` discipline).
-    //
-    // [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
-    unsafe {
-        sched
-            .add_task(
-                cpu,
-                handle_b,
-                tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE,
-                task_b,
-                TASK_B_STACK.top(),
-            )
-            .expect("add_task B failed: queue full or arena exhausted");
-        sched
-            .add_task(
-                cpu,
-                handle_a,
-                tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE,
-                task_a,
-                TASK_A_STACK.top(),
-            )
-            .expect("add_task A failed: queue full or arena exhausted");
-        // The first EL0 userspace task (T-028): enqueued Ready after the kernel
-        // demo tasks. On dispatch the scheduler activates its address space
-        // (installs the per-task `TTBR0_EL1` + clears `EPD0` — `QemuVirtMmu::
-        // activate`), then `enter_el0` `ERET`s into EL0 at the image entry; its
-        // `console_write` / `task_exit` SVCs take the lower-EL `+0x400` vector.
-        // Gate #3: `USER_TASK_TABLE` (the task's OWN caps) is recorded here so
-        // `syscall_entry` resolves the `console_write` cap against it.
+        // First runtime exerciser of the loader half of B4: load the
+        // embedded raw-flat userspace placeholder blob into a fresh
+        // address space and print a one-line metadata banner. **Does NOT
+        // execute the loaded image** — runnability gates on B5/B6 per
+        // phase-b §B4 §Revision-notes. This block is the first post-
+        // bootstrap caller of `cap_create_address_space` + `cap_map`, so
+        // it exercises UNSAFE-2026-0025 (page-table descriptor writes)
+        // and UNSAFE-2026-0026 (PMM frame zero-fill) for real, and is
+        // the introducing site for UNSAFE-2026-0027 (the loader's
+        // copy_nonoverlapping byte-copy).
         //
-        // SAFETY: `init_user_context` (via `add_user_task`) seeds the `enter_el0`
-        // trampoline; `user_sp` (loader page-aligned stack top) + `kernel_stack_top`
-        // (`TaskStack` repr) are 16-byte aligned + non-null (`add_user_task`
-        // debug-asserts both); `USER_TASK_TABLE` is published above + lives for
-        // the program, and the recorded `*mut CapabilityTable` follows the
-        // [ADR-0021] no-`&mut`-across-switch discipline. Audit: UNSAFE-2026-0014
-        // (the cap-table-pointer record) + UNSAFE-2026-0032 (`enter_el0`) +
-        // UNSAFE-2026-0030 (the gate-#1 copy-user this enables).
-        sched
-            .add_user_task(
-                cpu,
-                user_task_handle,
-                user_as_handle,
-                loaded.entry_va.0,
-                loaded.stack_top_va.0,
-                USER_TASK_STACK.top(),
-                USER_TASK_TABLE.as_mut_ptr(),
+        // SAFETY:
+        // **Why unsafe is required.** The block materialises momentary
+        // `&mut`/`&` references to the five write-once static cells
+        // `PMM` / `MMU` / `AS_ARENA` / `BOOTSTRAP_AS_TABLE` /
+        // `BOOTSTRAP_AS_CAP` via `assume_init_{mut,ref}` on
+        // `MaybeUninit<T>`. The compiler cannot prove these cells are
+        // already initialised at this point, nor that no concurrent peer
+        // holds an alias — that reasoning lives in the BSP boot flow's
+        // initialisation order and the v1 single-core cooperative model.
+        //
+        // **Invariants upheld.**
+        // (1) **Initialisation order.** All five cells are written exactly
+        //     once earlier in `kernel_entry`, before this block runs:
+        //     `PMM` (post-`mmu_bootstrap` PMM-init step); `MMU` and
+        //     `AS_ARENA` (T-018 AS-arena init step); `BOOTSTRAP_AS_TABLE`
+        //     and `BOOTSTRAP_AS_CAP` (bootstrap-AS-cap mint step). Each
+        //     `assume_init_*` therefore satisfies `MaybeUninit`'s
+        //     initialised-payload contract.
+        // (2) **No concurrent aliasing.** v1 is single-core + cooperative
+        //     and the scheduler has not been started yet (`SCHED` is not
+        //     written and `start()` not invoked until far below this
+        //     block), so no peer task or interrupt handler can observe
+        //     the cells while this block runs.
+        // (3) **Scope-limited &mut.** The four `&mut`s (`pmm`, `table`,
+        //     `arena`, plus the `&` for `mmu` and the by-value copy for
+        //     `parent_cap`) are local `let` bindings inside the
+        //     `unsafe { ... }` expression. They drop at the closing
+        //     brace and do **not** cross any cooperative switch — the
+        //     borrow lifetimes are bounded by the single `load_image`
+        //     call inside this same block per ADR-0021's no-`&mut`-
+        //     across-switch discipline.
+        // (4) **Audit IDs.** Pattern is covered by UNSAFE-2026-0010
+        //     (`StaticCell`'s `Sync` marker + write-once contract) and
+        //     UNSAFE-2026-0014 (momentary `&mut` to just-initialised
+        //     state across the cooperative-switch boundary).
+        //
+        // **Why safer alternatives were rejected.** A `Box<Mutex<T>>` /
+        // `RwLock<T>` would require either a heap allocator (v1's
+        // bare-metal kernel has none) or a spin lock that is itself
+        // `unsafe` to construct + adds boot-time overhead with no
+        // soundness win under single-core cooperative semantics.
+        // `OnceCell` / `LazyCell` from `core` require a constructor
+        // closure invoked at access time, which cannot express the
+        // boot-flow ordering constraints this block depends on (PMM
+        // must be initialised before MMU before AS arena before
+        // cap-table). The `StaticCell` + write-once pattern is the
+        // minimal `Sync` shape that matches the actual boot semantics;
+        // every access path is `unsafe` so the audit log can name
+        // exactly which invariants each call site relies on.
+        let loaded = unsafe {
+            let pmm = (*PMM.0.get()).assume_init_mut();
+            let mmu = (*MMU.0.get()).assume_init_ref();
+            let table = (*BOOTSTRAP_AS_TABLE.0.get()).assume_init_mut();
+            let arena = (*AS_ARENA.0.get()).assume_init_mut();
+            let parent_cap = *(*BOOTSTRAP_AS_CAP.0.get()).assume_init_ref();
+            // `new_rights = CapRights::empty()` is intentional in v1: the
+            // address-space cap-rights model is **kind-only** today, not
+            // per-operation. `resolve_address_space_cap`'s doc-comment
+            // (`kernel/src/mm/address_space.rs`) records the v1 contract
+            // — "this helper checks the cap *kind* only — not the specific
+            // rights bits; per-operation rights (`MAP`, `UNMAP`, `ACTIVATE`)
+            // are deferred to B5+ and will require an ADR". The
+            // `CapRights` enum (`kernel/src/cap/rights.rs`) accordingly
+            // exposes `DUPLICATE / DERIVE / REVOKE / TRANSFER / SEND / RECV /
+            // NOTIFY` only — no `MAP` / `UNMAP` bit exists to pass here.
+            // When the future ADR introduces them, this call site updates
+            // to `CapRights::MAP | CapRights::UNMAP` (the minimum set the
+            // loader exercises on the new cap: `cap_map` for installs +
+            // `cap_unmap` for rollback); the change is purely additive at
+            // this site.
+            load_image(
+                USERSPACE_IMAGE,
+                pmm,
+                mmu,
+                table,
+                arena,
+                parent_cap,
+                CapRights::empty(),
+                VirtAddr(USERSPACE_IMAGE_BASE_VA),
+                USERSPACE_STACK_PAGES,
             )
-            .expect("add_user_task (EL0 hello) failed: queue full or arena exhausted");
-        register_idle(
-            core::ptr::from_mut(&mut sched),
-            cpu,
-            handle_idle,
-            tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE,
-            idle_entry,
-            TASK_IDLE_STACK.top(),
+            .expect("task_loader::load_image failed on BSP smoke")
+        };
+
+        // `loaded` is consumed by the EL0 task wire-up below (T-028): it is turned
+        // into a runnable Task (`task_create_from_image`) + scheduled
+        // (`add_user_task`) after `TASK_ARENA` is published. (B4/B5 only printed +
+        // discarded it; B6 runs it.)
+
+        // ── GIC init + DAIF unmask — T-012 (now post-MMU) ─────────────────────────
+        //
+        // Sequence (per docs/architecture/exceptions.md §"Implementation map"):
+        //   1. Construct + init the GIC v2 controller. `init` disables every
+        //      SPI, sets default priorities, routes SPIs to CPU 0, then
+        //      enables the distributor + CPU interface. No IRQ source is
+        //      enabled at this point — `enable(IrqNumber)` is a separate call.
+        //      MMIO writes go through the device-nGnRnE mapping installed
+        //      by `mmu_bootstrap`.
+        //   2. Unmask DAIF.I (clear the I bit only — D, A, F stay masked).
+        //      With nothing enabled at the GIC, this is a no-op for IRQ
+        //      delivery; future `enable` calls will deliver IRQs through the
+        //      now-installed vector table.
+
+        // SAFETY: QEMU virt's GICv2 distributor + CPU interface live at
+        // their well-known MMIO bases (per ADR-0011 references and the
+        // QemuVirtGic module-level docs); single-core v1 means no
+        // concurrent writer exists. The construction itself does no MMIO.
+        // Audit: UNSAFE-2026-0019.
+        let gic = unsafe {
+            QemuVirtGic::new(
+                tyrne_hal::phys_to_kernel_va(QEMU_VIRT_GIC_DISTRIBUTOR_BASE),
+                tyrne_hal::phys_to_kernel_va(QEMU_VIRT_GIC_CPU_INTERFACE_BASE),
+            )
+        };
+        // SAFETY: single-core; no concurrent writer to GIC static yet.
+        // Audit: UNSAFE-2026-0001 (StaticCell pattern) + UNSAFE-2026-0019.
+        unsafe { (*GIC.0.get()).write(gic) };
+
+        // SAFETY: GIC was just published. `init` performs the boot-time
+        // MMIO programming sequence per its doc; DAIF still masked, so no
+        // IRQ can fire mid-init. Audit: UNSAFE-2026-0019.
+        unsafe {
+            let gic_ref = (*GIC.0.get()).assume_init_ref();
+            gic_ref.init();
+        }
+
+        // SAFETY: With the vector table installed and the GIC initialised
+        // (but no IRQ enabled at the GIC), unmasking DAIF.I is safe — no
+        // IRQ source can fire until a later `gic.enable(...)` call. The
+        // other DAIF bits (D, A, F) stay masked.
+        //
+        // `MSR DAIFClr, #0x2` clears the I bit specifically (bit value
+        // matches PSTATE.DAIF[1]; cf. ARM ARM §C5.2.7). `options(nostack,
+        // nomem)` is correct.
+        // Audit: UNSAFE-2026-0020.
+        unsafe {
+            core::arch::asm!("msr daifclr, #0x2", options(nostack, nomem),);
+        }
+
+        // ── Timer banner — T-009 (now post-MMU) ──────────────────────────────────
+        //
+        // The CPU's Timer impl is live the moment `QemuVirtCpu::new` returned
+        // (it sampled CNTFRQ_EL0 and cached the resolution). Print the timer
+        // parameters so QEMU output makes the measurement visible. The UART
+        // write goes through the device-nGnRnE mapping installed by
+        // `mmu_bootstrap`. The boot-to-end baseline (`BOOT_NS`) was captured just
+        // above — *post* high-half migration — so it measures the high-half steady
+        // state and therefore *excludes* the MMU-activation + migration cost (see
+        // the `boot_ns` snapshot comment above for the metric-meaning shift vs the
+        // pre-T-022 baseline, which included MMU activation).
+        {
+            let mut w = FmtWriter(console);
+            let _ = writeln!(
+                w,
+                "tyrne: timer ready ({} Hz, resolution {} ns)",
+                cpu.frequency_hz(),
+                cpu.resolution_ns()
+            );
+        }
+
+        // ── Kernel-object setup ───────────────────────────────────────────────────
+
+        // Publish the Task arena before any `create_task` call — subsequent
+        // access is via raw pointer per the ADR-0021 discipline, even though
+        // the arena sees no post-setup use in the v1 demo.
+        // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
+        unsafe {
+            (*TASK_ARENA.0.get()).write(TaskArena::default());
+        }
+        // SAFETY: `TASK_ARENA` was just written above; momentary `&mut` is
+        // scoped to these three `create_task` calls and drops before any task
+        // runs. Audit: UNSAFE-2026-0014.
+        let (handle_a, handle_b, handle_idle, user_task_handle, user_as_handle) = unsafe {
+            let arena = &mut *TASK_ARENA.as_mut_ptr();
+            let ha = create_task(
+                arena,
+                Task::new(0, tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE),
+            )
+            .expect("create_task A failed");
+            let hb = create_task(
+                arena,
+                Task::new(1, tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE),
+            )
+            .expect("create_task B failed");
+            let hi = create_task(
+                arena,
+                Task::new(2, tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE),
+            )
+            .expect("create_task idle failed");
+
+            // ── First EL0 userspace task (T-028) ──────────────────────────────
+            // Turn the `loaded` `hello` image (from `load_image` above) into a
+            // runnable Task: resolve its fresh AS cap, mint the Task via the T-024
+            // `task_create_from_image` bridge (create_task + a root Task cap), then
+            // resolve that Task cap back to the `TaskHandle` `add_user_task` needs.
+            // The AS + Task caps live in `BOOTSTRAP_AS_TABLE` (kernel-side object
+            // management); the EL0 task's OWN caps (the debug console) are seeded
+            // into `USER_TASK_TABLE` (in the scheduler block below).
+            //
+            // SAFETY: `BOOTSTRAP_AS_TABLE` was written in the bootstrap-AS block
+            // far above; v1 is single-core + the scheduler is not yet started, so
+            // this momentary `&mut` is unaliased and drops at this block's end (no
+            // cross-switch). Audit: UNSAFE-2026-0010 + UNSAFE-2026-0014.
+            let bootstrap_table = (*BOOTSTRAP_AS_TABLE.0.get()).assume_init_mut();
+            let user_as_handle = {
+                let cap = bootstrap_table
+                    .lookup(loaded.as_cap)
+                    .expect("EL0 task: loaded AS cap is stale");
+                match cap.object() {
+                    CapObject::AddressSpace(h) => h,
+                    _ => panic!("EL0 task: loaded.as_cap is not an AddressSpace cap"),
+                }
+            };
+            let task_cap = task_create_from_image(
+                &loaded,
+                bootstrap_table,
+                arena,
+                3,
+                CapRights::DUPLICATE | CapRights::DERIVE | CapRights::REVOKE,
+            )
+            .expect("EL0 task: task_create_from_image failed");
+            let user_task_handle = {
+                let cap = bootstrap_table
+                    .lookup(task_cap)
+                    .expect("EL0 task: minted Task cap is stale");
+                match cap.object() {
+                    CapObject::Task(h) => h,
+                    _ => panic!("EL0 task: task_create_from_image returned a non-Task cap"),
+                }
+            };
+
+            (ha, hb, hi, user_task_handle, user_as_handle)
+        };
+
+        // ── IPC infrastructure ────────────────────────────────────────────────────
+
+        let mut ep_arena = EndpointArena::default();
+        let ep_handle =
+            create_endpoint(&mut ep_arena, Endpoint::new(0)).expect("create_endpoint failed");
+
+        // Least privilege: both tasks need both directions on the same endpoint —
+        // A sends the initial message and receives the reply; B receives the
+        // initial message and sends the reply. Neither task duplicates or
+        // transfers the endpoint capability (every `ipc_*` call passes `None`),
+        // so DUPLICATE and TRANSFER rights are deliberately omitted.
+        let ep_rights = CapRights::SEND | CapRights::RECV;
+
+        let mut table_a = CapabilityTable::new();
+        let mut table_b = CapabilityTable::new();
+
+        let cap_a = Capability::new(ep_rights, CapObject::Endpoint(ep_handle));
+        let cap_b = Capability::new(ep_rights, CapObject::Endpoint(ep_handle));
+
+        let ep_cap_a = table_a
+            .insert_root(cap_a)
+            .expect("table A: insert_root failed");
+        let ep_cap_b = table_b
+            .insert_root(cap_b)
+            .expect("table B: insert_root failed");
+
+        // The EL0 task's OWN capability table (T-028): a single `DebugConsole` cap
+        // at the root slot, so the `hello` program's `console_write` resolves
+        // against its own caps (gate #3). A fresh table's first `insert_root` yields
+        // index 0 / generation 0 — the handle `tyrne_user::HELLO_CONSOLE_CAP` (= 0)
+        // that `hello` passes in `x0`.
+        let mut user_task_table = CapabilityTable::new();
+        let console_cap = user_task_table
+            .insert_root(Capability::new(
+                CapRights::CONSOLE_WRITE,
+                CapObject::DebugConsole,
+            ))
+            .expect("EL0 task: console cap insert_root failed");
+        // The T-027 <-> T-028 interface: `hello` hard-codes HELLO_CONSOLE_CAP = 0, so
+        // the seeded cap MUST resolve to (index 0, generation 0). Guaranteed by the
+        // fresh table, but asserted so a future change to `insert_root`'s allocation
+        // can't drift the contract silently (a mismatch would make the EL0
+        // `console_write` fail closed with InvalidHandle).
+        assert!(
+            console_cap.index() == 0 && console_cap.generation() == 0,
+            "EL0 task: DebugConsole cap must resolve to HELLO_CONSOLE_CAP (index 0, generation 0)"
         );
-    }
 
-    // Publish the scheduler before transferring control.
-    // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
-    unsafe {
-        (*SCHED.0.get()).write(sched);
-    }
+        // Publish IPC state before the scheduler starts.
+        // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
+        unsafe {
+            (*EP_ARENA.0.get()).write(ep_arena);
+            (*IPC_QUEUES.0.get()).write(IpcQueues::new());
+            // The empty fail-closed fallback table `syscall_entry` resolves against
+            // when no EL0 task is current (gate #3 / T-026). Initialised here in core
+            // setup — alongside the other syscall statics — so the security fallback
+            // is always live and never coupled to whether the diagnostic smoke runs.
+            // INVARIANT: this write must precede `start()` (and the syscall smoke's
+            // first `SVC`), so every `syscall_entry` None-path reads an initialised
+            // table; it does, since both happen later in `kernel_main_high`. Never
+            // minted into.
+            (*FAILCLOSED_TABLE.0.get()).write(CapabilityTable::new());
+            (*TABLE_A.0.get()).write(table_a);
+            (*TABLE_B.0.get()).write(table_b);
+            (*EP_CAP_A.0.get()).write(ep_cap_a);
+            (*EP_CAP_B.0.get()).write(ep_cap_b);
+            // The EL0 task's own table — published before `add_user_task` records
+            // its `*mut` (gate #3) and before `start()`.
+            (*USER_TASK_TABLE.0.get()).write(user_task_table);
+        }
 
-    // The B5 `+0x200` EL1-stub fail-closed smoke (T-026) is **retired** here:
-    // a real EL0 task (`add_user_task` above) now exercises the syscall boundary
-    // for real via the lower-EL `+0x400` vector (the live round-trip below). The
-    // no-current-task fail-closed property the stub demonstrated is covered by
-    // the host dispatcher tests (`*_with_no_current_task_fails_closed`).
+        // ── Scheduler setup ───────────────────────────────────────────────────────
 
-    console.write_bytes(b"tyrne: starting cooperative scheduler\n");
+        let mut sched = Scheduler::<QemuVirtCpu>::new();
 
-    // Transfer control to Task B (the first ready task). Does not return.
-    // SAFETY: per ADR-0021 — `SCHED.as_mut_ptr()` is a pure pointer cast
-    // (UNSAFE-2026-0013); `SCHED` was written above and no other code path
-    // holds a `&mut Scheduler` at this point. `start` honours the raw-pointer
-    // discipline: no `&mut` is live across the initial context switch.
-    // Audit: UNSAFE-2026-0014.
-    //
-    // No defensive `loop {}` follows: `start` is `-> !`, so the type
-    // system proves nothing after this call is reachable. Adding a
-    // belt-and-braces parking loop would be flagged as
-    // `unreachable_code` — for the `-> !` case the type signature is
-    // already the belt-and-braces (any future refactor that drops
-    // `-> !` becomes a hard build error in every caller's return-type
-    // analysis).
-    unsafe {
-        start(SCHED.as_mut_ptr(), cpu, activate_address_space);
+        // Task B is added FIRST so the scheduler runs B before A. B calls
+        // ipc_recv_and_yield and enters RecvWaiting; only then does A call
+        // ipc_send_and_yield, ensuring Delivered (not Enqueued) on the first send.
+        // The idle task is registered via `register_idle` (NOT `add_task`) per
+        // [ADR-0026]: idle lives in the dispatcher's fallback slot
+        // (`Scheduler::idle`) and is dispatched only when the ready queue is
+        // empty. This is the structural fix for the 2026-05-06 smoke regression
+        // — idle is no longer a FIFO resident that round-robin can dispatch
+        // ahead of a just-unblocked receiver.
+        //
+        // SAFETY: add_task / register_idle call init_context; stack tops are
+        // 16-byte aligned (guaranteed by TaskStack's repr) and remain valid
+        // for the process lifetime. Entry functions are `fn() -> !`. Audit:
+        // UNSAFE-2026-0009 (init_context site) + UNSAFE-2026-0014
+        // (register_idle's momentary `&mut Scheduler<C>` discipline).
+        //
+        // [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+        unsafe {
+            sched
+                .add_task(
+                    cpu,
+                    handle_b,
+                    tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    task_b,
+                    TASK_B_STACK.top(),
+                )
+                .expect("add_task B failed: queue full or arena exhausted");
+            sched
+                .add_task(
+                    cpu,
+                    handle_a,
+                    tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    task_a,
+                    TASK_A_STACK.top(),
+                )
+                .expect("add_task A failed: queue full or arena exhausted");
+            // The first EL0 userspace task (T-028): enqueued Ready after the kernel
+            // demo tasks. On dispatch the scheduler activates its address space
+            // (installs the per-task `TTBR0_EL1` + clears `EPD0` — `QemuVirtMmu::
+            // activate`), then `enter_el0` `ERET`s into EL0 at the image entry; its
+            // `console_write` / `task_exit` SVCs take the lower-EL `+0x400` vector.
+            // Gate #3: `USER_TASK_TABLE` (the task's OWN caps) is recorded here so
+            // `syscall_entry` resolves the `console_write` cap against it.
+            //
+            // SAFETY: `init_user_context` (via `add_user_task`) seeds the `enter_el0`
+            // trampoline; `user_sp` (loader page-aligned stack top) + `kernel_stack_top`
+            // (`TaskStack` repr) are 16-byte aligned + non-null (`add_user_task`
+            // debug-asserts both); `USER_TASK_TABLE` is published above + lives for
+            // the program, and the recorded `*mut CapabilityTable` follows the
+            // [ADR-0021] no-`&mut`-across-switch discipline. Audit: UNSAFE-2026-0014
+            // (the cap-table-pointer record) + UNSAFE-2026-0032 (`enter_el0`) +
+            // UNSAFE-2026-0030 (the gate-#1 copy-user this enables).
+            sched
+                .add_user_task(
+                    cpu,
+                    user_task_handle,
+                    user_as_handle,
+                    loaded.entry_va.0,
+                    loaded.stack_top_va.0,
+                    USER_TASK_STACK.top(),
+                    USER_TASK_TABLE.as_mut_ptr(),
+                )
+                .expect("add_user_task (EL0 hello) failed: queue full or arena exhausted");
+            register_idle(
+                core::ptr::from_mut(&mut sched),
+                cpu,
+                handle_idle,
+                tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                idle_entry,
+                TASK_IDLE_STACK.top(),
+            );
+        }
+
+        // Publish the scheduler before transferring control.
+        // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
+        unsafe {
+            (*SCHED.0.get()).write(sched);
+        }
+
+        // The B5 `+0x200` EL1-stub fail-closed smoke (T-026) is **retired** here:
+        // a real EL0 task (`add_user_task` above) now exercises the syscall boundary
+        // for real via the lower-EL `+0x400` vector (the live round-trip below). The
+        // no-current-task fail-closed property the stub demonstrated is covered by
+        // the host dispatcher tests (`*_with_no_current_task_fails_closed`).
+
+        console.write_bytes(b"tyrne: starting cooperative scheduler\n");
+
+        // Transfer control to Task B (the first ready task). Does not return.
+        // SAFETY: per ADR-0021 — `SCHED.as_mut_ptr()` is a pure pointer cast
+        // (UNSAFE-2026-0013); `SCHED` was written above and no other code path
+        // holds a `&mut Scheduler` at this point. `start` honours the raw-pointer
+        // discipline: no `&mut` is live across the initial context switch.
+        // Audit: UNSAFE-2026-0014.
+        //
+        // No defensive `loop {}` follows: `start` is `-> !`, so the type
+        // system proves nothing after this call is reachable. Adding a
+        // belt-and-braces parking loop would be flagged as
+        // `unreachable_code` — for the `-> !` case the type signature is
+        // already the belt-and-braces (any future refactor that drops
+        // `-> !` becomes a hard build error in every caller's return-type
+        // analysis).
+        unsafe {
+            start(SCHED.as_mut_ptr(), cpu, activate_address_space);
+        }
     }
 }
 
