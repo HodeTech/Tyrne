@@ -205,6 +205,13 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
         dispatch(&mut ctx, args)
     };
 
+    // T-029 Phase 2 (perf-bench measurement build only): time consecutive EL0
+    // syscall round-trips kernel-side and, after N, force `Terminate` to end the
+    // bench EL0 task (handing off to the ctx/IPC benches). Feature-gated, so
+    // production `syscall_entry` is byte-identical. See `perf_bench`.
+    #[cfg(feature = "perf-bench")]
+    let effect = crate::perf_bench::el0_roundtrip_tick(effect);
+
     match effect {
         SyscallEffect::Resume(r) => {
             // SAFETY: write the status (x0) + payload (x1..x7) back into the
