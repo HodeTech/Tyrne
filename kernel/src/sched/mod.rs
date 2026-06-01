@@ -941,58 +941,124 @@ pub unsafe fn start<C: ContextSwitch + Cpu>(
     // across the `cpu.context_switch` below. Audit: UNSAFE-2026-0014.
     let next_idx = unsafe { start_prelude(sched) };
 
-    // SAFETY: caller satisfies the Shared safety contract for `sched`.
-    // The read happens after `start_prelude`'s `&mut Scheduler` borrow has
-    // dropped and before the activate / context_switch sequence below;
-    // no `&mut Scheduler<C>` is alive at this point. Audit: UNSAFE-2026-0014.
-    let first_as: Option<AddressSpaceHandle> =
+    // SAFETY: `start_prelude`'s momentary `&mut Scheduler<C>` has dropped; the
+    // shared dispatch tail takes no `&mut Scheduler<C>` across the switch and
+    // abandons this (bootstrap) frame, never returning. Audit: UNSAFE-2026-0008
+    // + UNSAFE-2026-0014.
+    unsafe { run_dispatched(sched, cpu, activate_address_space, next_idx) }
+}
+
+/// Terminate the **current** task and dispatch the next ready task (or idle) —
+/// the `task_exit` syscall's effect (T-028). Like [`start`] it selects the next
+/// task via [`start_prelude`] (which overwrites `current`, dropping the exiting
+/// task — it is not re-enqueued) and switches to it via the shared
+/// [`run_dispatched`] tail, **abandoning the caller's frame** (the exiting EL0
+/// task's syscall-handler frame) — it never returns to the exiting task.
+///
+/// The exiting task's slot, address space, and capability table are **not**
+/// reclaimed in v1 (no resource-freeing) — the deferred object-lifecycle gap
+/// tracked as [T-024 §SEC-T024-01]; the task simply stops being scheduled
+/// (dropped from the ready queue, never `current` again). Its `task_states`
+/// slot is left `Ready` (orphaned) and its `TaskArena` slot is not freed —
+/// **inert in v1** (the exiting handle is unreachable: not in the ready queue,
+/// not idle, not `current`; the only by-state scan matches `Blocked`; the arena
+/// slot is not reused), but the successor lifecycle ADR should add a terminal
+/// task state + couple reclamation to AS/task destruction (the SEC-T028-01
+/// forward-flag — 2026-06-01 EL0-boundary security review). Coupling
+/// reclamation to the AS is that ADR's work.
+///
+/// # Safety
+///
+/// Identical to [`start`]: `sched` must satisfy the Shared safety contract
+/// (pointer validity, no aliased live `&mut Scheduler<C>`). The caller's frame
+/// is abandoned, so the "no `&mut` across the switch" rule holds (the throwaway
+/// context is never restored). Called from the BSP `syscall_entry` on a
+/// `SyscallEffect::Terminate`, where `current` is the exiting EL0 task.
+///
+/// [T-024 §SEC-T024-01]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-024-task-create-from-image.md
+pub unsafe fn task_exit_current<C: ContextSwitch + Cpu>(
+    sched: *mut Scheduler<C>,
+    cpu: &C,
+    activate_address_space: impl FnOnce(AddressSpaceHandle),
+) -> ! {
+    // SAFETY: caller satisfies the Shared safety contract. `start_prelude`
+    // selects the next task (dequeue ready / fall back to idle) and sets it
+    // `current`, overwriting the exiting task — its momentary `&mut` drops
+    // before `run_dispatched`. Audit: UNSAFE-2026-0014.
+    let next_idx = unsafe { start_prelude(sched) };
+
+    // SAFETY: as in `start` — the dispatch tail abandons this frame (the exiting
+    // task's syscall-handler frame) and never returns; no `&mut Scheduler<C>` is
+    // live across the switch. Audit: UNSAFE-2026-0008 + UNSAFE-2026-0014.
+    unsafe { run_dispatched(sched, cpu, activate_address_space, next_idx) }
+}
+
+/// Shared dispatch tail for [`start`] (initial dispatch) and
+/// [`task_exit_current`] (terminate + dispatch): activate the selected task's
+/// address space **inside an [`IrqGuard`]**, then `context_switch` into it,
+/// **abandoning the caller's (throwaway) frame**. Never returns.
+///
+/// `next_idx` is the slot the caller's `start_prelude` selected and set
+/// `current` to.
+///
+/// # Safety
+///
+/// `sched` must satisfy the Shared safety contract and hold no aliased live
+/// `&mut Scheduler<C>` (the caller drops `start_prelude`'s borrow first). The
+/// caller's frame is never resumed, so the throwaway context honours the
+/// "no `&mut` across the switch" rule.
+unsafe fn run_dispatched<C: ContextSwitch + Cpu>(
+    sched: *mut Scheduler<C>,
+    cpu: &C,
+    activate_address_space: impl FnOnce(AddressSpaceHandle),
+    next_idx: usize,
+) -> ! {
+    // SAFETY: the read happens after `start_prelude`'s `&mut Scheduler` borrow
+    // has dropped and before the activate / context_switch sequence below; no
+    // `&mut Scheduler<C>` is alive at this point. Audit: UNSAFE-2026-0014.
+    let next_as: Option<AddressSpaceHandle> =
         unsafe { (*sched).task_address_space_handles[next_idx] };
 
     let mut throwaway = <C::TaskContext as Default>::default();
     let _guard = IrqGuard::new(cpu);
 
-    // Activate the first task's AddressSpace **inside** the `IrqGuard`
+    // Activate the dispatched task's AddressSpace **inside** the `IrqGuard`
     // scope, matching the discipline `yield_now` / `ipc_recv_and_yield`
-    // already follow per [ADR-0028 §Simulation row 3][adr-0028]. Unlike
-    // those hooks this fire is unconditional — there is no "previous
-    // AS" to compare against (the bootstrap stack frame is being
-    // abandoned), so the closure receives the first task's AS handle
-    // if one is known. v1 BSPs pass the bootstrap AS handle; future
-    // per-task AS work passes the task's own handle. If the slot has
-    // no recorded AS, the closure is dropped without firing.
+    // already follow per [ADR-0028 §Simulation row 3][adr-0028]. This fire is
+    // unconditional — there is no "previous AS" to compare against (the
+    // caller's stack frame is being abandoned), so the closure receives the
+    // dispatched task's AS handle if one is known. If the slot has no recorded
+    // AS, the closure is dropped without firing.
     //
-    // Holding `_guard` here closes the IRQ-window in which an
-    // interrupt taken between `activate` and `cpu.context_switch`
-    // would run the handler under the freshly-installed `TTBR0_EL1`
-    // — harmless in v1 (every task shares the bootstrap AS so the
-    // new TTBR's kernel mappings are identical), but a forward-
-    // defensive correctness gate for B5+ multi-AS userspace where a
-    // per-task AS without the kernel mapping would translation-fault
-    // any IRQ taken in this window.
+    // Holding `_guard` here closes the IRQ-window in which an interrupt taken
+    // between `activate` and `cpu.context_switch` would run the handler under
+    // the freshly-installed `TTBR0_EL1` — a forward-defensive correctness gate
+    // for multi-AS userspace (e.g. the T-028 EL0 task: its `TTBR0` holds only
+    // image + stack, so an IRQ handler taken in this window must rely on the
+    // high-half `TTBR1` kernel mapping, which it does).
     //
     // [adr-0028]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0028-address-space-data-structure.md#simulation
-    if let Some(target) = first_as {
+    if let Some(target) = next_as {
         activate_address_space(target);
     } else {
         drop(activate_address_space);
     }
 
-    // SAFETY: `next_idx` is in range (written by `add_task`); interrupts are
-    // masked by `IrqGuard`; the throwaway current context lives on the
-    // abandoned bootstrap stack frame and is never restored. No `&mut
+    // SAFETY: `next_idx` is in range (written by `add_task` / `add_user_task`);
+    // interrupts are masked by `IrqGuard`; the throwaway current context lives
+    // on the abandoned caller stack frame and is never restored. No `&mut
     // Scheduler<C>` is live — the context pointer is derived from the raw
-    // `sched` pointer. Rejected alternatives: the context-switch primitive
-    // is register-save assembly; no safe-Rust abstraction can express it
-    // (see UNSAFE-2026-0008's audit entry for the full enumeration), and
-    // `&mut` to `contexts[next_idx]` is avoided by using raw-pointer
-    // arithmetic per the Shared safety contract above. Audit: UNSAFE-2026-0008.
+    // `sched` pointer. Rejected alternatives: the context-switch primitive is
+    // register-save assembly; no safe-Rust abstraction can express it (see
+    // UNSAFE-2026-0008's audit entry), and `&mut` to `contexts[next_idx]` is
+    // avoided by using raw-pointer arithmetic. Audit: UNSAFE-2026-0008.
     unsafe {
         let ctx_ptr = (*sched).contexts.as_ptr();
         cpu.context_switch(&mut throwaway, &*ctx_ptr.add(next_idx));
     }
 
-    // `cpu.context_switch` does not return on this path — the bootstrap
-    // frame is abandoned. The loop satisfies `-> !` defensively.
+    // `cpu.context_switch` does not return on this path — the caller frame is
+    // abandoned. The loop satisfies `-> !` defensively.
     #[allow(
         clippy::empty_loop,
         reason = "unreachable: context_switch abandons this frame"
@@ -1739,6 +1805,72 @@ mod tests {
         assert_eq!(sched.task_states[0], TaskState::Ready);
         assert_eq!(sched.task_handles[0], Some(h));
         assert_eq!(sched.ready.len(), 1);
+    }
+
+    #[test]
+    fn start_prelude_dispatches_next_ready_overwriting_current() {
+        // The selection step `task_exit_current` (T-028) relies on: with a
+        // `current` task set (the exiting task, already dequeued when it was
+        // dispatched) and another task Ready, `start_prelude` dequeues the next
+        // Ready task and **overwrites `current`** with it — the exiting task is
+        // dropped (it is neither `current` nor in the ready queue afterwards,
+        // and is never re-enqueued). This is the host-testable core of
+        // `task_exit_current`; its `run_dispatched` tail (`-> !` + context
+        // switch) is exercised by the QEMU smoke (like `start`).
+        let cpu = FakeCpu::new();
+        let mut sched: Scheduler<FakeCpu> = Scheduler::new();
+        let a = task_handle(0);
+        let b = task_handle(1);
+        let mut sa = AlignedStack::<512>::new();
+        let mut sb = AlignedStack::<512>::new();
+        // SAFETY: 512-byte, 16-byte-aligned stacks; `FakeCpu::init_context` is a
+        // no-op, so the stacks are never dereferenced.
+        unsafe {
+            sched
+                .add_task(
+                    &cpu,
+                    a,
+                    BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    spin_entry(),
+                    sa.top(),
+                )
+                .unwrap();
+            sched
+                .add_task(
+                    &cpu,
+                    b,
+                    BOOTSTRAP_ADDRESS_SPACE_HANDLE,
+                    spin_entry(),
+                    sb.top(),
+                )
+                .unwrap();
+        }
+        // Simulate A being the running (exiting) task: dequeued from ready +
+        // set `current`, exactly the state when A calls `task_exit`.
+        assert_eq!(sched.ready.dequeue(), Some(a));
+        sched.current = Some(a);
+        assert_eq!(sched.ready.len(), 1, "B remains Ready");
+
+        // `task_exit_current`'s selection step.
+        // SAFETY: `sched` is a valid, exclusively-owned pointer; no aliased
+        // `&mut Scheduler` is live across this call.
+        let next_idx = unsafe { start_prelude(core::ptr::from_mut(&mut sched)) };
+
+        assert_eq!(
+            next_idx,
+            b.slot().index() as usize,
+            "dispatches the next Ready task (B)"
+        );
+        assert_eq!(
+            sched.current,
+            Some(b),
+            "current overwritten to B — the exiting A is dropped"
+        );
+        assert_eq!(
+            sched.ready.len(),
+            0,
+            "B dequeued; the exiting A was never re-enqueued"
+        );
     }
 
     #[test]

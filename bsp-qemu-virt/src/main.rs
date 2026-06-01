@@ -39,7 +39,7 @@ use tyrne_kernel::ipc::{IpcQueues, Message, RecvOutcome};
 use tyrne_kernel::mm::{PhysFrameRange, Pmm};
 use tyrne_kernel::obj::endpoint::{create_endpoint, Endpoint, EndpointArena};
 use tyrne_kernel::obj::task::{create_task, Task, TaskArena};
-use tyrne_kernel::obj::task_loader::load_image;
+use tyrne_kernel::obj::task_loader::{load_image, task_create_from_image};
 use tyrne_kernel::sched::{
     ipc_recv_and_yield, ipc_send_and_yield, register_idle, start, yield_now, Scheduler,
 };
@@ -239,6 +239,12 @@ static TASK_B_STACK: TaskStack = TaskStack::new();
 /// 4 KiB, but keeping a uniform `TaskStack` avoids a second static type just
 /// for the idle path.
 static TASK_IDLE_STACK: TaskStack = TaskStack::new();
+/// Kernel stack (`SP_EL1`) for the first EL0 userspace task (T-028). The EL0
+/// task's `console_write`/`task_exit` SVCs trap to EL1 and run the syscall
+/// handler on this stack (the trap frame + the gate-#1 dispatch call tree); a
+/// uniform 4 KiB `TaskStack` is ample (≫ the ~272-byte frame + walk depth) and
+/// satisfies `add_user_task`'s ≥1-page / 16-byte-aligned `SP_EL1` contract.
+static USER_TASK_STACK: TaskStack = TaskStack::new();
 
 // ─── Global kernel state ──────────────────────────────────────────────────────
 
@@ -433,6 +439,15 @@ static EP_CAP_B: StaticCell<CapHandle> = StaticCell::new();
 ///
 /// [ADR-0014]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0014-capability-representation.md
 static FAILCLOSED_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
+
+/// The first EL0 userspace task's **own** capability table (T-028). Seeded with
+/// a single `DebugConsole` capability at the root slot (index 0, generation 0 —
+/// the handle `tyrne_user::HELLO_CONSOLE_CAP = 0` the `hello` program names),
+/// bound to the task via `add_user_task` so `syscall_entry` resolves the task's
+/// `console_write` against **its own** caps (gate #3 / T-026). BSP-owned; the
+/// scheduler only records the `*mut` per [ADR-0021]. Distinct from the
+/// kernel-side `BOOTSTRAP_AS_TABLE` (which holds the AS + Task management caps).
+static USER_TASK_TABLE: StaticCell<CapabilityTable> = StaticCell::new();
 
 /// Task kernel-object arena — global per [ADR-0016]. Although the v1 demo
 /// never reads this arena after `create_task` has returned the two
@@ -701,112 +716,6 @@ fn task_a() -> ! {
     loop {
         core::hint::spin_loop();
     }
-}
-
-// ─── Syscall-boundary smoke — gate #3 fail-closed (T-026) ─────────────────────
-
-/// EL1 `SVC` smoke for the syscall boundary, demonstrating **gate #3
-/// fail-closed** ([T-026]).
-///
-/// Issues two `SVC #0` traps from EL1 (the current-EL `VBAR_EL1 + 0x200` sync
-/// vector — an EL1 `SVC` cannot take the lower-EL `+0x400` path; the real-EL0
-/// round-trip is the B6 wire-up). It runs **after `SCHED` is published but
-/// before `start()`**, so `SCHED.current` is `None` — no running EL0 task. The
-/// dispatcher therefore **fails closed**: with no current task it resolves
-/// capabilities against the empty [`FAILCLOSED_TABLE`] and bounds user buffers
-/// with an empty window, so a syscall carries **no authority**:
-///
-/// 1. **`console_write`** (number `5`) → the cap (any handle) is looked up in
-///    the empty table → `SyscallError::Cap(InvalidHandle)` (status `0x102`),
-///    nothing emitted. Gate #1's per-page `Mmu::translate` boundary (T-025) is
-///    never reached — the cap gate rejects first; the positive copy path is
-///    host-tested and runs at the B6 wire-up.
-/// 2. a **reserved-invalid number** (`0`) → `SyscallError::BadSyscallNumber`
-///    (status `0x1`), panic-free, capability untouched.
-///
-/// Both `ERET` cleanly (the `SVC` mechanism is exercised); neither over-grants.
-/// `task_yield` / `task_exit` are not driven here — their gate-#3 control-plane
-/// fail-closed is host-tested. This supersedes the B5 "stub mints a console cap
-/// and emits a greeting" smoke: post-gate-#3 a syscall with no running task is
-/// rejected, which is the security property worth demonstrating.
-///
-/// [T-026]: https://github.com/HodeTech/Tyrne/blob/main/docs/analysis/tasks/phase-b/T-026-current-task-cap-table.md
-#[allow(
-    clippy::cast_possible_truncation,
-    reason = "Tyrne's BSP target is 64-bit aarch64; pointer/usize → u64 \
-              register-word casts are lossless"
-)]
-fn syscall_boundary_smoke(console: &Pl011Uart) {
-    // `FAILCLOSED_TABLE` is initialised in core setup (see `kernel_main_high`),
-    // not here: the fail-closed fallback is a security mechanism that must be live
-    // independent of this diagnostic. This smoke only *exercises* it.
-
-    // (1) console_write via SVC with no current task → fail-closed InvalidHandle.
-    // The cap word (`0`) and the buffer are irrelevant: with `SCHED.current ==
-    // None` the dispatcher resolves against the empty `FAILCLOSED_TABLE`, so the
-    // cap lookup rejects before the window / per-page translate is ever reached.
-    let buf: &[u8] = b"tyrne: (no current task; gate #3 fail-closed)\n";
-    let cap_word = 0u64;
-    let status: u64;
-    // SAFETY: `SVC #0` traps to the EL1 current-EL sync vector (+0x200), runs
-    // the panic-free dispatcher, and `ERET`s back here. x8 = number, x0..x2 =
-    // args; the handler writes x0 = status, clobbers x0..x7, preserves
-    // x8..x30 + SP_EL0. Audit: UNSAFE-2026-0029.
-    unsafe {
-        core::arch::asm!(
-            "svc #0",
-            in("x8") 5u64,
-            inout("x0") cap_word => status,
-            inout("x1") buf.as_ptr() as u64 => _,
-            in("x2") buf.len() as u64,
-            out("x3") _,
-            out("x4") _,
-            out("x5") _,
-            out("x6") _,
-            out("x7") _,
-        );
-    }
-
-    // (2) reserved-invalid number 0 → BadSyscallNumber, panic-free.
-    let bad_status: u64;
-    // SAFETY: same `SVC` trap mechanism; number 0 is reserved-invalid, so the
-    // dispatcher returns a typed `SyscallError::BadSyscallNumber` in x0 without
-    // touching any capability or panicking. Audit: UNSAFE-2026-0029.
-    unsafe {
-        core::arch::asm!(
-            "svc #0",
-            in("x8") 0u64,
-            out("x0") bad_status,
-            out("x1") _,
-            out("x2") _,
-            out("x3") _,
-            out("x4") _,
-            out("x5") _,
-            out("x6") _,
-            out("x7") _,
-        );
-    }
-
-    // Assert the security property, don't just print it: with no current task
-    // both syscalls MUST be rejected (non-OK status). The exact codes
-    // (InvalidHandle / BadSyscallNumber) are pinned by the host dispatcher tests;
-    // here the load-bearing check is that neither returned `OK_STATUS` — a
-    // fail-closed regression would over-grant and report OK. A failed assertion
-    // panics, so boot never reaches "all tasks complete" and the smoke fails.
-    assert!(
-        status != tyrne_kernel::syscall::OK_STATUS,
-        "gate #3: console_write with no current task must fail closed, got OK"
-    );
-    assert!(
-        bad_status != tyrne_kernel::syscall::OK_STATUS,
-        "gate #3: reserved-invalid syscall number must be rejected, got OK"
-    );
-
-    let mut w = FmtWriter(console);
-    let _ = writeln!(
-        w,
-        "tyrne: syscall smoke ok (gate #3 fail-closed — no current task: console_write status={status:#x}; bad-number status={bad_status:#x})"
-    );
 }
 
 // ─── Boot entry ───────────────────────────────────────────────────────────────
@@ -1384,18 +1293,10 @@ extern "C" fn kernel_main_high() -> ! {
         .expect("task_loader::load_image failed on BSP smoke")
     };
 
-    {
-        let mut w = FmtWriter(console);
-        let _ = writeln!(
-            w,
-            "tyrne: image loaded (entry = {:#x}; sp = {:#x}; image bytes {}; stack bytes {}; AS cap = idx {})",
-            loaded.entry_va.0,
-            loaded.stack_top_va.0,
-            loaded.image_bytes,
-            loaded.stack_bytes,
-            loaded.as_cap.index(),
-        );
-    }
+    // `loaded` is consumed by the EL0 task wire-up below (T-028): it is turned
+    // into a runnable Task (`task_create_from_image`) + scheduled
+    // (`add_user_task`) after `TASK_ARENA` is published. (B4/B5 only printed +
+    // discarded it; B6 runs it.)
 
     // ── GIC init + DAIF unmask — T-012 (now post-MMU) ─────────────────────────
     //
@@ -1480,7 +1381,7 @@ extern "C" fn kernel_main_high() -> ! {
     // SAFETY: `TASK_ARENA` was just written above; momentary `&mut` is
     // scoped to these three `create_task` calls and drops before any task
     // runs. Audit: UNSAFE-2026-0014.
-    let (handle_a, handle_b, handle_idle) = unsafe {
+    let (handle_a, handle_b, handle_idle, user_task_handle, user_as_handle) = unsafe {
         let arena = &mut *TASK_ARENA.as_mut_ptr();
         let ha = create_task(
             arena,
@@ -1497,7 +1398,49 @@ extern "C" fn kernel_main_high() -> ! {
             Task::new(2, tyrne_kernel::mm::BOOTSTRAP_ADDRESS_SPACE_HANDLE),
         )
         .expect("create_task idle failed");
-        (ha, hb, hi)
+
+        // ── First EL0 userspace task (T-028) ──────────────────────────────
+        // Turn the `loaded` `hello` image (from `load_image` above) into a
+        // runnable Task: resolve its fresh AS cap, mint the Task via the T-024
+        // `task_create_from_image` bridge (create_task + a root Task cap), then
+        // resolve that Task cap back to the `TaskHandle` `add_user_task` needs.
+        // The AS + Task caps live in `BOOTSTRAP_AS_TABLE` (kernel-side object
+        // management); the EL0 task's OWN caps (the debug console) are seeded
+        // into `USER_TASK_TABLE` (in the scheduler block below).
+        //
+        // SAFETY: `BOOTSTRAP_AS_TABLE` was written in the bootstrap-AS block
+        // far above; v1 is single-core + the scheduler is not yet started, so
+        // this momentary `&mut` is unaliased and drops at this block's end (no
+        // cross-switch). Audit: UNSAFE-2026-0010 + UNSAFE-2026-0014.
+        let bootstrap_table = (*BOOTSTRAP_AS_TABLE.0.get()).assume_init_mut();
+        let user_as_handle = {
+            let cap = bootstrap_table
+                .lookup(loaded.as_cap)
+                .expect("EL0 task: loaded AS cap is stale");
+            match cap.object() {
+                CapObject::AddressSpace(h) => h,
+                _ => panic!("EL0 task: loaded.as_cap is not an AddressSpace cap"),
+            }
+        };
+        let task_cap = task_create_from_image(
+            &loaded,
+            bootstrap_table,
+            arena,
+            3,
+            CapRights::DUPLICATE | CapRights::DERIVE | CapRights::REVOKE,
+        )
+        .expect("EL0 task: task_create_from_image failed");
+        let user_task_handle = {
+            let cap = bootstrap_table
+                .lookup(task_cap)
+                .expect("EL0 task: minted Task cap is stale");
+            match cap.object() {
+                CapObject::Task(h) => h,
+                _ => panic!("EL0 task: task_create_from_image returned a non-Task cap"),
+            }
+        };
+
+        (ha, hb, hi, user_task_handle, user_as_handle)
     };
 
     // ── IPC infrastructure ────────────────────────────────────────────────────
@@ -1526,6 +1469,28 @@ extern "C" fn kernel_main_high() -> ! {
         .insert_root(cap_b)
         .expect("table B: insert_root failed");
 
+    // The EL0 task's OWN capability table (T-028): a single `DebugConsole` cap
+    // at the root slot, so the `hello` program's `console_write` resolves
+    // against its own caps (gate #3). A fresh table's first `insert_root` yields
+    // index 0 / generation 0 — the handle `tyrne_user::HELLO_CONSOLE_CAP` (= 0)
+    // that `hello` passes in `x0`.
+    let mut user_task_table = CapabilityTable::new();
+    let console_cap = user_task_table
+        .insert_root(Capability::new(
+            CapRights::CONSOLE_WRITE,
+            CapObject::DebugConsole,
+        ))
+        .expect("EL0 task: console cap insert_root failed");
+    // The T-027 <-> T-028 interface: `hello` hard-codes HELLO_CONSOLE_CAP = 0, so
+    // the seeded cap MUST resolve to (index 0, generation 0). Guaranteed by the
+    // fresh table, but asserted so a future change to `insert_root`'s allocation
+    // can't drift the contract silently (a mismatch would make the EL0
+    // `console_write` fail closed with InvalidHandle).
+    assert!(
+        console_cap.index() == 0 && console_cap.generation() == 0,
+        "EL0 task: DebugConsole cap must resolve to HELLO_CONSOLE_CAP (index 0, generation 0)"
+    );
+
     // Publish IPC state before the scheduler starts.
     // SAFETY: single-core; no task is running yet. Audit: UNSAFE-2026-0001.
     unsafe {
@@ -1544,6 +1509,9 @@ extern "C" fn kernel_main_high() -> ! {
         (*TABLE_B.0.get()).write(table_b);
         (*EP_CAP_A.0.get()).write(ep_cap_a);
         (*EP_CAP_B.0.get()).write(ep_cap_b);
+        // The EL0 task's own table — published before `add_user_task` records
+        // its `*mut` (gate #3) and before `start()`.
+        (*USER_TASK_TABLE.0.get()).write(user_task_table);
     }
 
     // ── Scheduler setup ───────────────────────────────────────────────────────
@@ -1586,6 +1554,33 @@ extern "C" fn kernel_main_high() -> ! {
                 TASK_A_STACK.top(),
             )
             .expect("add_task A failed: queue full or arena exhausted");
+        // The first EL0 userspace task (T-028): enqueued Ready after the kernel
+        // demo tasks. On dispatch the scheduler activates its address space
+        // (installs the per-task `TTBR0_EL1` + clears `EPD0` — `QemuVirtMmu::
+        // activate`), then `enter_el0` `ERET`s into EL0 at the image entry; its
+        // `console_write` / `task_exit` SVCs take the lower-EL `+0x400` vector.
+        // Gate #3: `USER_TASK_TABLE` (the task's OWN caps) is recorded here so
+        // `syscall_entry` resolves the `console_write` cap against it.
+        //
+        // SAFETY: `init_user_context` (via `add_user_task`) seeds the `enter_el0`
+        // trampoline; `user_sp` (loader page-aligned stack top) + `kernel_stack_top`
+        // (`TaskStack` repr) are 16-byte aligned + non-null (`add_user_task`
+        // debug-asserts both); `USER_TASK_TABLE` is published above + lives for
+        // the program, and the recorded `*mut CapabilityTable` follows the
+        // [ADR-0021] no-`&mut`-across-switch discipline. Audit: UNSAFE-2026-0014
+        // (the cap-table-pointer record) + UNSAFE-2026-0032 (`enter_el0`) +
+        // UNSAFE-2026-0030 (the gate-#1 copy-user this enables).
+        sched
+            .add_user_task(
+                cpu,
+                user_task_handle,
+                user_as_handle,
+                loaded.entry_va.0,
+                loaded.stack_top_va.0,
+                USER_TASK_STACK.top(),
+                USER_TASK_TABLE.as_mut_ptr(),
+            )
+            .expect("add_user_task (EL0 hello) failed: queue full or arena exhausted");
         register_idle(
             core::ptr::from_mut(&mut sched),
             cpu,
@@ -1602,15 +1597,11 @@ extern "C" fn kernel_main_high() -> ! {
         (*SCHED.0.get()).write(sched);
     }
 
-    // ── Syscall-boundary smoke — gate #3 fail-closed (T-026) ──────────────────
-    //
-    // Sequenced **after `SCHED` is published** (above) but **before `start()`**:
-    // `syscall_entry` now sources the caller's table / AS / window from
-    // `SCHED.current` (gate #3), so `SCHED` must be initialised — and `current`
-    // is `None` here (the scheduler is published but not started), which is
-    // exactly the fail-closed case this smoke demonstrates. The real EL0
-    // `+0x400` round-trip (with a running task) is the B6 wire-up.
-    syscall_boundary_smoke(console);
+    // The B5 `+0x200` EL1-stub fail-closed smoke (T-026) is **retired** here:
+    // a real EL0 task (`add_user_task` above) now exercises the syscall boundary
+    // for real via the lower-EL `+0x400` vector (the live round-trip below). The
+    // no-current-task fail-closed property the stub demonstrated is covered by
+    // the host dispatcher tests (`*_with_no_current_task_fails_closed`).
 
     console.write_bytes(b"tyrne: starting cooperative scheduler\n");
 
