@@ -78,7 +78,7 @@ Exactly two EL0 `SVC` exceptions, each `ERET`ing cleanly; **no new fault class**
 ## What the program does
 
 [`userland/hello/src/main.rs`](../../userland/hello/src/main.rs) is a
-`#![no_std] #![no_main]` aarch64 program whose entire body is:
+`#![no_std] #![no_main]` AArch64 program whose entire body is:
 
 ```rust
 #[no_mangle]

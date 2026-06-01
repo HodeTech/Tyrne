@@ -4,7 +4,7 @@
 - **Status:** Draft (opened in the B6-closure commit; the [B6 closure perf review](../../reviews/performance-optimization-reviews/2026-06-01-B6-closure.md) defers the per-op micro-measurements here)
 - **Created:** 2026-06-01
 - **Author:** @cemililik (+ Claude Opus 4.8 agent)
-- **Dependencies:** the timer ([ADR-0010](../../../decisions/0010-timer-abstraction.md) — `Cpu::now_ns` / `CNTVCT_EL0`); the scheduler (`yield_now` / `context_switch`), IPC (`ipc_send`/`ipc_recv`), and the EL0 syscall path ([T-028](T-028-el0-userspace-wireup.md)).
+- **Dependencies:** the timer ([ADR-0010](../../../decisions/0010-timer-trait.md) — `Cpu::now_ns` / `CNTVCT_EL0`); the scheduler (`yield_now` / `context_switch`), IPC (`ipc_send`/`ipc_recv`), and the EL0 syscall path ([T-028](T-028-el0-userspace-wireup.md)).
 
 ---
 
