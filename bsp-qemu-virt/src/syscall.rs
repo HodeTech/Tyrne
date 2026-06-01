@@ -39,6 +39,7 @@
 //!
 //! [adr-0030]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0030-syscall-abi.md
 
+use tyrne_hal::Console; // `write_bytes` (the task-exit termination report)
 use tyrne_kernel::syscall::{
     dispatch, SyscallArgs, SyscallContext, SyscallEffect, UserAccessWindow,
 };
@@ -222,27 +223,65 @@ pub unsafe extern "C" fn syscall_entry(frame: *mut SyscallTrapFrame) {
             }
         }
         SyscallEffect::Reschedule => {
-            // task_yield. Post-gate-#3 the dispatcher returns `Reschedule` only
-            // when an EL0 task is current (`has_current_task`); with no current
-            // task it returns `Resume(InvalidHandle)` instead (handled above).
-            // So this arm is reached only for a real running task — **dormant**
-            // until the B6 wire-up (the smoke issues no control-plane `SVC`).
-            // The v1 stand-in resumes `Ok` (x0 = 0) — task_yield "always succeeds
-            // in v1" per ADR-0031; real `yield_now` wiring lands in the wire-up.
-            // SAFETY: write x0 only. Audit: UNSAFE-2026-0029.
+            // task_yield (T-028): cooperatively yield the CPU. `yield_now`
+            // re-enqueues the current EL0 task `Ready` + switches to the next;
+            // when this task is re-dispatched `yield_now` returns here and we
+            // `ERET` back to EL0 with `x0 = Ok` (task_yield "always succeeds in
+            // v1" — ADR-0031). Reached only with a current task (the dispatcher
+            // returns `Resume(InvalidHandle)` when none — handled above).
+            // NOTE: `hello` does not call task_yield, so this BSP path is wired
+            // but exercised only by a future userspace task; `yield_now`'s logic
+            // is host-tested, and `enter_el0` is one-shot so later resumes take
+            // this cooperative path (UNSAFE-2026-0032).
+            //
+            // SAFETY: `SCHED` + `CPU` are published before `start()`; the SVC
+            // handler runs single-core with IRQs masked (exception entry), so no
+            // peer aliases them. `yield_now` honours the [ADR-0021] no-`&mut`-
+            // across-switch discipline and resumes this frame on re-dispatch.
+            // Audit: UNSAFE-2026-0008 + UNSAFE-2026-0014 + UNSAFE-2026-0029.
             unsafe {
+                let cpu = (*crate::CPU.0.get()).assume_init_ref();
+                let res = tyrne_kernel::sched::yield_now(
+                    crate::SCHED.as_mut_ptr(),
+                    cpu,
+                    crate::activate_address_space,
+                );
+                // `yield_now`'s only `Err` is `NoCurrentTask`, which gate #3
+                // precludes here (this arm is reached only with a current task).
+                // Assert it so a broken invariant surfaces in debug instead of
+                // being masked by the `OK_STATUS` below. task_yield "always
+                // succeeds in v1" (ADR-0031), so EL0 still resumes Ok.
+                debug_assert!(
+                    res.is_ok(),
+                    "task_yield: yield_now failed unexpectedly (NoCurrentTask should be precluded by gate #3): {res:?}"
+                );
                 (*frame).x0_x1[0] = tyrne_kernel::syscall::OK_STATUS;
             }
         }
         SyscallEffect::Terminate(_code) => {
-            // task_exit. As with `Reschedule`, reached only with a current task
-            // (gate #3 rejects it otherwise) — **dormant** until the B6 wire-up.
-            // The ABI says "does not return", but v1 has no EL0 context to drop;
-            // the v1 stand-in resumes `Ok` so a stray `task_exit` cannot wedge
-            // the boot before the wire-up lands real termination.
-            // SAFETY: write x0 only. Audit: UNSAFE-2026-0029.
+            // task_exit (T-028): terminate the current EL0 task + dispatch the
+            // next. `task_exit_current` is `-> !`: it switches to the next ready
+            // task (or idle) and **abandons this syscall-handler frame**, so we
+            // never `ERET` back to the exiting task (honouring the ABI's "does
+            // not return"). The exiting task's slot / AS / cap table are not
+            // reclaimed in v1 (the deferred SEC-T024-01 object-lifecycle gap).
+            // Reached only with a current task (gate #3 rejects it otherwise).
+            // The exit code is unused in v1 (the scheduler tracks no exit status).
+            //
+            // SAFETY: `SCHED` + `CPU` + `CONSOLE` are published before `start()`;
+            // single-core + IRQs masked in the SVC handler; `task_exit_current`
+            // honours the [ADR-0021] discipline and abandons this frame (its
+            // throwaway context is never restored). Audit: UNSAFE-2026-0008 +
+            // UNSAFE-2026-0014 + UNSAFE-2026-0029.
             unsafe {
-                (*frame).x0_x1[0] = tyrne_kernel::syscall::OK_STATUS;
+                let console = (*crate::CONSOLE.0.get()).assume_init_ref();
+                console.write_bytes(b"tyrne: userspace task exited\n");
+                let cpu = (*crate::CPU.0.get()).assume_init_ref();
+                tyrne_kernel::sched::task_exit_current(
+                    crate::SCHED.as_mut_ptr(),
+                    cpu,
+                    crate::activate_address_space,
+                );
             }
         }
     }
