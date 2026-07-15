@@ -1,6 +1,6 @@
 # Phase plan
 
-Ten phases, rough execution order. Each phase is a separate file so detail can grow without any single document becoming unnavigable.
+Ten phases plus a short consolidation bridge ([Phase B.2](phase-b2.md)), in rough execution order. Each phase is a separate file so detail can grow without any single document becoming unnavigable.
 
 The plan is a **sequence**, not a schedule: there are no dates. Later phases are sketched at lower resolution than earlier ones; detail appears as its turn approaches. The *why* behind the whole system lives in [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
 
@@ -10,6 +10,7 @@ The plan is a **sequence**, not a schedule: there are no dates. Later phases are
 |-------|-------|--------------|----------|
 | [A](phase-a.md) | Kernel core on QEMU `virt` | Detailed | Two kernel tasks exchange IPC messages under capability control on QEMU. |
 | [B](phase-b.md) | Real userspace | Detailed | A userspace task runs in its own address space and makes syscalls. |
+| [B.2](phase-b2.md) | Consolidation & hardening (bridge) | Detailed | CI enforces every claimed gate; docs reflect Phase B's closure; the review-surfaced correctness/robustness/quality defects are fixed. Recommended before Phase C. |
 | [C](phase-c.md) | Multi-core | Detailed | Preemptive scheduler across two or more cores with working cross-core IPC. |
 | [D](phase-d.md) | Raspberry Pi 4 (first real hardware) | Detailed | `bsp-pi4` boots on a real Pi 4 at feature parity with QEMU virt. |
 | [E](phase-e.md) | Driver model and essential services | Medium | Userspace drivers + log + storage + filesystem + network services composed. |
@@ -24,8 +25,9 @@ The plan is a **sequence**, not a schedule: there are no dates. Later phases are
 ```mermaid
 flowchart LR
     A[Phase A<br/>kernel core] --> B[Phase B<br/>real userspace]
-    B --> C[Phase C<br/>multi-core]
-    B --> D[Phase D<br/>Pi 4]
+    B --> B2[Phase B.2<br/>consolidation & hardening]
+    B2 --> C[Phase C<br/>multi-core]
+    B2 --> D[Phase D<br/>Pi 4]
     C --> D
     D --> E[Phase E<br/>drivers + services]
     E --> F[Phase F<br/>smart home]

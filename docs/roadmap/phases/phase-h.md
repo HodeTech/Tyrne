@@ -73,3 +73,72 @@ Business review. The HAL abstraction has been tested by three architecturally di
 - Whether any HAL trait needs a v2 to accommodate architectural differences that Phase A could not foresee.
 - The degree to which BSPs should share helper code (e.g., a `bsp-arm-gic` crate between Pi 4 / Pi 5 / Jetson) vs. remaining independent.
 - Whether to target a specific RISC-V profile (e.g., RVA22) or stay minimal.
+
+---
+
+## Review-derived work items (2026-07-15 full-repository review)
+
+Phase H's exit bar depends on the HAL abstraction being real: `bsp-pi5`, `bsp-jetson`, and the first RISC-V BSP are each validated, before any hardware is in hand, against the host-side HAL doubles in `test-hal/`, and each new BSP author leans directly on the trait contracts in `hal/`. The two epics below matter precisely *because* of that dependency — a test double that diverges from real BSP behavior lets a new-BSP implementation pass host tests while being wrong on hardware, and a HAL trait contract that is ambiguous or under-specified gets a different (and possibly incompatible) reading from each new BSP author who has to interpret it. Both epics are therefore work that should land before or alongside H1 (`bsp-pi5`), so that `bsp-jetson` (H2) and the RISC-V BSP (H3) inherit a truthful test-HAL and a tightened trait surface rather than each rediscovering the same gaps.
+
+### Epic 1 — Test-HAL fidelity & parity
+
+Keeps the host-side HAL doubles in `test-hal/` bit-faithful to real BSP behavior, so that a new BSP validated against these doubles (gating Milestone H1, and by inheritance H2/H3) is being validated against a truthful model rather than a convenient one.
+
+- ⚪ **LOW** — `BlockMappedMmu` checks block-membership before alignment/flags validation in `test-hal`, inverting the real walker's precedence.
+  - Location: `test-hal/src/mmu.rs:533-547` and `test-hal/src/mmu.rs:549-558`
+  - Action: Factor the alignment + `DEVICE`/`EXECUTE` validation that `FakeMmu::map` performs into a small shared helper, and have `BlockMappedMmu::map`/`unmap` call it before consulting `is_blocked`, so the decorator's check-order is structurally tied to the base fake's (and the real BSP's) precedence instead of relying on convention.
+
+- ⚪ **LOW** — `FakeUserMem`'s size arithmetic is unchecked in `test-hal`, unlike the identical pattern in sibling kernel test fixtures.
+  - Location: `test-hal/src/mmu.rs:621` and `test-hal/src/mmu.rs:697`
+  - Action: Use `npages.checked_mul(PAGE_SIZE).expect("test math")` in both `new()` and `region_len()` (or compute the byte length once and store it), matching the defensive-arithmetic convention already established in `kernel/src/obj/task_loader.rs`'s equivalent fixture.
+
+- ⚪ **LOW** — `FakeUserMem::write`/`read` bound checks use unchecked addition, the same overflow-then-OOB shape as the `npages * PAGE_SIZE` finding above, at a different site.
+  - Location: `test-hal/src/mmu.rs:663` and `test-hal/src/mmu.rs:679`
+  - Action: Use `off.checked_add(bytes.len()).is_some_and(|end| end <= self.region_len())` (and the `read` equivalent) so an overflowing offset/length combination fails the guard instead of silently wrapping past it.
+
+- ⚪ **LOW** — `FakeIrqController::acknowledge` does not gate on `IrqController::enable`, unlike the real GICv2, so a kernel bug that forgets to enable an IRQ line before expecting delivery is invisible to host tests.
+  - Location: `test-hal/src/irq_controller.rs:45-55, 124-126, 217-226`
+  - Action: Keep the loose `inject`/`acknowledge` for tests that deliberately want to bypass gating, but add a second, stricter helper (e.g. `acknowledge_enabled_only`, or a `debug_assert` behind a `strict` flag set at construction) that mirrors the real GIC by only returning an IRQ from `acknowledge` if `is_enabled` is true for it. Route any future scheduler/timer-IRQ integration tests through the strict variant — relevant as H1–H3 each bring up interrupt handling on new hardware — so a missing `enable()` call is caught on the host rather than on real silicon.
+
+- ⚪ **LOW** — `FakeIrqController::end_of_interrupt` does not validate the acknowledge/EOI pairing invariant its own trait documents.
+  - Location: `test-hal/src/irq_controller.rs:128-130`
+  - Action: Track an "active" set populated by `acknowledge` and cleared by `end_of_interrupt`; have `end_of_interrupt` panic (matching this crate's existing style of enforcing architectural invariants via `assert!`, e.g. the `FAKE_MAX_IRQ` guard) when called with an IRQ that is not currently active. Low priority since `FakeIrqController` is not yet consumed by any kernel test (confirmed via repo-wide search), but worth doing before it is wired into any Phase H BSP's IRQ-handling tests.
+
+- ⚪ **LOW** — `FakeTimer::set_now` silently permits moving the clock backward, violating the `Timer` trait's monotonicity contract, and this is already exercised unflagged by the crate's own tests.
+  - Location: `test-hal/src/timer.rs:48-55, 131-137`
+  - Action: Document on `set_now` that it intentionally bypasses the trait's monotonicity guarantee and is for test setup only (e.g. seeding the clock before other calls), not for simulating time reversal mid-scenario; consider renaming to make the escape hatch obvious (e.g. `reset_now_unchecked`) or adding a `debug_assert` that most call sites only use it before any `advance`/read has occurred.
+
+- ⚪ **LOW** — `FakeTimer::new` accepts `resolution_ns == 0`, a value no real `Timer` implementation can produce.
+  - Location: `test-hal/src/timer.rs:24-36`
+  - Action: Add `assert!(resolution_ns > 0, "FakeTimer: resolution_ns must be > 0 — no real Timer implementation can report 0")` in `new`, mirroring the production invariant, so the fake cannot model an impossible timer — one that a new BSP's real timer driver (H1–H3) could never actually exhibit.
+
+- ⚪ **LOW** — `FakeContextSwitch::init_context` resets `is_user`/`user_sp`/`entry_addr` on slot reuse but leaves the `switched` marker stale.
+  - Location: `test-hal/src/context_switch.rs:170-185` (contrast with the reuse test at 278-299)
+  - Action: Add `ctx.switched = false;` to both `init_context` and `init_user_context` for full re-seed consistency, and extend `init_context_clears_prior_user_markers_on_reuse` (or add a sibling test) to assert `switched` is also cleared on reuse.
+
+- ⚪ **LOW** — `FakeIrqController::inject` lacks the `FAKE_MAX_IRQ` range guard that `enable`/`disable` enforce, letting tests inject architecturally-impossible `IrqNumber`s.
+  - Location: `test-hal/src/irq_controller.rs:53-55`
+  - Action: Add the same `assert!(irq.0 < FAKE_MAX_IRQ, ...)` guard to `inject` (or explicitly document why injection is allowed to model impossible INTIDs, if that is ever intentionally useful for a specific negative test). This keeps the fake's three interrupt-numbering entry points (enable/disable/inject) consistently bounded to what real GICv2 hardware can actually present, so a test author's typo or miscomputed constant surfaces as a host-side panic instead of silently exercising the kernel against a state hardware can never produce.
+
+### Epic 2 — HAL abstraction hardening
+
+Trait-bound items in `hal/` itself that stress the abstraction surface Phase H's exit bar depends on ("the HAL abstraction has been tested by three architecturally distinct targets"). Unlike Epic 1, these are contract gaps in the trait definitions, not in the test doubles that model them — left unresolved, each new BSP author in H1–H3 answers the same open question independently, risking divergent (and possibly incompatible) behavior across `bsp-pi5`, `bsp-jetson`, and the RISC-V BSP.
+
+- 🟡 **MEDIUM** — `Timer::resolution_ns()`'s trait doc says deadlines round "to nearest," which contradicts the ceiling-rounding rationale that the trait's own `arm_deadline` contract actually requires.
+  - Location: `hal/src/timer.rs:50-54`
+  - Action: Reword `Timer::resolution_ns`'s doc to match the contract `arm_deadline`/`ns_to_ticks` actually enforce, e.g.: "Deadlines round *up* to the next multiple of this value (ceiling), never down, so `arm_deadline`'s 'fires at-or-after deadline_ns' guarantee holds; finer precision at the call site is silently lost." Left as-is, a future BSP author (e.g. for the RISC-V target in Milestone H3, or a Pi 5/Jetson-style target that arms its hardware comparator directly rather than reusing `ns_to_ticks`) could implement a literal "round to nearest" reading and produce deadlines that fire early, silently breaking `sleep_until`-class correctness.
+
+- ⚪ **LOW** — `IrqController::enable`/`disable`'s contract is silent on out-of-range `IrqNumber` behavior; the one shipped implementation diverges from the ADR's own stated expectation by panicking instead of no-op'ing.
+  - Location: `hal/src/irq_controller.rs:37-59`
+  - Action: Before the `IrqCap` capability layer (ADR-0011 open question) starts feeding capability-derived `IrqNumber` values into this trait, pin down and document one required behavior for out-of-range input. Given error-handling.md's rule that `panic!` is reserved for broken invariants and is not a substitute for `Result` once callers are less trusted, the conservative choice is to make `enable`/`disable` return `Result<(), IrqError>` (or clamp/no-op, matching the ADR's original stated expectation) rather than leaving a kernel-wide panic as the undocumented, implementation-chosen failure mode. Pin this down before H1–H3's GICv2-derived (H1, H2) and PLIC-derived (H3, per Milestone H3's sub-breakdown item 2) `IrqController` impls each have to guess.
+
+This epic's companion constants-duplication concern — the GICv2 architectural max-IRQ value living independently in `test-hal` and in the real driver — is not a defect but is carried below as a polish item, since it is currently harmless drift risk rather than an observed inconsistency.
+
+### Polish & excellence
+
+- **Polish** — Extract the shared map-precondition validation (alignment + `DEVICE`/`EXECUTE` checks) into one helper instead of duplicating it per-decorator in `test-hal/src/mmu.rs`, turning the file's own documented claim that "the injecting decorators ... add exactly one failure mode each, delegating the success path unchanged" (`test-hal/src/mmu.rs:107-109`) into an enforced invariant rather than a convention.
+- **Polish** — Tighten the few `test-hal` SAFETY comments that don't yet name the rejected safer alternative, bringing them up to the same letter-of-policy standard the rest of the crate already sets (it cross-references PR review rounds and ADRs for its fidelity gaps).
+- **Polish** — De-duplicate the GICv2 architectural max-IRQ constant between `FakeIrqController` and the real driver by hoisting it into `tyrne_hal::irq_controller` (it is an ARM-architecture fact, not board-specific) so both `bsp-qemu-virt` and `test-hal` reference one source; otherwise a future GICv3/LPI extension or a differing board max-IRQ value can drift the fake out of sync with the real bound it is meant to model — directly relevant once `bsp-pi5` (H1) and `bsp-jetson` (H2) each bring their own GIC variant online.
+- **Polish** — Note in `test-hal`'s `lib.rs` Status section that `FakeIrqController` and `FakeTimer` are not yet consumed by any kernel test (confirmed via repo-wide search), turning "this fidelity gap doesn't matter yet" into a documented, trackable fact ahead of Phase H wiring these fakes into new-BSP-adjacent test suites.
+
+Covers all 11 review findings + 4 polish items routed to this phase.
