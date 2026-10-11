@@ -74,6 +74,16 @@ Boot the single-core debug kernel, observe the userspace greeting, task exit and
 
 ### Automated smoke and release builds
 
+To build and run the optimized profile through Cargo, build its matching userland first:
+
+```sh
+tools/build-userland.sh --release
+cargo kernel-build-release
+cargo kernel-run-release
+```
+
+The release ELF is `target/aarch64-unknown-none/release/tyrne-bsp-qemu-virt`. Restore the debug userland with `tools/build-userland.sh` before returning to a debug kernel or perf-bench build.
+
 For a bounded run that builds both images first, captures the trace and checks completion and fault classes:
 
 ```sh

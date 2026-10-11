@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Assert that deliberate regressions fail the real CI commands in a disposable
 # copy of the tracked worktree. Never alters repository source or branches.
-# Usage: tools/test-ci-gates.sh --shell | --userland
+# Usage: tools/test-ci-gates.sh --shell | --userland | --release
 set -euo pipefail
 
 usage() {
-    echo "Usage: tools/test-ci-gates.sh --shell | --userland" >&2
+    echo "Usage: tools/test-ci-gates.sh --shell | --userland | --release" >&2
 }
 
 [[ $# -eq 1 ]] || { usage; exit 2; }
 MODE="$1"
 case "$MODE" in
-    --shell|--userland) ;;
+    --shell|--userland|--release) ;;
     -h|--help) usage; exit 0 ;;
     *) usage; exit 2 ;;
 esac
@@ -69,5 +69,10 @@ fn ci_lint_probe() -> u64 {
 }
 PROBE
         run_negative clippy::clone_on_copy cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings
+        ;;
+    --release)
+        awk '{ print } $0 == "[profile.release]" { print "debug-assertions = true" }' Cargo.toml > Cargo.toml.probe
+        mv Cargo.toml.probe Cargo.toml
+        run_negative 'FAIL: release syscall gate requires both named tests to pass' tools/check-release-tests.sh
         ;;
 esac

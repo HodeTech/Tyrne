@@ -9,6 +9,8 @@
 #   - miri                                                 (required, slow)
 # Fast lane includes ShellCheck and bare-metal userland clippy, with isolated
 # expected-failure regression probes; no extra required-check names.
+# Host release tests and the two-test release syscall guard run in the fast
+# lane; kernel-build also builds/lints release and debug perf-bench variants.
 # The `miri` job runs the host-test suite under Stacked Borrows; it is
 # slower (~1–2 min in practice on the current small suite; historically
 # budgeted at ~10–15 min) but a Miri regression is a hard stop. The
@@ -107,6 +109,12 @@ jobs:
         run: cargo +"$NIGHTLY_PIN" host-clippy
       - name: cargo host-test
         run: cargo +"$NIGHTLY_PIN" host-test
+      - name: cargo test --release (host crates)
+        run: cargo +"$NIGHTLY_PIN" test --release
+      - name: Release-only syscall gate (both tests must run)
+        run: tools/check-release-tests.sh
+      - name: Release profile negative regression probe (isolated)
+        run: tools/test-ci-gates.sh --release
       - name: QEMU tooling argument regression checks (stubbed)
         run: tools/test-qemu-tooling.sh
 
@@ -155,6 +163,20 @@ jobs:
         run: cargo +"$NIGHTLY_PIN" clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings
       - name: Userland clippy negative regression probe (isolated)
         run: tools/test-ci-gates.sh --userland
+      - name: build release userland image (ADR-0039)
+        run: tools/build-userland.sh --release
+      - name: cargo kernel-build-release
+        run: cargo +"$NIGHTLY_PIN" kernel-build-release
+      - name: Release kernel clippy
+        run: cargo +"$NIGHTLY_PIN" clippy --release --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings
+      # The release build overwrote hello.bin; restore the matching debug image
+      # immediately before the non-release perf-bench build and lint.
+      - name: Restore debug userland image for perf-bench
+        run: tools/build-userland.sh
+      - name: Build debug perf-bench variant
+        run: cargo +"$NIGHTLY_PIN" build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench
+      - name: Lint debug perf-bench variant
+        run: cargo +"$NIGHTLY_PIN" clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings
 
   # ─── Host stable check: host crates compile + test on stable ────────────
   # A genuine "the host-buildable crates compile and pass tests on stable
