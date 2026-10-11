@@ -2,7 +2,7 @@
 
 Tasks belonging to [Phase B.2 — Consolidation & Hardening](../../../roadmap/phases/phase-b2.md), the bridge phase between Phase B and Phase C. The phase is governed by [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md): it is a **mandatory gate** — Phase C (and D) cannot open until its exit bar is met.
 
-All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide sequence (T-029 was the last Phase B task). The 141 plan items of `phase-b2.md` are fully covered (see [Coverage](#coverage)); the 71 polish items stay in `phase-b2.md` as an opportunistic backlog and are **not** exit-gating, except where a task below names a specific polish item.
+All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide sequence (T-029 was the last Phase B task). The 141 plan items of `phase-b2.md` are all accounted for (see [Coverage](#coverage)); the 71 polish items stay in `phase-b2.md` as an opportunistic backlog and are **not** exit-gating, except where a task below names a specific polish item.
 
 ## How to use this folder
 
@@ -65,19 +65,19 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 
 ## Coverage
 
-Every plan item of [`phase-b2.md`](../../../roadmap/phases/phase-b2.md) has exactly one owning task, with one item split between two tasks (see below). The counts below are plan items (the review's finding counts), not tasks.
+Every plan item of [`phase-b2.md`](../../../roadmap/phases/phase-b2.md) is accounted for: 139 by a single owning task, one split between two tasks (T-047 and T-048) and one already fixed by the ADR-0040 kickoff (see below). The counts below are plan items (the review's finding counts), not tasks.
 
-| Track | Items | Owning tasks (items each) |
+| Track | Items | Owning tasks (items each) and items already done |
 |-------|------:|---------------------------|
 | B.2-1 CI enforcement & merge gates | 12 | T-030 (4), T-031 (2), T-032 (1), T-033 (1), T-034 (2), T-035 (2) |
-| B.2-2 Documentation cascade | 58 | T-045 (5), T-046 (8), T-047 (5), kickoff (1), T-048 (6), T-049 (6), T-050 (7), T-051 (1), T-052 (5), T-053 (8), T-054 (1), T-055 (5) |
+| B.2-2 Documentation cascade | 58 | T-045 (5), T-046 (8), T-047 (5), T-048 (6), T-049 (6), T-050 (7), T-051 (1), T-052 (5), T-053 (8), T-054 (1), T-055 (5); 1 fixed at kickoff (no task) |
 | B.2-3 Correctness & robustness | 16 | T-037 (3), T-038 (1), T-039 (2), T-040 (1), T-041 (1), T-042 (3), T-043 (3), T-044 (1), T-033 (1, the `smoke.sh --timeout` item) |
 | B.2-4 Code quality & API design | 32 | T-057 (5), T-058 (1), T-059 (1), T-060 (1), T-061 (4), T-062 (2), T-063 (2), T-064 (2), T-065 (1), T-066 (1), T-067 (1), T-068 (11) |
 | B.2-5 Unsafe-audit & doc hygiene | 21 | T-069 (3), T-070 (1), T-071 (2), T-072 (12), T-064 (3, the `tyrne-user` documentation items) |
 | B.2-6 Performance micro-fixes | 2 | T-073 (2) |
 | **Total** | **141** | |
 
-The single plan item "`current.md` and T-029's own task file are stale" is owned by T-047 (the `current.md` half); T-048 flips the task file. The plan item about the `phases/README.md` living-document note was already fixed by the ADR-0040 kickoff (counted as "kickoff" above); T-075's verification report records it as fixed at kickoff. Not plan items, added by the ADR-0040 kickoff: the correction of the false atomicity comment in `pmm.rs` (in T-042; it was routed "now" by `phase-c.md`), and the stale-block cleanup of `current.md` beyond the plan item (in T-047), and, from the PR review, the dotted-ID path-template generalisation and the *Bridge phase* / *Track* glossary entries (in T-050). Polish items consumed by tasks: T-033 (QEMU core-count parameter), T-036 (arm64 host check), T-045 (freshness marker), T-048 (`date_done` template field), T-056 (automation), T-057, T-061, T-064, T-066, T-070, T-074 and others as named in each task.
+The single plan item "`current.md` and T-029's own task file are stale" is owned by T-047 (the `current.md` half); T-048 flips the task file. The plan item about the `phases/README.md` living-document note was already fixed by the ADR-0040 kickoff (counted as "fixed at kickoff" above); T-075's verification report records it as fixed at kickoff. Not plan items, added by the ADR-0040 kickoff: the correction of the false atomicity comment in `pmm.rs` (in T-042; it was routed "now" by `phase-c.md`), and the stale-block cleanup of `current.md` beyond the plan item (in T-047), and, from the PR review, the dotted-ID path-template generalisation and the *Bridge phase* / *Track* glossary entries (in T-050). Polish items consumed by tasks: T-033 (QEMU core-count parameter), T-036 (arm64 host check), T-045 (freshness marker), T-048 (`date_done` template field), T-056 (automation), T-057, T-061, T-064, T-066, T-070, T-074 and others as named in each task.
 
 ## Dependency graph
 

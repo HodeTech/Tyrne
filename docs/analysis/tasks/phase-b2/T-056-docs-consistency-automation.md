@@ -7,7 +7,7 @@
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-048](T-048-phase-b-task-corpus-sync.md), [T-049](T-049-review-indices-sync.md), [T-054](T-054-adr-ledger-renumbering-cascade.md)
 - **Informs:** none
-- **ADRs required:** none (a standard or ADR only if the checks become a new CI gate policy)
+- **ADRs required:** an ADR (or a revision-note rider on the ADR that motivated the CI standard, found per [`propose-standard-change`](../../../../.agents/skills/propose-standard-change/SKILL.md) step 2) recording the merge-blocking-versus-advisory decision, `Accepted` before any CI step lands; none if the script stays a local-only tool
 
 ---
 
@@ -26,7 +26,7 @@ Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md
 - [ ] Optional checks, each either implemented or recorded as skipped with the reason: a task that `current.md` calls `Done` whose own `Status` is not `Done`; commit subjects whose scope is missing from the documented list in `commit-style.md`.
 - [ ] Each implemented check starts green on the tree as it stands after T-048, T-049 and T-054, and has a recorded negative test: a deliberate defect in a scratch copy (a broken link, a task missing from an index, a duplicated ledger number, an untagged fence, an orphan audit tag) makes it fail.
 - [ ] The script and its checks are documented (usage, exit codes, how to add a check) in `docs/guides/ci.md` or `docs/standards/infrastructure.md`, and the `Required`/`Planned` status of the gate is stated there.
-- [ ] **Decision recorded:** whether the script runs as a merge-blocking CI step (for example in `lint-and-host-test`) or as an advisory/local check only; if blocking, `docs/guides/ci.md` and `infrastructure.md` list it under required gates.
+- [ ] **Decision recorded:** whether the script runs as a merge-blocking CI step (for example in `lint-and-host-test`), as an advisory CI step, or as a local-only tool. Wiring it into CI in either form changes the CI gate policy, so the decision is recorded in the ADR named in *ADRs required* and that ADR is `Accepted` before the CI step lands; a local-only tool is recorded in this task's review history. If blocking, `docs/guides/ci.md` and `infrastructure.md` list it under required gates (if advisory, under advisory gates).
 - [ ] A procedure for keeping indices in step exists: either a `sync-task-index` / `sync-review-index` skill under `.agents/skills/` (indexed in its `README.md`) or the CI step above; record which.
 
 ## Out of scope
