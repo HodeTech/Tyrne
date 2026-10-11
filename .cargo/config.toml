@@ -22,6 +22,8 @@ rustflags = [
 # `cargo run --target aarch64-unknown-none -p tyrne-bsp-qemu-virt` boots the
 # built ELF under QEMU virt with a single Cortex-A72 core, 128 MiB RAM, and
 # the serial multiplexed onto the terminal. See docs/guides/run-under-qemu.md.
+# This static runner stays at one core. The guide documents --smp / QEMU_SMP
+# for the shell helpers and CARGO_TARGET_AARCH64_UNKNOWN_NONE_RUNNER for Cargo.
 runner = "qemu-system-aarch64 -M virt -cpu cortex-a72 -m 128M -smp 1 -nographic -serial mon:stdio -kernel"
 
 # Convenience aliases.

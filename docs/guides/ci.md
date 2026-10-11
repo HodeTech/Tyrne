@@ -6,7 +6,7 @@ This guide describes the GitHub Actions pipeline configured in [`.github/workflo
 
 | Job | Toolchain | Wall time (expected) | Fails on |
 |-----|-----------|----------------------|----------|
-| `lint-and-host-test` | pinned nightly + `rustfmt` + `clippy` | ~2 min | `cargo fmt --check` diff, any clippy warning, any failing host test |
+| `lint-and-host-test` | pinned nightly + `rustfmt` + `clippy` | ~2 min | `cargo fmt --check` diff, any clippy warning, any failing host test or stubbed QEMU argument regression |
 | `kernel-build` | pinned nightly + `aarch64-unknown-none` + `clippy` | ~1 min | `cargo kernel-build` error, any kernel-clippy warning |
 | `host-stable-check` | stable (no extra components) | ~2 min | host crates failing to build or test on stable Rust |
 | `miri` | pinned nightly + `miri` component | ~10–15 min | Any Stacked Borrows violation in `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` |
@@ -42,6 +42,7 @@ The CI matrix mirrors what a contributor should run locally before opening a PR:
 | `cargo fmt --all -- --check` | `lint-and-host-test` (step 1) |
 | `cargo host-clippy` | `lint-and-host-test` (step 2) |
 | `cargo host-test` | `lint-and-host-test` (step 3) |
+| `tools/test-qemu-tooling.sh` (stubbed QEMU arguments) | `lint-and-host-test` |
 | `cargo kernel-build` | `kernel-build` |
 | `cargo kernel-clippy` | `kernel-build` |
 | `cargo +stable build` + `cargo +stable host-test` (host crates) | `host-stable-check` |

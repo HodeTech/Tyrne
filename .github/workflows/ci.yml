@@ -99,6 +99,8 @@ jobs:
         run: cargo +$NIGHTLY_PIN host-clippy
       - name: cargo host-test
         run: cargo +$NIGHTLY_PIN host-test
+      - name: QEMU tooling argument regression checks (stubbed)
+        run: tools/test-qemu-tooling.sh
 
   # ─── Kernel build: aarch64-unknown-none ─────────────────────────────────
   # The bare-metal BSP cannot be built as part of the default workspace

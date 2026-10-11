@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-1
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -17,7 +17,7 @@ As a developer about to bring up a second core, I want `tools/run-qemu.sh` and `
 
 ## Context
 
-Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md). QEMU's core count is hard-coded to 1 in three places: `tools/run-qemu.sh:92`, `tools/smoke.sh:73` and the cargo runner string at `.cargo/config.toml:25`. Milestone C1 ("Secondary core start" in `docs/roadmap/phases/phase-c.md`) has a Tests item "QEMU run with `-smp 4` brings all four cores to a known checkpoint", which cannot even be attempted through the project's scripts today. Separately, `tools/smoke.sh:29` does `TO="$2"; shift 2` under `set -u`; reproduced on HEAD 2026-10-11: `bash tools/smoke.sh --timeout` prints `line 29: $2: unbound variable` and exits 1, whereas every other usage error in the script exits 2.
+Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md). At the opening snapshot, QEMU's core count was hard-coded to 1 in three places: `tools/run-qemu.sh:92`, `tools/smoke.sh:73` and the cargo runner string at `.cargo/config.toml:25`. Milestone C1 ("Secondary core start" in `docs/roadmap/phases/phase-c.md`) has a Tests item "QEMU run with `-smp 4` brings all four cores to a known checkpoint", which could not be attempted through the project's scripts at that snapshot. Separately, `tools/smoke.sh:29` does `TO="$2"; shift 2` under `set -u`; reproduced on HEAD 2026-10-11: `bash tools/smoke.sh --timeout` prints `line 29: $2: unbound variable` and exits 1, whereas every other usage error in the script exits 2.
 
 This task covers three `phase-b2.md` entries (line numbers as of the opening snapshot; locate by headline): Track B.2-1 LOW "QEMU wrapper tooling hardcodes `-smp 1` with no override" (line 57), the Polish item "Parameterize the QEMU core count (`QEMU_SMP` ...)" (line 592), and the Track B.2-3 LOW "`smoke.sh`'s `--timeout` flag crashes with an unbound-variable error" (line 326).
 
@@ -67,3 +67,4 @@ Beyond the acceptance criteria:
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |
+| 2026-10-12 | Codex (AI agent) | Started step 2 after T-037's implementation gates and both fresh review rounds. Reproduced the missing timeout value error on `3a7c264`. Keep the space-separated flag syntax; the last repeated flag wins, a valid flag overrides an invalid environment default, and an empty environment value is invalid. Reject extra ELF arguments consistently. Add a dependency-free stub regression script to the existing fast CI lane; it does not claim SMP runtime support or replace T-034. Refresh the existing QEMU guide's stale build prerequisites and completion instructions while adding the required core-count section. |

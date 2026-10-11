@@ -1,17 +1,16 @@
 # Run Tyrne under QEMU
 
-Build the Phase 4c kernel image and boot it under `qemu-system-aarch64` on the `virt` machine. The kernel writes a greeting to the serial console and halts — this is the first real-world run of Tyrne code.
+Build and boot Tyrne on QEMU's `virt` AArch64 machine. This guide is for contributors verifying the kernel and its embedded EL0 hello task from a checkout.
 
 ## Goal
 
-- A running `qemu-system-aarch64 -M virt` instance that has booted Tyrne and printed `tyrne: hello from kernel_main` to its serial console.
-- Clean exit from QEMU back to the shell.
+Boot the single-core debug kernel, observe the userspace greeting, task exit and scheduler completion, then return to the shell.
 
 ## Prerequisites
 
-- macOS, Linux, or another Unix-like host.
-- **Rustup** installed, with this repo's `rust-toolchain.toml` pinned nightly available. The first `cargo` invocation in the repo will install it automatically if `rustup` can reach the network.
-- **QEMU** with aarch64 system support. On macOS:
+- A checkout of this repository and a Unix-like host; run the commands below from the repository root.
+- Rustup with network access for the pinned toolchain and components in [`rust-toolchain.toml`](../../rust-toolchain.toml). The first Cargo invocation installs them, including the bare-metal target and LLVM tools used by the userland build.
+- QEMU with AArch64 system support. On macOS:
 
   ```sh
   brew install qemu
@@ -29,44 +28,36 @@ Build the Phase 4c kernel image and boot it under `qemu-system-aarch64` on the `
   qemu-system-aarch64 --version
   ```
 
+- For automated smoke runs, either coreutils `timeout` (normally present on Linux) or Perl (present on macOS).
+
 ## Steps
 
-1. **Clone the repository** if you have not already.
-
-   ```sh
-   git clone https://github.com/HodeTech/Tyrne.git
-   cd Tyrne
-   ```
-
-2. **Let rustup install the pinned toolchain.** Any `cargo` command in the repo triggers it; `cargo --version` is the smallest such command.
+1. **Install the pinned toolchain** by running Cargo from the checkout.
 
    ```sh
    cargo --version
    ```
 
-   The first run downloads the pinned nightly and the `aarch64-unknown-none` target; later runs are instant.
-
-3. **Build the kernel image.** The workspace alias builds the BSP binary for the bare-metal target.
+2. **Build userland, then the kernel.** The BSP embeds `userland/hello/hello.bin`; it must exist before the kernel build. Always rebuild userland for the matching profile before rebuilding the kernel, including when switching profiles.
 
    ```sh
+   tools/build-userland.sh
    cargo kernel-build
    ```
 
-   The ELF is written to `target/aarch64-unknown-none/debug/tyrne-bsp-qemu-virt`.
+   The ELF is `target/aarch64-unknown-none/debug/tyrne-bsp-qemu-virt`.
 
-4. **Run under QEMU**, using the project's shell helper.
-
-   ```sh
-   ./tools/run-qemu.sh
-   ```
-
-   Or, equivalently, via the Cargo runner:
+3. **Boot interactively** with the shell helper or Cargo alias.
 
    ```sh
-   cargo run --target aarch64-unknown-none -p tyrne-bsp-qemu-virt
+   tools/run-qemu.sh
    ```
 
-   Or fully manually:
+   ```sh
+   cargo kernel-run
+   ```
+
+   Both default to one core. The equivalent manual command keeps that supported default:
 
    ```sh
    qemu-system-aarch64 \
@@ -79,64 +70,99 @@ Build the Phase 4c kernel image and boot it under `qemu-system-aarch64` on the `
        -kernel target/aarch64-unknown-none/debug/tyrne-bsp-qemu-virt
    ```
 
-## Verifying it worked
+4. **Exit QEMU** after the completion marker: press `Ctrl-A`, then `x`. Alternatively, press `Ctrl-A`, then `c` to enter the monitor and type `quit`. The completed kernel idles in WFI and does not exit QEMU itself.
 
-The terminal should show:
+### Automated smoke and release builds
 
-```text
-tyrne: hello from kernel_main
+For a bounded run that builds both images first, captures the trace and checks completion and fault classes:
+
+```sh
+tools/smoke.sh --int --timeout 5
 ```
 
-The kernel then enters a `spin_loop` idle — there is nothing else to print yet. QEMU does not exit on its own.
+The command prints its trace path and exits after the budget; a timeout after successful completion is expected. An explicit ELF path skips both builds. Increase the budget on a slower host.
 
-## Exiting QEMU
+For an interactive release build, use matching userland and kernel profiles:
 
-With `-nographic` and `-serial mon:stdio`, your terminal is multiplexed between the guest serial console and the QEMU monitor. To exit:
+```sh
+tools/build-userland.sh --release
+cargo kernel-build --release
+tools/run-qemu.sh --release
+```
 
-- Press `Ctrl-A`, then `x` (QEMU exits immediately).
+The current release syscall gate rejects the debug console call, so the release trace has no userspace greeting; it still has task exit and completion. Rebuild debug userland before returning to a debug kernel build.
 
-Alternatively, press `Ctrl-A`, then `c` to switch between the serial view and the monitor prompt (`(qemu)`), and type `quit`.
+### Core count
+
+Both shell helpers accept `--smp N` and the `QEMU_SMP` environment default. Precedence is the last `--smp N`, then `QEMU_SMP`, then `1`. A count must be a positive integer; empty, zero, negative and non-numeric values exit 2 with usage. A valid flag overrides even an invalid environment default. Missing `--smp` or `--timeout` values also exit 2 with a flag-specific message.
+
+```sh
+QEMU_SMP=1 tools/run-qemu.sh --smp 1
+tools/smoke.sh --smp 1 --timeout 5
+```
+
+**N > 1 is unsupported by the current kernel.** These options prepare tooling for Phase C; today's boot assembly has no secondary-core park guard or SMP bring-up. CI and normal smoke verification use one core. Passing a larger value is not evidence that multiple cores work.
+
+Cargo's static runner in [`.cargo/config.toml`](../../.cargo/config.toml) remains at one core. Override it explicitly to use the shell helper, which receives Cargo's ELF path:
+
+```sh
+CARGO_TARGET_AARCH64_UNKNOWN_NONE_RUNNER="tools/run-qemu.sh --smp 1" cargo kernel-run
+```
+
+To verify the override without launching QEMU:
+
+```sh
+CARGO_TARGET_AARCH64_UNKNOWN_NONE_RUNNER=echo cargo kernel-run
+```
+
+This prints the kernel ELF path. Use a relative path starting with `./` if an ELF filename begins with `--`.
+
+## Verifying it worked
+
+Among the debug boot messages, expect these markers in order:
+
+```text
+hello from userspace
+tyrne: userspace task exited
+tyrne: all tasks complete
+```
+
+The real EL0 task makes two expected SVC exceptions (console and exit); these are not CPU faults. No panic, translation/permission fault, data/prefetch abort or unallocated instruction should appear. The smoke script currently enforces completion and fault checks; the dedicated debug/release EL0 CI gate is tracked by [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
+
+Run the argument regression checks without QEMU or a build:
+
+```sh
+tools/test-qemu-tooling.sh
+```
+
+They use a stub to verify argument handling, not guest runtime or SMP support.
 
 ## Troubleshooting
 
-**`cargo kernel-build` fails with "linker not found" or similar.** The `aarch64-unknown-none` target needs `rust-lld`, which is part of the toolchain's `llvm-tools-preview` component. Check:
+**The BSP reports a missing userland image.** Run the matching-profile userland build before the kernel build, as in step 2.
+
+**LLVM tools or the bare-metal target are missing.** Restore the components on the repository's pinned nightly:
 
 ```sh
-rustup component list --installed | grep llvm-tools
+rustup component add llvm-tools-preview
+rustup target add aarch64-unknown-none
 ```
 
-The repo's `rust-toolchain.toml` installs it automatically; if missing, remove `~/.rustup/toolchains/<name>` and rerun `cargo --version`.
-
-**Build fails with "undefined reference to memcpy" or similar.** The prebuilt `aarch64-unknown-none` runtime normally provides these. If missing, consider `-Z build-std-features=compiler-builtins-mem` as a workaround; file an issue with the exact error.
-
-**QEMU says "No machine virt".** Install a newer `qemu-system-aarch64`; the `virt` machine has been available for years.
-
-**Nothing is printed.** Two common causes:
-- The PL011 MMIO base is wrong for your QEMU version. It should be `0x0900_0000` on `virt`. Verify via `info mtree` in the QEMU monitor.
-- The kernel is panicking before reaching `write_bytes`. Add early prints to `_start` (assembly `mov`-and-`strb` into `0x0900_0000`) to narrow it down.
-
-**Build succeeds but QEMU exits immediately or hangs silently.** Check the ELF's entry point:
+**The kernel hangs silently.** Capture exception details with the interactive helper, or use the bounded smoke run:
 
 ```sh
-llvm-objdump -f target/aarch64-unknown-none/debug/tyrne-bsp-qemu-virt | head
+tools/run-qemu.sh --int-log
+tools/smoke.sh --int --timeout 20
 ```
 
-It should be `0x40080000`.
+The helper prints the exception-log path. Inspect it for unexpected fault classes; use one core and verify that the userland and kernel profiles match.
 
-## What you just ran
-
-This is the whole system, end to end, in Phase 4c v0.0.1:
-
-- **QEMU** loads the ELF and jumps to `_start`.
-- **`_start`** (in [`bsp-qemu-virt/src/boot.s`](../../bsp-qemu-virt/src/boot.s)) sets up the stack, zeroes BSS, branches into Rust.
-- **`kernel_entry`** (in [`bsp-qemu-virt/src/main.rs`](../../bsp-qemu-virt/src/main.rs)) constructs the `Pl011Uart` and hands it to the portable kernel.
-- **`tyrne_kernel::run`** (in [`kernel/src/lib.rs`](../../kernel/src/lib.rs)) writes the greeting and halts.
-
-See [`docs/architecture/boot.md`](../architecture/boot.md) for the full design, and [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md) for the rationale.
+**The kernel ELF is missing.** Run the two builds in step 2. The interactive helper runs an existing ELF; it does not build one.
 
 ## References
 
-- [ADR-0012: Boot flow and memory layout for `bsp-qemu-virt`](../decisions/0012-boot-flow-qemu-virt.md).
-- [`docs/architecture/boot.md`](../architecture/boot.md).
-- [`docs/architecture/hal.md`](../architecture/hal.md).
-- QEMU `virt` machine: https://qemu.readthedocs.io/en/latest/system/arm/virt.html
+- [Boot architecture](../architecture/boot.md) and [HAL architecture](../architecture/hal.md).
+- [ADR-0012: QEMU boot flow](../decisions/0012-boot-flow-qemu-virt.md).
+- [ADR-0039: Userland build pipeline](../decisions/0039-userland-build-pipeline.md).
+- [Phase C: SMP and preemption](../roadmap/phases/phase-c.md).
+- [QEMU `virt` machine documentation](https://qemu.readthedocs.io/en/latest/system/arm/virt.html).

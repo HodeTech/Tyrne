@@ -11,8 +11,12 @@
 #   tools/smoke.sh                       — debug build, 20s budget
 #   tools/smoke.sh --release             — release build
 #   tools/smoke.sh --int                 — add -d int,unimp (fault-class check)
+#   tools/smoke.sh --smp N               — positive core count
 #   tools/smoke.sh --timeout 30          — override the wall-clock budget (s)
 #   tools/smoke.sh <path/to/elf>         — explicit ELF
+#
+# Core count precedence: --smp N, then QEMU_SMP, then 1.
+# N > 1 is a tooling affordance; the current kernel has no SMP bring-up.
 #
 # The full trace is written to ${TMPDIR:-/tmp}/tyrne-smoke.<pid>.log (printed).
 set -euo pipefail
@@ -21,17 +25,39 @@ PROFILE="debug"
 TO=20
 INT_FLAGS=()
 KERNEL=""
+SMP="${QEMU_SMP-1}"
+
+usage() {
+    sed -n '2,/^set -/p' "$0" | sed 's/^# \{0,1\}//;/^set -/d' >&2
+}
+
+usage_error() {
+    echo "error: $*" >&2
+    usage
+    exit 2
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --release) PROFILE="release"; shift ;;
         --int) INT_FLAGS=(-d int,unimp); shift ;;  # no guest_errors: PL011 noise interleaves the trace
-        --timeout) TO="$2"; shift 2 ;;
-        -h|--help) sed -n '2,/^set -/p' "$0" | sed 's/^# \{0,1\}//;/^set -/d' >&2; exit 0 ;;
-        --*) echo "error: unknown flag: $1" >&2; exit 2 ;;
-        *) KERNEL="$1"; shift ;;
+        --timeout)
+            [[ $# -ge 2 ]] || usage_error "--timeout requires a value"
+            TO="$2"; shift 2 ;;
+        --smp)
+            [[ $# -ge 2 ]] || usage_error "--smp requires a value"
+            SMP="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        --*) usage_error "unknown flag: $1" ;;
+        *)
+            [[ -z "$KERNEL" ]] || usage_error "unexpected extra argument: $1 (kernel already set to $KERNEL)"
+            KERNEL="$1"; shift ;;
     esac
 done
+
+if ! [[ "$SMP" =~ ^[1-9][0-9]*$ ]]; then
+    usage_error "--smp / QEMU_SMP must be a positive integer; got '$SMP'"
+fi
 
 # Validate the budget: it is passed to `timeout`/`alarm()` as integer seconds.
 # Both fail (or misbehave) on a non-numeric value, and zero is worse than
@@ -39,8 +65,7 @@ done
 # zero budget would let the WFI-idling kernel hang the run forever. Require a
 # strictly positive integer (the regex rejects "0", non-numerics, and "").
 if ! [[ "$TO" =~ ^[1-9][0-9]*$ ]]; then
-    echo "error: --timeout must be a positive integer (seconds); got '$TO'" >&2
-    exit 2
+    usage_error "--timeout must be a positive integer (seconds); got '$TO'"
 fi
 
 # When no explicit ELF is given, build the userland image first (ADR-0039: its
@@ -70,7 +95,7 @@ echo "smoke: $KERNEL  (budget ${TO}s)  log -> $LOG" >&2
 # (present on most Linux CI images); fall back to a Perl `alarm()` wrapper
 # (macOS ships Perl but not `timeout`); error out if neither is available.
 QEMU_ARGS=(
-    -M virt -cpu cortex-a72 -m 128M -smp 1
+    -M virt -cpu cortex-a72 -m 128M -smp "$SMP"
     -display none -serial stdio -monitor none
     "${INT_FLAGS[@]+"${INT_FLAGS[@]}"}"
     -kernel "$KERNEL"
