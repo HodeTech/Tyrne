@@ -38,7 +38,7 @@ The scope includes release kernel clippy and release EL0 smoke now. The current 
 | ID | Title | Track | Status | Depends on |
 |----|-------|-------|--------|------------|
 | [T-030](T-030-ci-release-profile-gate.md) | Gate the release profile in CI (build, test, release-only regression tests) | B.2-1 | Ready | — |
-| [T-031](T-031-ci-userland-clippy-and-shellcheck.md) | Clippy the userland crates and shellcheck the tooling scripts in CI | B.2-1 | Ready | — |
+| [T-031](T-031-ci-userland-clippy-and-shellcheck.md) | Clippy the userland crates and shellcheck the tooling scripts in CI | B.2-1 | In Review | — |
 | [T-032](T-032-panic-family-denies-hal-bsp.md) | Deny panic-family lints in `tyrne-hal` and `tyrne-bsp-qemu-virt` | B.2-1 | Ready | — |
 | [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 (+B.2-3) | In Review | — |
 | [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | Ready | T-030, T-033 |

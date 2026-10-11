@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-1
-- **Status:** Ready
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -17,18 +17,20 @@ As the maintainer of a project whose rule 2 is "every `unsafe` block is justifie
 
 ## Context
 
+The following describes the opening baseline; implementation and verification are recorded in Review history.
+
 Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md). `tyrne-user` and `tyrne-userland-hello` are workspace members but not `default-members` (`Cargo.toml:23-27`), so `host-clippy` skips them (`.cargo/config.toml:44-45`); `kernel-clippy` is `-p tyrne-bsp-qemu-virt` only (`.cargo/config.toml:32-34`), and the BSP does not depend on the userland crates (`bsp-qemu-virt/Cargo.toml:15-17`; the image is embedded as a prebuilt `hello.bin`). `tools/build-userland.sh:30-34` only runs `cargo build`. So the raw `svc #0` shims in `userland/tyrne-user/src/lib.rs:92-141` are never clippy-checked on any target. Separately no CI step lints shell, although `tools/smoke.sh:53,55` already carry `# shellcheck disable=SC2086` directives.
 
 This task covers two items of `phase-b2.md` Track B.2-1 (line numbers as of the opening snapshot; locate by headline): the HIGH "Userland crates carrying the raw unsafe syscall-trap asm are never clippy-checked in CI" (line 30) and the LOW "No shellcheck ... runs in CI" (line 54). The Polish items that restate them (userland clippy gap, shellcheck the `tools/` scripts) are closed by the same work.
 
 ## Acceptance criteria
 
-- [ ] After `tools/build-userland.sh`, `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` exits 0 locally; its first-run findings are listed in the review history and each is fixed or given a scoped `#[allow(...)]` with a `reason`.
-- [ ] The `kernel-build` job runs that exact command as its own step, placed after the `tools/build-userland.sh` step (next to `cargo kernel-clippy`).
-- [ ] `shellcheck tools/*.sh` exits 0 locally at default severity (baseline in Design notes), with each remaining suppression a scoped `# shellcheck disable=SCnnnn` carrying a reason comment and no file-wide disable.
+- [x] After `tools/build-userland.sh`, `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` exits 0 locally; its first-run findings are listed in the review history and each is fixed or given a scoped `#[allow(...)]` with a `reason`.
+- [x] The `kernel-build` job runs that exact command as its own step, placed after the `tools/build-userland.sh` step (next to `cargo kernel-clippy`).
+- [x] `shellcheck tools/*.sh` exits 0 locally at default severity (baseline in Design notes), with each remaining suppression a scoped `# shellcheck disable=SCnnnn` carrying a reason comment and no file-wide disable.
 - [ ] CI runs `shellcheck tools/*.sh` as a step in the fast lane (`lint-and-host-test`) or a dedicated job, prints `shellcheck --version`, and is green; the CI shellcheck version is recorded in the review history.
 - [ ] Negative tests, recorded in the review history: in isolated temporary copies, a clippy-triggering change in `userland/tyrne-user/src/lib.rs` and an unquoted variable in a `tools/*.sh` script each make the exact matching gate command fail. Repeat in isolated hosted runner workspaces with a harness that asserts the expected non-zero result. Stay on `development`; record local and hosted evidence separately and never commit deliberately broken source.
-- [ ] Documentation: `docs/guides/ci.md` (job table "Fails on" cells and the local-command table) and `docs/standards/infrastructure.md` ("Required gates" bullets) name the userland clippy command and the shellcheck step; the `ci.yml` header comment (lines 7-9) is still accurate.
+- [x] Documentation: `docs/guides/ci.md` (job table "Fails on" cells and the local-command table) and `docs/standards/infrastructure.md` ("Required gates" bullets) name the userland clippy command and the shellcheck step; the `ci.yml` header comment (lines 7-9) is still accurate.
 
 ## Out of scope
 
@@ -45,16 +47,16 @@ Userland: add the clippy command to the `kernel-build` job, which already instal
 
 Beyond the acceptance criteria:
 
-- [ ] `cargo fmt --all -- --check` clean.
-- [ ] `cargo host-clippy` clean with `-D warnings`.
-- [ ] `cargo kernel-clippy` clean.
-- [ ] `cargo host-test` passes.
-- [ ] `cargo miri test -p tyrne-hal -p tyrne-kernel -p tyrne-test-hal` clean if any kernel, hal or test-hal source changes (not expected).
-- [ ] `tools/smoke.sh --int` PASS if any BSP, kernel or userland source changes (possible via clippy fixes in `tyrne-user`/`hello`); also PASS after any `tools/*.sh` edit that touches `smoke.sh`.
-- [ ] If a clippy fix changes `userland/tyrne-user/src/lib.rs` asm, the matching audit entry (UNSAFE-2026-0033) is checked against the new text and amended where required; a distinct security review explicitly approves the unsafe change, with its artifact and `Security-Review:` trailer recorded per the security-review/unsafe standards.
-- [ ] Every touched markdown file has all `](...)` link targets resolving.
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with a `Refs: ADR-0040` trailer.
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] `cargo fmt --all -- --check` clean.
+- [x] `cargo host-clippy` clean with `-D warnings`.
+- [x] `cargo kernel-clippy` clean.
+- [x] `cargo host-test` passes.
+- [x] `cargo miri test -p tyrne-hal -p tyrne-kernel -p tyrne-test-hal` clean if any kernel, hal or test-hal source changes (not expected).
+- [x] `tools/smoke.sh --int` PASS if any BSP, kernel or userland source changes (possible via clippy fixes in `tyrne-user`/`hello`); also PASS after any `tools/*.sh` edit that touches `smoke.sh`.
+- [x] If a clippy fix changes `userland/tyrne-user/src/lib.rs` asm, the matching audit entry (UNSAFE-2026-0033) is checked against the new text and amended where required; a distinct security review explicitly approves the unsafe change, with its artifact and `Security-Review:` trailer recorded per the security-review/unsafe standards.
+- [x] Every touched markdown file has all `](...)` link targets resolving.
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with a `Refs: ADR-0040` trailer.
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
 ## Design notes
 
@@ -74,3 +76,5 @@ Beyond the acceptance criteria:
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |
+| 2026-10-12 | Codex (AI agent) | Started approved step 3 after T-033's implementation, hosted gate and both fresh review rounds (Low R2-INT-01 corrected in `05f1736`). Live baseline: the exact bare-metal userland clippy command exits 0 with no findings; ShellCheck 0.11.0 reports the same five findings as opening. Keep the exact command rather than add an optional alias. Quote the QEMU comma token and inner path expansions; suppress only the trap-callback false positive locally with a reason. Correct measured workflow pin quoting too, making full actionlint clean. Add a dependency-free expected-failure harness using isolated copies, invoked separately for shell and userland in their existing jobs. Infrastructure changes implement the already Accepted ADR-0040; no new policy decision or ADR. |
+| 2026-10-12 | Codex (AI agent) | Local gates passed: exact userland clippy after a 117-byte debug userland build, ShellCheck 0.11.0 at default severity over every script, full actionlint, fmt, host/kernel clippy, 366 host tests (two ignored HAL doctests), 59 QEMU argument cases and real single-core debug smoke (greeting/exit/completion, no fault). Isolated negative commands failed as expected: ShellCheck exit 1 with SC2086; userland clippy exit 101 with `clippy::clone_on_copy`. Only SC2329 needs a scoped reasoned suppression; quoted comma/path operands fix the other four findings. No Rust, asm or unsafe reasoning changed; conditional Miri/audit/security-change gates are N/A. Local logs: `/tmp/tyrne-b21-step3/` (ephemeral). Hosted version/negative evidence and both fresh rounds pending. |

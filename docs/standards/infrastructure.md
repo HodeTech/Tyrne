@@ -69,7 +69,9 @@ CI was set up in Phase 4 (completed 2026-04-23); the gates below define the bar.
 These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml):
 
 - `cargo fmt --all -- --check` (`lint-and-host-test`).
-- Clippy with `-D warnings`, run as the two aliases CI executes: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates and `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP. The two aliases together cover the whole workspace; their combination is the executed equivalent of `cargo clippy --workspace --all-targets -- -D warnings`.
+- Clippy with `-D warnings`: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates; `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP; and `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` for the bare-metal userland, after its image build in `kernel-build`. These are distinct target-aware commands; the BSP has no host test target.
+- `shellcheck tools/*.sh` at default severity (`lint-and-host-test`), with `shellcheck --version` printed in the log. Suppress only demonstrated false positives with a scoped directive and a reason.
+- Isolated expected-failure lint probes (`tools/test-ci-gates.sh --shell` / `--userland`) assert that the corresponding real commands reject a deliberate regression with the expected diagnostic. Their success confirms rejection, not a failure of the production gate.
 - `cargo test` — host-runnable unit and integration tests over `default-members` (`lint-and-host-test`; re-run on stable by `host-stable-check`).
 - `cargo kernel-build` — the kernel ELF builds clean for `aarch64-unknown-none` (`kernel-build`).
 - Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
@@ -230,6 +232,7 @@ The `supply-chain/` directory does not exist at HEAD — see [add-dependency](..
 
 ## References
 
+- [ADR-0040: Phase B.2 consolidation and Track B.2-1 execution policy](../decisions/0040-phase-b2-consolidation-bridge.md).
 - `cargo-vet`: https://mozilla.github.io/cargo-vet/
 - RustSec Advisory Database: https://rustsec.org/
 - Reproducible Builds project: https://reproducible-builds.org/
