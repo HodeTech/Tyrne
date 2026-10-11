@@ -2,12 +2,12 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-1 (polish; not exit-gating)
-- **Status:** Draft
+- **Status:** Ready
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-037](T-037-userland-bare-metal-cfg-gate.md)
 - **Informs:** none
-- **ADRs required:** ADR-0040 Acceptance, including its Track B.2-1 implementation policy
+- **ADRs required:** ADR-0040 (Accepted), including its Track B.2-1 implementation policy
 
 ---
 
@@ -23,7 +23,7 @@ This task covers the Polish item "Extend the aarch64-host build-hazard fix (Trac
 
 ## Acceptance criteria
 
-- [ ] ADR-0040's Track B.2-1 policy is Accepted before implementation: D1 required PR check, D2 `ubuntu-24.04-arm`, D3 native check/clippy/test, D4 workspace Miri included. Record routine command/runner setup details in task history.
+- [x] ADR-0040's Track B.2-1 policy is Accepted before implementation: D1 required PR check, D2 `ubuntu-24.04-arm`, D3 native check/clippy/test, D4 workspace Miri included. Record routine command/runner setup details in task history.
 - [ ] `.github/workflows/ci.yml` has a job on `ubuntu-24.04-arm` using the pinned nightly that runs `cargo check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` and `cargo miri test`, each with `--workspace --exclude tyrne-bsp-qemu-virt`; architecture-specific caches cannot restore x86_64 build artifacts.
 - [ ] The job is green on `development` and the final PR after T-037; record wall time in the review history. Verify the first merged `main` run after maintainer merge, and keep that evidence pending until it exists.
 - [ ] Negative test, recorded in the review history: restoring the arch-only gate in an isolated temporary copy of `userland/hello/src/main.rs` makes the exact ARM workspace gate command fail. Repeat in an isolated hosted ARM runner workspace with an expected-failure assertion; never create a scratch branch or commit the regression. Record the original Miri failure class separately from a harness's successful assertion of that failure.
@@ -54,7 +54,7 @@ Beyond the acceptance criteria:
 
 ## Design notes
 
-- **Decisions proposed for maintainer Acceptance in ADR-0040:**
+- **Decisions Accepted by the maintainer in ADR-0040 on 2026-10-11:**
   - **D1 trigger.** Required on PRs and normal CI pushes, so an ARM-host regression is caught before merge.
   - **D2 runner.** Explicit `ubuntu-24.04-arm`, verified against [GitHub's current runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) on 2026-10-11; this is a standard runner available without a paid-runner commitment for the public repository. Linux keeps the environment close to the x86 CI jobs; the maintainer's macOS validation remains complementary evidence.
   - **D3 commands.** Native check, clippy and tests all run. Miri does not replace native linking/testing.
@@ -68,3 +68,4 @@ Beyond the acceptance criteria:
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Draft |
 | 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |
+| 2026-10-11 | @cemililik; Codex recorded the decision | ADR-0040 Accepted after the [approval follow-up](../../reviews/code-reviews/2026-10-11-adr-0040-approval-follow-up.md); design choices settled, status Ready. Implementation and hosted evidence remain pending. |

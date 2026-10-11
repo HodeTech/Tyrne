@@ -1,6 +1,6 @@
 # 0040 — Phase B.2 consolidation bridge: governance, gating, and exit criteria
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-11
 - **Deciders:** @cemililik
 

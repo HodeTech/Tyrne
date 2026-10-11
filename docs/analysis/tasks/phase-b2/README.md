@@ -6,13 +6,13 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 
 ## How to use this folder
 
-1. **Accept ADR-0040** first (re-read it; flip its status and its index row, and replace the "Proposed — awaiting the maintainer's Accept" wording in the `current.md` decision banner, the only other place that records the pending status). This is a phase-level precondition: no task starts before the ADR is `Accepted`, which is why individual tasks do not list it as a dependency.
-2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory. For the maintainer-requested Track B.2-1 sequence below, the proposed ADR-0040 execution policy permits a successor after its predecessor's implementation, applicable gates and two fresh review rounds pass on `development`; the predecessor remains `In Review` pending the final PR. This exception takes effect only when that ADR policy is Accepted.
+1. **ADR-0040 was Accepted by the maintainer on 2026-10-11**, following the [independent approval follow-up](../../reviews/code-reviews/2026-10-11-adr-0040-approval-follow-up.md). Acceptance is a phase-level precondition: no task started before it, so individual tasks do not list it as a dependency.
+2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory. For the maintainer-requested Track B.2-1 sequence below, the Accepted ADR-0040 execution policy permits a successor after its predecessor's implementation, applicable gates and two fresh review rounds pass on `development`; the predecessor remains `In Review` pending the final PR.
 3. Start it with the [`start-task`](../../../../.agents/skills/start-task/SKILL.md) skill's status rules (`Ready` → `In Progress`; update [`current.md`](../../../roadmap/current.md)).
 4. **Every task begins by re-verifying its plan item against the live tree** (ADR-0040 rule 5). The source review was static; if an item no longer reproduces, close the task with evidence and no code change.
 5. Tasks marked `Draft` carry an open design decision (listed in the task under *Open decisions*); settle design policy through an ADR or an appropriate clarification rider before implementing. Routine implementation choices belong in task history. (T-075 is `Draft` for a different reason: its dependency set is still growing; promote it to `Ready` when the last implementation task is `In Review`.)
 
-## Track B.2-1 implementation sequence (awaiting ADR-0040 Acceptance)
+## Track B.2-1 implementation sequence (approved 2026-10-11)
 
 The 2026-10-11 preflight review is recorded in [the review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md). All seven Track B.2-1 tasks are included, including optional T-036; T-037 is the only cross-track prerequisite included in this sequence. Other tracks retain their existing ownership and scope.
 
@@ -42,8 +42,8 @@ The scope includes release kernel clippy and release EL0 smoke now. The current 
 | [T-032](T-032-panic-family-denies-hal-bsp.md) | Deny panic-family lints in `tyrne-hal` and `tyrne-bsp-qemu-virt` | B.2-1 | Ready | — |
 | [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 (+B.2-3) | Ready | — |
 | [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | Ready | T-030, T-033 |
-| [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | Draft | T-034, T-036 |
-| [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | Draft | T-037 |
+| [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | Ready | T-034, T-036 |
+| [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | Ready | T-037 |
 | [T-037](T-037-userland-bare-metal-cfg-gate.md) | Fix the bare-metal target gate in the userland crates | B.2-3 | Ready | — |
 | [T-038](T-038-console-write-x2-clobber.md) | Mark `x2` as clobbered in the `console_write` syscall shim | B.2-3 | Ready | T-037 |
 | [T-039](T-039-console-write-bounded-spin-and-length-cap.md) | Bound `console_write`'s per-byte spin and cap its length | B.2-3 | Draft | — |
