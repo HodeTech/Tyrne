@@ -73,7 +73,9 @@ These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.git
 - `shellcheck tools/*.sh` at default severity (`lint-and-host-test`), with `shellcheck --version` printed in the log. Suppress only demonstrated false positives with a scoped directive and a reason.
 - Isolated expected-failure lint probes (`tools/test-ci-gates.sh --shell` / `--userland`) assert that the corresponding real commands reject a deliberate regression with the expected diagnostic. Their success confirms rejection, not a failure of the production gate.
 - `cargo test` — host-runnable unit and integration tests over `default-members` (`lint-and-host-test`; re-run on stable by `host-stable-check`).
-- `cargo kernel-build` — the kernel ELF builds clean for `aarch64-unknown-none` (`kernel-build`).
+- `cargo test --release` over `default-members`, plus `tools/check-release-tests.sh` requiring both named release-only `console_write` tests to pass. `tools/test-ci-gates.sh --release` must reject an isolated release `debug-assertions = true` profile flip (`lint-and-host-test`); a zero-test Cargo success is not a passing gate.
+- `cargo kernel-build` and `cargo kernel-build-release` — debug and release kernel ELFs build clean for `aarch64-unknown-none`, each after its matching userland image (`kernel-build`). Release kernel clippy also denies warnings: `cargo clippy --release --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`.
+- Debug `perf-bench` build and clippy: restore the debug image with `tools/build-userland.sh` immediately before `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench`, then `cargo clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings` (`kernel-build`). Do not append Cargo flags to the existing lint alias after its `--` delimiter.
 - Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
 - Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
 

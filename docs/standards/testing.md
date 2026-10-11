@@ -102,6 +102,7 @@ Coverage is measured with `cargo llvm-cov` on host-runnable tests. Hardware-only
 Enforced in CI today (block merge):
 
 - `cargo test` (host crates, `default-members`) — must pass.
+- `cargo test --release` (same host crates) — must pass. The separate `tools/check-release-tests.sh` guard requires both named release-only console tests to execute and pass; its isolated profile-flip rejection probe must also pass.
 - Clippy with `-D warnings` — must pass through the `host-clippy` and `kernel-clippy` aliases plus `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` after the userland image build; these cover distinct host and bare-metal targets (see [infrastructure.md](infrastructure.md) §"Required gates").
 - `shellcheck tools/*.sh` at default severity — must pass. Isolated expected-failure probes also verify that the shell and userland lint commands reject their deliberate regressions; the production source stays clean.
 - `cargo fmt --all -- --check` — must pass.

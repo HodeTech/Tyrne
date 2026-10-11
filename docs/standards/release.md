@@ -59,6 +59,7 @@ Before a version is tagged, **every one of these must be true**. A gate failure 
 ### Process gates
 
 - [ ] **All enforced CI gates green** on the commit being released: `cargo fmt --check`, clippy (`host-clippy`, `kernel-clippy`, and the bare-metal userland command after its image build), `shellcheck tools/*.sh`, isolated shell/userland lint rejection probes, host tests, `kernel-build`, host crates on stable (`host-stable-check`), and Miri. See [infrastructure.md](infrastructure.md) §"Required gates" for the exact target-aware commands.
+- [ ] **Release and variant gates green:** release host tests, the explicit two-test release syscall guard and isolated profile-flip rejection, release kernel build/clippy after matching userland, and debug perf-bench build/clippy after restoring its image. These run in the existing required jobs; hosted release EL0 smoke remains pending T-034.
 - [ ] **Manual verification gates passed** — these are listed in the release standard but are **not yet CI jobs**, so they must be checked manually until they are wired up (see [infrastructure.md](infrastructure.md) §"Planned gates"): QEMU smoke *(maintainer-launched; no CI job yet)*, `cargo-audit` *(dormant until the first external dependency lands)*, `cargo-vet` *(same dormant conditional)*.
 - [ ] Hardware smoke tests passed on every Tier 2+ target that this release claims to support.
 - [ ] No `#[ignore]`d tests without a tracking issue.
