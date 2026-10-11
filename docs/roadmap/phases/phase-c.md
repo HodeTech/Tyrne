@@ -1,5 +1,7 @@
 # Phase C — Multi-core
 
+> **Status (2026-10-11): next — gated by [Phase B.2](phase-b2.md)** ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)). Phase C was marked "active" on 2026-06-01 but no milestone, task or ADR was ever opened. While Phase B.2 is open, no Phase C milestone opens and no Phase C implementation task leaves `Draft`; scoping drafts and `Proposed` ADRs are allowed (see task T-074, the Phase C readiness sweep). The two SMP-critical entry gates in §"Review-derived work items" remain **Phase C** work; only the misleading `pmm.rs` comment is corrected earlier, under T-042. ADR numbers quoted in this file (ADR-0040…0044) are tentative placeholders: the real ADR-0040 is the Phase B.2 governance ADR, and task T-054 re-sequences them.
+
 **Exit bar:** Two or more cores running concurrently, scheduled preemptively, with working cross-core IPC.
 
 **Scope:** Secondary core start via PSCI, per-core state, preemptive scheduling with timer tick, cross-core IPC, multi-core TLB shootdown. Still on QEMU virt; Pi 4 is Phase D.
@@ -14,7 +16,7 @@ Bring secondary cores online via PSCI `CPU_ON`. Each core arrives at a kernel en
 
 ### Sub-breakdown
 
-1. **ADR-0040 — Secondary core start protocol.** PSCI vs. spin-table. Entry point for secondaries (shared with primary or separate). Rendezvous semantics (when the primary considers a secondary "up").
+1. **ADR-0040 — Secondary core start protocol.** *(Tentative number: the real ADR-0040 is the Phase B.2 governance ADR; see the ledger note below and T-054.)* PSCI vs. spin-table. Entry point for secondaries (shared with primary or separate). Rendezvous semantics (when the primary considers a secondary "up").
 2. **`Cpu` trait v3 extension** — adds `start_core(core_id, entry, context)` and `core_count()`; probably as a sibling `MultiCore` trait to keep `Cpu` v2 stable.
 3. **Secondary-core asm entry** in `bsp-qemu-virt` — minimal per-core stack setup before Rust.
 4. **Per-core state struct** introduced here (fully fleshed out in C2).
@@ -22,7 +24,7 @@ Bring secondary cores online via PSCI `CPU_ON`. Each core arrives at a kernel en
 
 ### Acceptance criteria
 
-- ADR-0040 Accepted.
+- The C1 secondary-core-start ADR (tentatively numbered ADR-0040; see the ledger note below and T-054) Accepted.
 - `Cpu::start_core` (or sibling trait) lands in `tyrne-hal`.
 - All configured cores reach the Rust-level rendezvous point on QEMU.
 
@@ -121,7 +123,7 @@ Business review. Phase D (Pi 4) or Phase D + E overlap becomes active.
 | ADR-0043 | Cross-core wakeup (IPI) | C4 | renumbered 2026-06-01 from ADR-0040; was renumbered 2026-05-22 from ADR-0030 (reserved by phase-b.md §B5 ledger for the syscall ABI) |
 | ADR-0044 | TLB shootdown protocol | C5 | renumbered 2026-06-01 from ADR-0041; was renumbered 2026-05-22 from ADR-0031 (reserved by phase-b.md §B5 ledger for the initial syscall set) |
 
-Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
+Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md). **Note (2026-10-11):** ADR-0040 was taken by the Phase B.2 governance ADR ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)), so every number in this table is now an ordinal placeholder that shifts by at least one and that still collides with Phase D's ledger; re-sequencing all phase ledgers is task T-054.
 
 ## Carry-forwards from Phase B (closed 2026-06-01)
 
@@ -154,7 +156,7 @@ These two findings block Milestone C1's first secondary-core boot outright: C2's
 
 - 🔴 **`Pmm` bitmap read-modify-write (`set_bit`/`clear_bit`) is non-atomic; concurrent `alloc_frame` on two cores can double-allocate the same physical frame.**
   `kernel/src/mm/pmm.rs:741-746` and `:348-486`.
-  Action: (1) fix the misleading comment at `pmm.rs:450-453` now — it currently asserts a "set_bit atomicity" invariant the code does not provide, which is exactly the class of stale/incorrect SAFETY reasoning that causes real bugs later. (2) **Serialize shared-`Pmm` frame allocation across cores before Milestone C1 brings a second core online.** Use a real cross-core spinlock **or** convert the bitmap to lock-free `AtomicU8`/`AtomicUsize` `fetch_or`/`fetch_and` (`Ordering::AcqRel`). The Milestone C3 `Cpu::without_interrupts` critical-section primitive alone is **not** sufficient here: masking interrupts prevents same-core IRQ-vs-thread reentrancy, not two cores racing on the bitmap — cross-core mutual exclusion requires an actual lock or lock-free atomics. **Secondary-core enablement (Milestone C1) must stay gated until one of these exists.** (3) **Put this in the C1/C2 milestone planning, not just this backlog:** as written, none of C1-C5's sub-breakdowns name the physical frame allocator at all, despite it being one of the two or three most safety-critical shared structures in the kernel — add an explicit "cross-core `Pmm` serialization" item to Milestone C1's sub-breakdown as a boot-order gate on `CPU_ON`, and/or to Milestone C2 alongside `PerCore<T>`, so the secondary-core boot path cannot land before the allocator is cross-core-safe.
+  Action: (1) fix the misleading comment at `pmm.rs:450-453` now *(executed under Phase B.2 task T-042)* — it currently asserts a "set_bit atomicity" invariant the code does not provide, which is exactly the class of stale/incorrect SAFETY reasoning that causes real bugs later. (2) **Serialize shared-`Pmm` frame allocation across cores before Milestone C1 brings a second core online.** Use a real cross-core spinlock **or** convert the bitmap to lock-free `AtomicU8`/`AtomicUsize` `fetch_or`/`fetch_and` (`Ordering::AcqRel`). The Milestone C3 `Cpu::without_interrupts` critical-section primitive alone is **not** sufficient here: masking interrupts prevents same-core IRQ-vs-thread reentrancy, not two cores racing on the bitmap — cross-core mutual exclusion requires an actual lock or lock-free atomics. **Secondary-core enablement (Milestone C1) must stay gated until one of these exists.** (3) **Put this in the C1/C2 milestone planning, not just this backlog:** as written, none of C1-C5's sub-breakdowns name the physical frame allocator at all, despite it being one of the two or three most safety-critical shared structures in the kernel — add an explicit "cross-core `Pmm` serialization" item to Milestone C1's sub-breakdown as a boot-order gate on `CPU_ON`, and/or to Milestone C2 alongside `PerCore<T>`, so the secondary-core boot path cannot land before the allocator is cross-core-safe.
 
 ### 2. Shared-state SMP-safety — concurrency contracts and locking discipline (ties to Milestone C1/C2)
 

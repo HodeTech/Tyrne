@@ -296,6 +296,8 @@ Two further hazards are later-phase (already tracked, not B6): `ipc_send`'s `unr
 
 When B6 is Done, run a business review. Phase C becomes active after that review.
 
+> **Superseded in part (2026-10-11, [ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)):** the closure text below that says "Phase C is now active" is overtaken. The 2026-07-15 backlog added the bridge [Phase B.2](phase-b2.md), which is a mandatory gate; Phase C is *next*, not active, until B.2 closes. Phase B's own content and its 2026-06-01 closure are unchanged.
+
 **✅ CLOSED 2026-06-01.** B6 Done; the closure quartet (step 7) is filed — guide, perf baseline, the T-028 + consolidated Phase-B security reviews (both Approve), and the [Phase B retrospective](../../analysis/reviews/business-reviews/2026-06-01-phase-b-closure.md). Phase B delivered the microkernel core: privilege separation (EL1 kernel / EL0 userspace), the capability-gated syscall boundary, and the first real userspace task. The closure perf baseline measured boot-to-end (no regression); the per-operation EL0/IPC/context-switch micro-measurements are **intentionally deferred to [T-029](../../analysis/tasks/phase-b/T-029-perf-microbench.md)** (feature-gated `CNTVCT` instrumentation) and are **not** a Phase B acceptance gate. **Phase C is now active** (its carry-forwards: the object-lifecycle ADR for SEC-T024-01/SEC-T028-01, EL0 fault containment K3-4, per-section permissions ADR-0034, and the T-029 perf micro-bench).
 
 ---

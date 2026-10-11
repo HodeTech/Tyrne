@@ -1,0 +1,136 @@
+# 0040 — Phase B.2 consolidation bridge: governance, gating, and exit criteria
+
+- **Status:** Proposed
+- **Date:** 2026-10-11
+- **Deciders:** @cemililik
+
+## Context
+
+Phase B closed on 2026-06-01 and the roadmap declared Phase C (multi-core) active. On 2026-07-15 a full-repository review of the Phase B/C boundary produced a large backlog of defects, CI gaps and documentation drift. PR #46 (merged 2026-07-16) routed that backlog into the roadmap, and in doing so added a new bridge phase, **Phase B.2 — Consolidation & Hardening** ([`phase-b2.md`](../roadmap/phases/phase-b2.md)), between Phase B and Phase C.
+
+Adding a phase is a structural roadmap change. [ADR-0013](0013-roadmap-and-planning.md) §"Changing the roadmap" and [`docs/roadmap/README.md`](../roadmap/README.md) require an ADR that supersedes the affected statements. PR #46 did not provide one: `phase-b2.md` closing note records the ADR as "a named-but-unallocated placeholder", but the ADR index's *Numbering gaps* note registers no such slot, so the requirement was not tracked anywhere an ADR reader would look. In the same change the roadmap became internally inconsistent about the phase's force: `phases/README.md` calls B.2 "Recommended before Phase C", its dependency graph draws `B2 --> C` and `B2 --> D` as hard edges, and `phase-b2.md` names items that gate specific Phase C acceptance criteria (C1 `-smp 4` smoke, C3 `Cpu::without_interrupts`, C2 per-core pointers, C5 TLB shootdown). Separately, `current.md` still named Phase C as the active phase although no Phase C milestone, task or ADR exists.
+
+Between 2026-06-01 and 2026-10-11 no code changed (the last commit touching `kernel/`, `hal/`, `bsp-qemu-virt/`, `test-hal/` or `userland/` is dated 2026-06-01); the only work after Phase B was documentation. On 2026-10-11 the project's own gates were executed for the first time on the maintainer's machine (Apple Silicon, `nightly-2026-01-15`): `cargo fmt --check`, `cargo host-clippy`, `cargo kernel-clippy`, 366 host tests (also under stable and `--release`, which includes the two release-only `console_write` debug-gate tests), Miri on `tyrne-hal`/`tyrne-kernel`/`tyrne-test-hal` with no UB, `tools/smoke.sh --int` (full boot to EL0 `hello` and IPC round trip), and `cargo llvm-cov` at 96.31 % lines all passed. Two things did not: CI's exact Miri command (`cargo miri test --workspace --exclude tyrne-bsp-qemu-virt`) fails on an arm64 host with `error[E0152]: found duplicate lang item panic_impl`, because the userland crates gate bare-metal code on `target_arch` alone ([T-037](../analysis/tasks/phase-b2/T-037-userland-bare-metal-cfg-gate.md)); and CI never runs `tools/smoke.sh` or the `--release` profile at all. The shipped single-core behaviour is therefore sound, and the debt is in verification, honesty of the documentation, and a few latent defects — exactly what is cheaper to fix before Phase C makes concurrency pervasive.
+
+The maintainer has chosen to run the whole phase before Phase C. This ADR records that decision, supplies the missing governance, and settles the ambiguities above.
+
+## Decision drivers
+
+- **Security-first, memory-safety-through-Rust** (CLAUDE.md rules 1–2): a register-clobber UB in the EL0 syscall shim and a never-exercised release-profile security gate sit on the project's most attacker-reachable boundary.
+- **Process integrity:** ADR-0013 requires an ADR for a structural roadmap change; a phase that exists in the plan without one weakens every other planning rule.
+- **One unambiguous status:** a returning maintainer (or agent) must read one answer to "what is active, and what gates what".
+- **Concurrency amplifies debt:** Phase C touches the same files (`pmm.rs`, `sched/mod.rs`, `user_access.rs`, the BSP) and adds a dimension in which latent defects stop being latent.
+- **Verification honesty:** the source review was static analysis; only the project's own gates, run on the real tree, are evidence.
+- **Pace** (CLAUDE.md rule 6): methodical, phased, reviewable — but planning without execution (132 days without a code change at decision time) is itself a risk.
+- **Stable identifiers:** ADR-0013 makes phase letters stable once published; inserting a lettered phase would renumber every later phase.
+
+## Considered options
+
+1. **Option A — Full Phase B.2 as a mandatory gate before Phase C.** All six tracks are in scope; Phase C does not open until the B.2 exit bar is met.
+2. **Option B — Narrow Phase B.2.** Only the blocking core (CI gates, correctness fixes, the high-severity documentation items) gates Phase C; the rest becomes a rolling backlog run alongside Phase C.
+3. **Option C — Minimum fixes, then Phase C.** A handful of small fixes and one smoke CI job, B.2 formally deferred.
+4. **Option D — Fold the work into Phase C's milestones.** No bridge phase; each item is attached to the Phase C milestone it gates.
+5. **Option E — Keep the status quo.** B.2 stays "recommended", Phase C stays "active", no ADR.
+
+## Decision outcome
+
+Chosen option: **Option A — Full Phase B.2 as a mandatory gate before Phase C.**
+
+The decision drivers that dominate are *security-first on the EL0 boundary*, *one unambiguous status*, and *concurrency amplifies debt*. Option A is the only option that both closes every verification gap before concurrency work starts and leaves no half-gated ambiguity. The costs (delay, and gating on many low-severity items) are real and are addressed by the exit-bar definition and the checkpoint below rather than by narrowing the scope up front. The concrete rules:
+
+1. **Structure and identifiers.** Phase B.2 sits between Phase B and Phase C. The dotted identifier `B.2` is a deliberate, narrow extension of ADR-0013's letters-only phase IDs: it avoids renumbering Phases C–J, which ADR-0013 declares stable. Its sub-units are **Tracks** `B.2-1`…`B.2-6` (not milestones, which would collide with `B0`–`B6`). Its phase file is `phase-b2.md`, and its task folder is [`docs/analysis/tasks/phase-b2/`](../analysis/tasks/phase-b2/). Any future bridge phase follows the same pattern.
+2. **Gate.** Phase B.2 is a **hard prerequisite** of Phase C and Phase D (the `B2 --> C` and `B2 --> D` edges of the dependency graph are binding). While B.2 is open, no Phase C or Phase D milestone may open and no Phase C or Phase D implementation task may leave `Draft`. Planning artefacts for Phase C — scoping drafts, `Proposed` ADRs, the readiness sweep ([T-074](../analysis/tasks/phase-b2/T-074-phase-c-readiness-sweep.md)) — are allowed and encouraged so that Phase C starts without delay once B.2 closes. The two SMP-critical defects (`StaticCell`'s blanket `Sync`, the non-atomic PMM bitmap) remain Phase C entry gates and are *not* fixed in B.2; B.2 only corrects the false safety premise comment in `pmm.rs` ([T-042](../analysis/tasks/phase-b2/T-042-pmm-defensive-validation.md)).
+3. **Scope and exit bar.** The exit bar is the acceptance criteria of Tracks B.2-1 to B.2-6 as written in `phase-b2.md`, including each track's own deferral clauses (low/info tails that are "tracked even if not all land"). Of the 141 plan items, 140 are owned by tasks T-030…T-073 (one of them, the `current.md` / T-029 staleness item, is split between T-047 and T-048) and one — the `phases/README.md` living-document note — was already fixed by the kickoff; the 71 polish items are **not** gating as a set and stay in `phase-b2.md` as an opportunistic backlog (a few are consumed by named tasks, as the task index records; those tasks are gating only for their plan items). Two tasks are polish and optional for exit — [T-036](../analysis/tasks/phase-b2/T-036-ci-arm64-host-check-job.md) and [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) — and, if not completed, are recorded as carry-forwards in the closure review. A task that ends in an explicit "decide and record" outcome (for example T-035, T-039, T-065) satisfies exit by recording the decision, not necessarily by implementing it.
+4. **Status of Phase C.** Phase C is reclassified from "active" to "**next, gated by Phase B.2**". The statements this ADR supersedes are: `phase-b.md` §Phase B closure ("Phase C is now active"), `docs/roadmap/current.md` (the *Active phase* bullet naming Phase C), the status paragraphs of `README.md` and `CLAUDE.md`, and the "Recommended before Phase C" wording in `phases/README.md`. They are updated in the same change. When B.2 closes, Phase C becomes active again and these statements are restored by the closure task ([T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md)).
+5. **Evidence and verification discipline.** `phase-b2.md` is self-contained: every item stands on its own `file:line` location. The source review is a local-only document and is **not** a dependency of any task. Because that review was static, **every B.2 task begins by re-verifying its item against the live tree**; an item that no longer reproduces closes with evidence and no code change. B.2 closure includes a verification report that accounts for all 141 items as *fixed*, *not reproduced*, or *deferred with a recorded reason*.
+6. **Inherited process.** Tasks are opened with the [`start-task`](../../.agents/skills/start-task/SKILL.md) skill; every `unsafe` change follows [`justify-unsafe`](../../.agents/skills/justify-unsafe/SKILL.md) and the append-only audit-log discipline; changes that touch capabilities, IPC, syscalls, memory or `unsafe` get a security review per [`security-review.md`](../standards/security-review.md); a design decision surfaced by a task is routed through an ADR or a revision-note rider rather than decided silently (as `phase-b2.md`'s closing note already requires). Closure follows ADR-0013 (business review) and additionally includes a security review of B.2's `unsafe`/asm/capability changes and a regression check (host tests, Miri, `tools/smoke.sh --int`, release build).
+7. **ADR numbering.** This ADR takes **0040**, the next free number after 0039, as the [`write-adr`](../../.agents/skills/write-adr/SKILL.md) skill prescribes. The phase ledgers in `phase-c.md`…`phase-i.md` assign *tentative* numbers starting at 0040 ("final numbers are assigned when the ADR is actually written"); those placeholders now shift and already collide between Phase C and Phase D. They are ordinal placeholders only, and re-sequencing them is [T-054](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md). A written ADR's number never changes.
+8. **Scope checkpoint.** After the CI gates and the HIGH-severity correctness tasks are done (the waves described in the [task index](../analysis/tasks/phase-b2/README.md)), the maintainer reassesses the remaining scope. Narrowing it to Option B is permitted but requires a new ADR (or a revision note on this one); it is not done silently by leaving tasks open.
+
+### Simulation
+
+Not applicable — this ADR settles a governance and sequencing decision; there is no state machine to simulate.
+
+### Dependency chain
+
+For this decision to be fully in effect:
+
+1. ADR-0040 `Accepted` by the maintainer after the careful re-read of the [`write-adr`](../../.agents/skills/write-adr/SKILL.md) skill (step 10).
+2. The 46 task files exist and are indexed — [T-030](../analysis/tasks/phase-b2/T-030-ci-release-profile-gate.md) through [T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md) in [`docs/analysis/tasks/phase-b2/`](../analysis/tasks/phase-b2/) (opened in the same change as this ADR).
+3. Roadmap pointers reflect the decision: the new *Active phase* statement in `current.md`, the gating wording in `phases/README.md` and `phase-b2.md`, the dotted-ID convention in `roadmap/README.md`, the supersession notes in `phase-b.md` and `phase-c.md`, and the status paragraphs of `README.md` and `CLAUDE.md` (same change as this ADR).
+4. Remaining roadmap drift is cleaned up — [T-047](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md).
+5. Planned ADR numbers are re-sequenced — [T-054](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md).
+6. Phase C is prepared for a zero-delay start — [T-074](../analysis/tasks/phase-b2/T-074-phase-c-readiness-sweep.md).
+7. Phase B.2 is closed and the pointers are restored — [T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md).
+
+Steps 4–7 close under their own tasks; this ADR is *in effect* from step 3 and *fully realised* at step 7.
+
+## Consequences
+
+### Positive
+
+- Phase B.2 becomes a legitimate phase under the project's own rules; the "recommended or gating?" ambiguity is gone.
+- CI will enforce what the standards documents already claim: `--release`, userland clippy, panic-family denies in `hal`/`bsp`, and above all a merge-gating QEMU smoke job.
+- The maintainer's own machine regains a working Miri gate (T-037), and an arm64 host check is available (T-036) so the same class of error cannot hide again.
+- A latent Rust `asm!` UB in the EL0 syscall shim (T-038) and an unbounded spin under masked interrupts (T-039) are closed before Phase C's interrupt discipline depends on them.
+- Documentation, task indices and the ADR ledger are brought back in step, and the checks that detect their drift are mechanised (T-056) instead of re-done by hand.
+- Phase C starts on a base whose gates are real, with its entry gates already scoped (T-074).
+
+### Negative
+
+- **Feature work is delayed** by 46 tasks, after a period of 132 days without code changes. *Accepted:* the checkpoint in rule 8 lets the maintainer narrow the scope on evidence, and the waves lead with code and CI rather than documents so that the phase does not repeat the plan-outruns-execution pattern.
+- **Gating on low-severity items has low marginal safety value:** only 18 of the 141 findings are HIGH. *Mitigation:* the exit bar inherits each track's deferral clauses, polish is non-gating, and decide-and-record tasks satisfy exit by recording the decision.
+- **The dotted identifier `B.2` is an exception** to ADR-0013's letter-only phases. *Accepted:* it is the only way to insert a phase without renumbering stable identifiers; the exception is recorded here and in the roadmap README.
+- **Task overhead:** 46 tasks means 46 branches, reviews and `current.md` updates. *Mitigation:* the mechanical documentation tasks are deliberately grouped by document and can share one branch and PR where the maintainer prefers.
+- **Planned ADR numbers shift** (T-054), invalidating tentative numbers quoted in older reviews and banners. *Accepted:* those numbers were explicitly tentative.
+
+### Neutral
+
+- The five statements superseded in rule 4 return to their normal form when B.2 closes.
+- Phase D's dependency on B.2 holds trivially because Phase D already follows Phase C in the sequence.
+- Items the review routed to Phases D, E, G and H are unaffected.
+
+## Pros and cons of the options
+
+### Option A — Full B.2 as a mandatory gate (chosen)
+
+- Pro: closes every verification gap and the documentation drift before concurrency work begins.
+- Pro: unambiguous; one status, one exit bar; no half-gated items.
+- Pro: the work is already fully specified in `phase-b2.md`, with locations.
+- Con: the longest path back to feature work.
+- Con: gates on ~123 non-HIGH items; mitigated by deferral clauses and the rule-8 checkpoint.
+
+### Option B — Narrow B.2
+
+- Pro: covers all 18 HIGH items and turns the verified gates into permanent merge gates in a shorter time.
+- Pro: lower task overhead; faster return to Phase C.
+- Con: requires a second decision about *which* items are blocking, and the boundary must be policed.
+- Con: leaves medium/low drift and quality items open while Phase C changes the same files, making them costlier later.
+- Not chosen: the maintainer preferred a single, complete gate; Option B remains reachable through the rule-8 checkpoint.
+
+### Option C — Minimum fixes, then Phase C
+
+- Pro: fastest return to features; fixes the Miri gate, the `x2` clobber, the false PMM comment and adds a smoke job in days.
+- Con: leaves the governance gap open (B.2 must still be formally deferred, which itself needs an ADR) and the documentation drift in place, including `SECURITY.md`'s false statement about the shipped boundary.
+- Con: Phase C's SMP work would proceed on a CI that still skips `--release` and userland clippy.
+
+### Option D — Fold the work into Phase C milestones
+
+- Pro: no new phase, no structural roadmap change, no dotted identifier.
+- Con: the items are feature-independent; attaching them to C1–C5 hides them, mixes unrelated review concerns in Phase C PRs, and still leaves the 58 documentation findings with no natural home.
+- Con: Phase C's own entry gates would then compete with this backlog for attention.
+
+### Option E — Keep the status quo
+
+- Pro: no further work on planning.
+- Con: leaves a phase without its required ADR, a contradiction between "recommended" and a hard graph edge, and `current.md` naming a phase with no task as active.
+- Con: it is the state that produced 132 days without a code change.
+
+## References
+
+- [ADR-0013 — Roadmap and planning process](0013-roadmap-and-planning.md) (§"Changing the roadmap"; a revision-note rider pointing here is added in the same change).
+- [ADR-0025 — ADR governance amendments](0025-adr-governance-amendments.md) (Rule 1: forward-references grounded in real tasks).
+- [`docs/roadmap/phases/phase-b2.md`](../roadmap/phases/phase-b2.md) — the plan this ADR governs.
+- [`docs/roadmap/README.md`](../roadmap/README.md) §"Changing the roadmap".
+- [`docs/analysis/tasks/phase-b2/README.md`](../analysis/tasks/phase-b2/README.md) — the task index and recommended order.
+- [`docs/roadmap/phases/phase-c.md`](../roadmap/phases/phase-c.md) §"Review-derived work items" — the two SMP-critical entry gates that remain in Phase C.

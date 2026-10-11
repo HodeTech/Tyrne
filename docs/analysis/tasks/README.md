@@ -4,7 +4,7 @@ Individual task user stories, organized per phase. Each task is a short markdown
 
 ## Layout
 
-```
+```text
 tasks/
 ├── README.md        — this file
 ├── TEMPLATE.md      — user-story template
@@ -12,6 +12,7 @@ tasks/
 │   ├── README.md    — phase-local task index
 │   └── T-NNN-<slug>.md
 ├── phase-b/
+├── phase-b2/        — bridge Phase B.2 (dotted phase ID; ADR-0040)
 ├── phase-c/
 └── … (one folder per phase)
 ```
