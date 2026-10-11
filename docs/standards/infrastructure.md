@@ -79,7 +79,7 @@ These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.git
 - Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
 - Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
 
-- Single-core debug/release QEMU EL0 smoke (`qemu-smoke`, display `QEMU debug + release smoke (nightly)`) after matching userland/kernel builds, with `--int`. Debug requires greeting/exit/completion; release requires exit/completion and forbids greeting. Both reject panic/CPU-fault traces; explicit Bash/pipefail preserves smoke failure through `tee`, with an inherited-shell rejection guard. Synthetic trace fixtures and three isolated real kernel mutations must demonstrate intended rejection. Always-uploaded diagnostic artifacts retain production/probe traces and metadata for 14 days. Live required-check registration follows the first remote green run, recorded in [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
+- Single-core debug/release QEMU EL0 smoke (`qemu-smoke`, display `QEMU debug + release smoke (nightly)`) after matching userland/kernel builds, with `--int`. Debug requires greeting/exit/completion; release requires exit/completion and forbids greeting. Both reject panic/CPU-fault traces; explicit Bash/pipefail preserves smoke failure through `tee`, with an inherited-shell rejection guard. Synthetic trace fixtures and three isolated real kernel mutations must demonstrate intended rejection. Always-uploaded diagnostic artifacts retain production/probe traces and metadata for 14 days. Live required-check registration was completed on 2026-10-12 after corrected remote green and both fresh rounds, recorded in [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
 
 ### Planned gates (not yet enforced)
 
@@ -188,7 +188,7 @@ When the project moves out of solo phase:
 
 - `main` is protected.
 - PRs to `main` require at least one approval (two for security-sensitive changes — see [security-review.md](security-review.md)).
-- Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), `miri (Stacked Borrows)` (job `miri`), and `QEMU debug + release smoke (nightly)` (job `qemu-smoke`, registered after first remote green). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
+- Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), `miri (Stacked Borrows)` (job `miri`), and `QEMU debug + release smoke (nightly)` (job `qemu-smoke`, registered 2026-10-12 after corrected remote green and reviews). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
 - Force-push to `main` disabled.
 - Force-push to protected `release/*` branches disabled.
 
