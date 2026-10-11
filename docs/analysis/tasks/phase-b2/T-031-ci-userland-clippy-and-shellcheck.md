@@ -27,7 +27,7 @@ This task covers two items of `phase-b2.md` Track B.2-1 (line numbers as of the 
 - [ ] The `kernel-build` job runs that exact command as its own step, placed after the `tools/build-userland.sh` step (next to `cargo kernel-clippy`).
 - [ ] `shellcheck tools/*.sh` exits 0 locally at default severity (baseline in Design notes), with each remaining suppression a scoped `# shellcheck disable=SCnnnn` carrying a reason comment and no file-wide disable.
 - [ ] CI runs `shellcheck tools/*.sh` as a step in the fast lane (`lint-and-host-test`) or a dedicated job, prints `shellcheck --version`, and is green; the CI shellcheck version is recorded in the review history.
-- [ ] Negative tests, recorded in the review history: on a scratch branch (never merged), a clippy-triggering change in `userland/tyrne-user/src/lib.rs` and an unquoted variable in a `tools/*.sh` script each turn the matching CI step red.
+- [ ] Negative tests, recorded in the review history: in isolated temporary copies, a clippy-triggering change in `userland/tyrne-user/src/lib.rs` and an unquoted variable in a `tools/*.sh` script each make the exact matching gate command fail. Repeat in isolated hosted runner workspaces with a harness that asserts the expected non-zero result. Stay on `development`; record local and hosted evidence separately and never commit deliberately broken source.
 - [ ] Documentation: `docs/guides/ci.md` (job table "Fails on" cells and the local-command table) and `docs/standards/infrastructure.md` ("Required gates" bullets) name the userland clippy command and the shellcheck step; the `ci.yml` header comment (lines 7-9) is still accurate.
 
 ## Out of scope
@@ -51,7 +51,7 @@ Beyond the acceptance criteria:
 - [ ] `cargo host-test` passes.
 - [ ] `cargo miri test -p tyrne-hal -p tyrne-kernel -p tyrne-test-hal` clean if any kernel, hal or test-hal source changes (not expected).
 - [ ] `tools/smoke.sh --int` PASS if any BSP, kernel or userland source changes (possible via clippy fixes in `tyrne-user`/`hello`); also PASS after any `tools/*.sh` edit that touches `smoke.sh`.
-- [ ] If a clippy fix changes `userland/tyrne-user/src/lib.rs` asm, the matching audit entry (UNSAFE-2026-0033) is checked against the new text.
+- [ ] If a clippy fix changes `userland/tyrne-user/src/lib.rs` asm, the matching audit entry (UNSAFE-2026-0033) is checked against the new text and amended where required; a distinct security review explicitly approves the unsafe change, with its artifact and `Security-Review:` trailer recorded per the security-review/unsafe standards.
 - [ ] Every touched markdown file has all `](...)` link targets resolving.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with a `Refs: ADR-0040` trailer.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
@@ -73,3 +73,4 @@ Beyond the acceptance criteria:
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |

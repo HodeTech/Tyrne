@@ -2,15 +2,36 @@
 
 Tasks belonging to [Phase B.2 — Consolidation & Hardening](../../../roadmap/phases/phase-b2.md), the bridge phase between Phase B and Phase C. The phase is governed by [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md): it is a **mandatory gate** — Phase C (and D) cannot open until its exit bar is met.
 
-All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide sequence (T-029 was the last Phase B task). The 141 plan items of `phase-b2.md` are all accounted for (see [Coverage](#coverage)); the 71 polish items stay in `phase-b2.md` as an opportunistic backlog and are **not** exit-gating, except where a task below names a specific polish item.
+All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide sequence (T-029 was the last Phase B task). The 141 plan items of `phase-b2.md` are all accounted for (see [Coverage](#coverage)); the 71 polish items stay in `phase-b2.md` as an opportunistic backlog and are **not** exit-gating as a set. Tasks that consume polish gate only their plan items; T-036 and T-056 are optional for the phase exit. The requested Track B.2-1 sequence below includes T-036 explicitly.
 
 ## How to use this folder
 
 1. **Accept ADR-0040** first (re-read it; flip its status and its index row, and replace the "Proposed — awaiting the maintainer's Accept" wording in the `current.md` decision banner, the only other place that records the pending status). This is a phase-level precondition: no task starts before the ADR is `Accepted`, which is why individual tasks do not list it as a dependency.
-2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory.
+2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory. For the maintainer-requested Track B.2-1 sequence below, the proposed ADR-0040 execution policy permits a successor after its predecessor's implementation, applicable gates and two fresh review rounds pass on `development`; the predecessor remains `In Review` pending the final PR. This exception takes effect only when that ADR policy is Accepted.
 3. Start it with the [`start-task`](../../../../.agents/skills/start-task/SKILL.md) skill's status rules (`Ready` → `In Progress`; update [`current.md`](../../../roadmap/current.md)).
 4. **Every task begins by re-verifying its plan item against the live tree** (ADR-0040 rule 5). The source review was static; if an item no longer reproduces, close the task with evidence and no code change.
-5. Tasks marked `Draft` carry an open design decision (listed in the task under *Open decisions*); settle it — in an ADR, a revision-note rider, or the task's review history as the task says — before implementing. (T-075 is `Draft` for a different reason: its dependency set is still growing; promote it to `Ready` when the last implementation task is `In Review`.)
+5. Tasks marked `Draft` carry an open design decision (listed in the task under *Open decisions*); settle design policy through an ADR or an appropriate clarification rider before implementing. Routine implementation choices belong in task history. (T-075 is `Draft` for a different reason: its dependency set is still growing; promote it to `Ready` when the last implementation task is `In Review`.)
+
+## Track B.2-1 implementation sequence (awaiting ADR-0040 Acceptance)
+
+The 2026-10-11 preflight review is recorded in [the review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md). All seven Track B.2-1 tasks are included, including optional T-036; T-037 is the only cross-track prerequisite included in this sequence. Other tracks retain their existing ownership and scope.
+
+| Step | Task | Deliverable and verification focus |
+|------|------|------------------------------------|
+| 1 | T-037 | Narrow the bare-metal cfg gates; restore ARM workspace commands and Miri; preserve the debug image's bytes; append the audit amendment and obtain distinct security review. |
+| 2 | T-033 | Add validated `--smp N` / `QEMU_SMP` and missing-value handling; verify precedence and invalid input with stubbed QEMU, then real single-core smoke. |
+| 3 | T-031 | Enforce userland clippy and ShellCheck; resolve measured findings; prove deliberate lint violations are rejected. |
+| 4 | T-030 | Add release build/run aliases, release host tests, an assertion that both release-only tests executed, release kernel clippy, and default/perf-bench build/lint coverage; test the debug-assertions regression. |
+| 5 | T-032 | Enforce the HAL/BSP panic-family denies; classify every scoped exception; verify default/perf variants, negative lint probes, Miri and smoke; obtain distinct security review where required. |
+| 6 | T-034 | Add required QEMU smoke with failure artifacts; require the existing EL0 greeting and task-exit markers as well as completion; prove missing EL0/completion and panic/fault traces fail. |
+| 7 | T-036 | Add the required native ARM workspace check/clippy/test/Miri job; verify the arch-only regression is detected and register the remote-green check. |
+| 8 | T-035 | Add weekly/on-demand informational performance reports and the classic branch-protection JSON definition with export/check/apply tooling; reconcile live policy without weakening existing protection. |
+
+Each step follows the maintainer's requested cycle: implement → run applicable checks → commit → fresh independent review round → verify/fix findings and commit → second fresh independent review round → verify/fix findings and commit. Code review covers correctness, style, tests, documentation and integration; security-sensitive changes also receive a separate security pass. Agent findings are hypotheses until reproduced or supported by source evidence. Record reviewer identities, reviewed commits, findings, resolutions and command results in task history and review artifacts. Empty review rounds do not generate empty fix commits.
+
+Stay on `development`; negative probes use disposable copies, never alternate branches or deliberately broken commits. Push clean step commits to `development` for hosted verification. Open the final PR after the sequence and integrated documentation/verification pass. Before that PR is reviewed and merged, tasks stay `In Review`: neither a local pass nor an agent verdict substitutes for maintainer authorisation of `Done`. Checks specific to the PR, the first merged `main` run and default-branch workflow registration are recorded when they actually occur, rather than reported as pre-merge evidence.
+
+The scope includes the inexpensive release kernel-clippy pass. A release EL0 smoke scenario is not added here: the current hello program expects the debug-only console syscall, which is deliberately absent in release; the dedicated console-feature and adversarial-image contracts remain owned by T-065/T-067. Record this existing limitation explicitly in the CI documentation while adding the release compilation and security-regression gates. This is a scenario-design dependency, not a claim that release boot has been verified.
 
 ## Index
 
@@ -122,7 +143,7 @@ The waves are a suggestion that respects the dependencies and puts code and CI a
 | 0 | Governance | Accept ADR-0040. Decide whether the local-only 2026-07-15 review should be tracked (nothing in B.2 depends on it). |
 | 1 | Restore and extend the verification loop; close the small HIGH defects | T-037 → T-038; T-033; T-030; T-031; T-032; T-041; T-042; T-043; T-044; T-051 (small, highest-visibility documentation fix) |
 | 2 | Make the gates real; remaining HIGH behaviour | T-034 (after T-033); T-035 (after T-034; its decisions first); T-039 and T-040 (both need a recorded decision first) |
-| — | **Scope checkpoint (ADR-0040 rule 8):** reassess the remaining scope on evidence. Narrowing to a smaller set requires a new ADR or a revision note. | |
+| — | **Scope checkpoint (ADR-0040 rule 8):** reassess the remaining scope on evidence. Changing the chosen scope to Option B requires a new superseding ADR; a revision note cannot reverse the Accepted outcome. | |
 | 3 | Documentation catch-up (can run in parallel with Wave 4) | T-045, T-046, T-048, T-049, T-050, T-053, T-055, then T-047, T-054, T-052 (after T-032) |
 | 4 | Quality refactors, now guarded by live gates | T-057 → T-060, T-061; T-058 → T-059; T-062; T-063; T-064; T-066; T-068; decisions first for T-065 and T-067 |
 | 5 | Unsafe-audit and doc-comment hygiene; the perf decision | T-069, T-070, T-071, T-072, T-073 |

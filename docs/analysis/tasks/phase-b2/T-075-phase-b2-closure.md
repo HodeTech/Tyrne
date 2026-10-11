@@ -49,7 +49,7 @@ Run the closure only after all dependencies are `Done` (or recorded as carry-for
 ## Design notes
 
 - The two optional tasks may close as carry-forwards: T-036 (arm64 host check) and T-056 (docs-consistency automation). Recording them is mandatory; completing them is not.
-- Tasks that end in an explicit decision (T-035, T-039, T-040, T-065, T-067, T-073) count as complete when the decision is recorded, as ADR-0040 rule 3 states.
+- For decision-bearing tasks (T-035, T-039, T-040, T-065, T-067, T-073), an evidenced deferral satisfies phase-exit accounting only where that task explicitly permits it. A decision to implement requires the remaining implementation/verification criteria; a recorded "yes" alone does not complete the task. Neither route authorises an agent to mark it `Done` (ADR-0040 rule 3).
 - Status is `Draft` until the dependency set stabilises; promote to `Ready` when the last implementation task is `In Review`.
 
 ## Review history
@@ -57,3 +57,4 @@ Run the closure only after all dependencies are `Done` (or recorded as carry-for
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Draft |
+| 2026-10-11 | Codex (AI agent) | Preflight clarified decision-only exit accounting versus chosen implementation acceptance; no closure/status promotion. |

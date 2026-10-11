@@ -66,3 +66,4 @@ Beyond the acceptance criteria:
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |

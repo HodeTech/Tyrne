@@ -27,16 +27,16 @@ This task covers four items of `phase-b2.md` Track B.2-1 (line numbers as of the
 - [ ] CI builds the release kernel on every PR (step order: `tools/build-userland.sh --release`, then `cargo kernel-build-release`, appended after the existing debug steps in `kernel-build`).
 - [ ] CI runs `cargo test --release` over the host crates (workspace `default-members`) on every PR; the first green run's totals and wall time are recorded in the review history (local baseline: 249 kernel + 46 hal + 58 test-hal + 3 doc).
 - [ ] A separate narrow CI step runs `cargo test --release -p tyrne-kernel --lib -- console_write_is_absent_in_release_builds console_write_number_is_bad_syscall_in_release_build` and fails unless both tests ran (for example by asserting `2 passed` in the libtest output), so a regression names the gate.
-- [ ] Negative test, recorded in the review history: on a scratch branch (never merged), adding `debug-assertions = true` under `[profile.release]` turns the step above red.
+- [ ] Negative test, recorded in the review history: in an isolated temporary copy, adding `debug-assertions = true` under `[profile.release]` makes the exact two-test gate command fail. Repeat the probe in an isolated hosted runner workspace; its harness must assert the expected non-zero result. Do not create another branch or commit the probe. Record local and hosted results separately; an expected-failure harness passing is not a red production workflow.
 - [ ] Root `Cargo.toml` carries a comment next to `[profile.release]` stating that `debug-assertions` must stay at Cargo's release default (false) because `SyscallNumber::decode` gates `console_write` on it (`abi.rs:87`); `grep -n "debug-assertions" Cargo.toml` finds it and no `debug-assertions = true` key exists.
 - [ ] CI builds and lints the `perf-bench` variant in `kernel-build`: `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench` and `cargo clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings`, both green (any finding surfaced by never-linted code is fixed or given a scoped `#[allow]` with a reason).
-- [ ] Documentation: `docs/guides/ci.md` job table and local-command table, `docs/standards/infrastructure.md` "Required gates", and the `ci.yml` header comment (lines 7-9) describe the new steps; release-profile QEMU smoke and release `kernel-clippy` are listed under "Planned gates" as not yet enforced.
+- [ ] CI also runs release kernel clippy (`cargo clippy --release --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`), after the release userland build.
+- [ ] Documentation: `docs/guides/ci.md` job table and local-command table, `docs/standards/infrastructure.md` "Required gates", and the `ci.yml` header comment (lines 7-9) describe the new steps; release-profile EL0 QEMU smoke remains an explicit scenario limitation, with T-065/T-067 ownership, rather than a claimed gate.
 
 ## Out of scope
 
 - Running the release ELF under QEMU (`tools/smoke.sh --release`): needs the `qemu-smoke` job of [T-034](T-034-ci-qemu-smoke-job.md); until then it is a recorded planned gate.
 - Replacing the `debug_assertions` mechanism with a dedicated Cargo feature: [T-065](T-065-debug-console-feature-flag.md).
-- A release-profile `kernel-clippy` step (optional here; not required for this task to close).
 - Any change to the gate logic in `abi.rs` or `dispatch.rs`.
 
 ## Approach
@@ -69,3 +69,4 @@ Beyond the acceptance criteria:
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |

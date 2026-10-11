@@ -34,13 +34,13 @@ Measured 2026-10-11 on an Apple-Silicon Mac (nightly-2026-01-15): `cargo miri te
 ## Out of scope
 
 - Adding an arm64 host job to CI, which would catch a regression of this bug: [T-036](T-036-ci-arm64-host-check-job.md).
-- The `x2` clobber in the `console_write` shim in the same file: [T-038](T-038-console-write-x2-clobber.md). Edits to the UNSAFE-2026-0033 audit entry belong there too, including its `#[cfg(target_arch = "aarch64")]` wording in the Status field.
+- The `x2` clobber in the `console_write` shim in the same file: [T-038](T-038-console-write-x2-clobber.md). This task appends the target-gate amendment to UNSAFE-2026-0033 when narrowing the cfg; T-038 owns the later clobber amendment. Preserve the original audit fields rather than rewriting the Status wording.
 - API, doc and `no_std` polish of `tyrne-user` (items at `phase-b2.md` 357, 406, 514, 517, 520): [T-064](T-064-tyrne-user-api-polish.md).
 - The `--exclude tyrne-userland-hello --exclude tyrne-user` arguments on the `cargo llvm-cov` step (`.github/workflows/ci.yml:277`); changing coverage scope is not part of this fix.
 
 ## Approach
 
-Apply the verified fix: in `userland/hello/src/main.rs` and `userland/tyrne-user/src/lib.rs`, replace each `target_arch = "aarch64"` gate with `all(target_arch = "aarch64", target_os = "none")`. In `userland/hello/build.rs`, additionally require `std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("none")`. Cargo sets those variables for the **target** being built, so a host build (including `cargo miri`, whose target is the host triple) falls through to the std stub. The phase item also suggests one shared alias, `tyrne_bare_metal`, set through `.cargo/config.toml` `[target.aarch64-unknown-none] rustflags = ["--cfg", "tyrne_bare_metal"]`. `build.rs` cannot see rustflags-defined cfgs, so it must keep using `CARGO_CFG_TARGET_OS` either way; choose one form and record it.
+Apply the verified fix: in `userland/hello/src/main.rs` and `userland/tyrne-user/src/lib.rs`, replace each `target_arch = "aarch64"` gate with `all(target_arch = "aarch64", target_os = "none")`. In `userland/hello/build.rs`, additionally require `std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("none")`. Cargo sets those variables for the **target** being built, so a host build (including `cargo miri`, whose target is the host triple) falls through to the std stub. The phase item also suggests one shared alias, `tyrne_bare_metal`, set through `.cargo/config.toml` `[target.aarch64-unknown-none] rustflags = ["--cfg", "tyrne_bare_metal"]`. Cargo exports extra target cfgs to build scripts through `CARGO_CFG_<cfg>` (so a custom alias could be read as `CARGO_CFG_TYRNE_BARE_METAL`); native `#[cfg]` on the build-script binary itself instead describes its host. The inline architecture-and-OS form needs no custom cfg registration and is the default recommendation. See [Cargo's build-script environment documentation](https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts).
 
 ## Definition of done
 
@@ -52,7 +52,7 @@ Beyond the acceptance criteria:
 - [ ] `cargo host-test` passes.
 - [ ] Miri: the workspace command in the acceptance criteria is the gate; the narrower `cargo miri test -p tyrne-hal -p tyrne-kernel -p tyrne-test-hal` only matters when kernel/hal/test-hal code changes, which it does not here.
 - [ ] `tools/smoke.sh --int` PASS (userland code changed).
-- [ ] No new `unsafe`, so no new audit entry.
+- [ ] No new `unsafe` identifier is needed; append the target-narrowing amendment to UNSAFE-2026-0033 and obtain a distinct security review of the changed compilation boundary, recording the artifact and `Security-Review:` trailer.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
@@ -69,3 +69,4 @@ Beyond the acceptance criteria:
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |

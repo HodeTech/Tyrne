@@ -52,6 +52,7 @@ Beyond the acceptance criteria:
 - [ ] `cargo miri test -p tyrne-hal -p tyrne-kernel -p tyrne-test-hal` clean (hal source changes).
 - [ ] `tools/smoke.sh --int` PASS (BSP source changes).
 - [ ] If the `mmu.rs:317` fix moves code inside the `unsafe` expression, the audit entry cited there (UNSAFE-2026-0025) is re-checked and amended if its text no longer matches.
+- [ ] Changes touching boot, MMU, exception handling or an `unsafe` region receive a distinct security-review pass, explicit approval of any changed unsafe reasoning, and a recorded artifact plus `Security-Review:` trailer. Routine code-review rounds do not substitute for that pass.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with a `Refs: ADR-0040` trailer.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
@@ -67,3 +68,4 @@ Beyond the acceptance criteria:
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |

@@ -64,7 +64,7 @@ The project's standards docs (`infrastructure.md`, `code-review.md`, `error-hand
 
 ### Acceptance criteria
 
-- `cargo build --release` + `cargo test --release` for the kernel and BSP crates run on every PR, including the `console_write_is_absent_in_release_builds` regression.
+- The bare-metal BSP is built with `--release`, and the host kernel/HAL/test-HAL crates are tested with `cargo test --release` on every PR. Both release-only `console_write` regressions must execute; the bare-metal BSP has no host-test target.
 - `tyrne-user` and `tyrne-userland-hello` are clippy-checked in CI on the `aarch64-unknown-none` target.
 - A `qemu-smoke` job runs `tools/smoke.sh` on every PR and gates merge on its exit code.
 - `hal` and `bsp-qemu-virt` carry the same `clippy::panic`/`unwrap_used`/`expect_used` denies `kernel` already has.
