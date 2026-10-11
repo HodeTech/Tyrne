@@ -13,7 +13,7 @@ Drivers, filesystems, and network stacks live in userspace; the kernel concerns 
 The project is pre-alpha.
 The kernel boots end-to-end on QEMU `virt` aarch64 today, runs a capability-gated IPC demo, and serves the first real userspace task in EL0 via a capability-gated syscall boundary.
 Phase B is **complete** (closed 2026-06-01) — EL1/EL0 privilege separation, the capability-gated syscall ABI, per-task address spaces, and the first real userspace binary are all done.
-Phase C (multi-core) is next.
+Phase B.2 (consolidation and hardening: CI gates, correctness fixes, documentation catch-up — [ADR-0040](docs/decisions/0040-phase-b2-consolidation-bridge.md)) is the active phase; Phase C (multi-core) is next and opens when B.2 closes.
 
 ---
 
@@ -30,7 +30,8 @@ Phase C (multi-core) is next.
 | Task loader (load half) | **Done** — `load_image` produces a `LoadedImage` describing a populated address space for a `.rodata`-resident raw-flat blob. |
 | Syscall ABI + dispatcher | **Done** — Phase B5; `SVC` trap → panic-free dispatcher → typed `SyscallError`; five-syscall v1 set; capability-gated `console_write` (debug-gated); validated copy-from/to-user. |
 | First userspace task (EL0) | **Done** — Phase B6 (closed 2026-06-01); `userland/hello` runs in its own address space, calls `console_write` through the real lower-EL `+0x400` vector, and exits via `task_exit`; per-page user-VA translation + per-task capability table in place. |
-| Multi-core + preemption | **Next** — Phase C; secondary core bring-up (PSCI), per-core state, preemptive scheduling, cross-core IPC, multi-core TLB shootdown. |
+| Consolidation and hardening | **Active** — Phase B.2 ([ADR-0040](docs/decisions/0040-phase-b2-consolidation-bridge.md)); real CI gates (`--release`, userland clippy, QEMU smoke), correctness and robustness fixes, documentation catch-up; tasks in [`docs/analysis/tasks/phase-b2/`](docs/analysis/tasks/phase-b2/README.md). |
+| Multi-core + preemption | **Next** (gated by B.2) — Phase C; secondary core bring-up (PSCI), per-core state, preemptive scheduling, cross-core IPC, multi-core TLB shootdown. |
 
 The active task and its current state live in [`docs/roadmap/current.md`](docs/roadmap/current.md).
 Full phase plans are under [`docs/roadmap/phases/`](docs/roadmap/phases/).
