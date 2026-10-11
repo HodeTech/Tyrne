@@ -64,7 +64,7 @@ CURRENT_WATCHDOG_PID=""
 # already exited) `kill -KILL` returns ESRCH which `2>/dev/null || true` swallows.
 # Therefore the trap is safe to fire multiple times — EXIT will run after a
 # preceding INT/TERM has already cleaned up the in-flight processes.
-# shellcheck disable=SC2329  # invoked indirectly by the EXIT, INT and TERM traps below
+# shellcheck disable=SC2317,SC2329  # 0.9/0.11: invoked indirectly by EXIT, INT and TERM traps
 cleanup_in_flight() {
     if [[ -n "$CURRENT_CMD_PID" ]]; then
         kill -KILL "$CURRENT_CMD_PID" 2>/dev/null || true
