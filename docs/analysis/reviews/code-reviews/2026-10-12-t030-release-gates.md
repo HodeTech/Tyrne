@@ -5,7 +5,7 @@
 - **Risk class:** CI enforcement/tooling with test-only syscall imports; production syscall logic and unsafe reasoning unchanged.
 - **Security-review cross-reference:** [distinct security review](../security-reviews/2026-10-12-t030-release-gates.md).
 
-> **Current reconciliation:** Round 1 code and security reviews both Approve, with no new actionable finding. Report wording was tightened to say that an additional *passing* matching test fails the two-pass guard; an additional ignored test does not invalidate execution of the two required passing tests. This is a report precision correction, not a source finding. Local and hosted implementation gates passed. The second fresh round and final maintainer PR review remain pending; T-030 stays In Review.
+> **Current reconciliation:** Round 1 code and security reviews both Approve, with no new actionable finding. Report wording was tightened to say that an additional *passing* matching test fails the two-pass guard; an additional ignored test does not invalidate execution of the two required passing tests. This is a report precision correction, not a source finding. Local and hosted implementation gates passed. Both fresh code/security rounds now Approve with no new actionable finding; independent real and controlled checks confirm the release evidence contract. Final maintainer PR review remains pending; T-030 stays In Review.
 
 ## Round 1 code review
 
@@ -117,3 +117,145 @@ No claim to reread the entire unchanged syscall dispatcher, userland/assembly im
 ### Verdict
 
 **Approve T-030 at `364b746` for this fresh Round 1 code review; no actionable findings.** All five axes and the standard checklist are complete. Real guard/profile-flip checks, adversarial parser/error/isolation verification, and the attributed hosted results support the scoped implementation. Separate security review, the second fresh round and final maintainer PR remain required. This verdict does not promote Done, authorize a merge, certify kernel soundness, or claim release guest coverage.
+
+## Round 2 code review
+
+- **Change:** approved Track B.2-1 step 4, T-030 on `development`, `8437158..5cd9ee8a01ac523e48146e2224284b871e3619ab`. Implementation `b8ad56f`, downstream standards `c716ae3`, hosted evidence `364b746`, Round 1 records `5cd9ee8`; 18 files, 410 additions / 33 deletions including review records.
+- **Reviewer:** fresh independent delegated agent `/root/b21_step4_round2_code`, acting on behalf of @cemililik. Parent requests `gpt-6.1-sol`, high reasoning, `fork_turns=none`; these are requested orchestration settings, not an independently attested runtime model identity.
+- **Date:** 2026-10-12, Europe/Istanbul; hosted timestamps cited below are UTC on 2026-10-11.
+- **Risk class:** security-sensitive context: CI enforcement of the release syscall surface and test-only imports in a syscall module. Production syscall logic, authority, assembly, unsafe bodies and safety arguments are unchanged.
+- **Security-review cross-reference:** existing distinct [Round 1 security review](../security-reviews/2026-10-12-t030-release-gates.md) covers the same executable delta. A distinct fresh Round 2 security pass is commissioned separately by the parent and must be reconciled before the step's two-round lifecycle is complete. This report is the code pass only.
+- **Procedure:** `perform-code-review`, `conduct-review`, full code-review standard/master plan; five roles executed sequentially. `propose-standard-change` also read to audit standards governance. Task and actual release tests read first, then Cargo/profile prerequisites and guard/probe implementations, workflow callers, downstream documentation and review records. Parent owns canonical publication, review index, task history and any commit/trailer updates; no repository or GitHub mutation was performed here.
+
+### Correctness
+
+**No actionable finding.** The implementation fulfills the narrow release-verification contract without modifying the production mechanism it protects.
+
+The existing ABI test asserts `SyscallNumber::decode(5) == None` under `not(debug_assertions)`. The dispatcher test grants a valid `DebugConsole` capability with `CONSOLE_WRITE`, calls the ordinary dispatcher and requires both the precise `BadSyscallNumber` status and empty console output. This is meaningful despite its empty user window: an accidentally exposed console handler would return a different address error, rather than the required number rejection. Both tests disappear when release debug assertions are enabled; merely running Cargo with their filters cannot establish their presence.
+
+`tools/check-release-tests.sh` selects the kernel library and the two named filters, requires the exact fully qualified successful test line for each, and requires a `2 passed; 0 failed;` summary. Independent real execution in a private tracked snapshot observed both passes and 247 filtered tests. After the isolated release profile flip, the exact raw Cargo command returned exit 0 with zero tests and 259 filtered tests, while the canonical guard returned exit 1 with its specific missing-test diagnostic. This directly reproduces the hazard and verifies its correction.
+
+The evidence parser has the intended scope. Zero matches, either required name missing, a wrong module-qualified name, a required test ignored, a failing summary or a third passing matching test cannot satisfy it. Two required passes plus an additional ignored matching test do satisfy it; the contract proves two passes, rather than banning every possible third match. The script relies on the pinned toolchain's ordinary libtest text format; formatting drift fails closed. The guard is regression detection within a trusted source/compiler environment, not authentication against fabricated compiler/test output.
+
+`set -euo pipefail` keeps a failing Cargo command or `tee` from becoming a green guard. A controlled Cargo stub that emitted a perfect successful transcript and then exited 42 caused the guard to exit 42. The unique `mktemp` log is quoted throughout and removed on normal success and tested error paths. Invalid script arguments return 2 before log creation. Controlled runs used Bash 3.2 and paths with spaces, and verified the exact Cargo argument vector and temporary-log cleanup.
+
+The extended `test-ci-gates.sh --release` inserts `debug-assertions = true` only beneath `[profile.release]` in its private tracked-current-worktree copy. Its preexisting copy loop uses NUL-delimited tracked filenames and preserves executable modes. The copied pin/configuration and fresh private Cargo target prevent certification by the checkout's old release executable. The `run_negative` helper requires both nonzero status and the guard's fixed diagnostic: an unrelated compiler failure alone cannot pass it. Independent execution of the actual repository harness succeeded by observing guard exit 1, and its private directory was absent afterward. The source manifest remained unchanged.
+
+The release build/run aliases preserve the debug aliases' target/package selections and add `--release`. Full host release tests are a separate blocking step before the narrow guard and negative probe. The existing `default-members` restrict that host command to kernel, HAL and test-HAL, while the bare-metal BSP has its own target-aware build/lint steps.
+
+The kernel job's profile transitions are correct and explicit: existing debug image/build/lint; matching release userland, release kernel build and release clippy; restored debug userland immediately before debug `perf-bench` build and clippy. Cargo's feature/target/package flags remain before the clippy `--` delimiter. No new gate has `continue-on-error` or unconditional success handling. `build-userland.sh` writes one profile-dependent `hello.bin`; BSP `build.rs` checks presence and watches changes but does not verify the profile. Therefore the restore step is load-bearing. Source order and inspected hosted logs agree on 117-byte debug → 69-byte release → restored 117-byte debug before final dev-profile perf work. These are compilation/lint claims, not guest execution claims.
+
+The entire Rust delta scopes three test imports with `cfg(debug_assertions)`: `CONSOLE_WRITE_CHUNK`, `MappingFlags`, `FakeUserMem`. Their test references are in existing debug-only tests; common release fixtures and imports remain available. Independent real release and debug test compilation passed. No production function, test assertion, syscall number, capability, unsafe operation or audit reasoning changes.
+
+### Style
+
+**Clean.** Independent default-severity ShellCheck 0.11.0 over all `tools/*.sh`, actionlint 1.7.12 over the workflow, `/bin/bash -n` on both changed scripts and range whitespace checks all pass. No lint relaxation, suppression, new dependency or refactor unrelated to T-030 appears. The guard is executable; snapshot copying preserves executable permissions. Comments, diagnostics, documentation and four commit messages are English.
+
+All four commits have intelligible Conventional Commit subjects and valid ADR references. The implementation names ADR-0040/0031/0039; the standards commit follows the already Accepted governing ADR. Round 1's follow-up records both code/security references and explicitly does not fabricate a retroactive trailer on the initial implementation. An import-only test edit creates no unsafe audit obligation. The final maintainer PR and this round's publication/trailer reconciliation remain parent-owned.
+
+### Test coverage
+
+**Adequate for the declared delta; no missing blocking test.** The highest-risk changed behavior was independently executed, including the real regression and actual negative harness. Broad unchanged checks are attributed below rather than represented as freshly repeated.
+
+Independent commands and fixtures in this round:
+
+| Check | Result |
+|---|---|
+| Real guard in private tracked snapshot / private Cargo target | Exit 0; both exact release tests pass; 2 passed / 0 failed / 247 filtered |
+| Exact raw narrow Cargo command after private release profile flip | Exit 0; 0 passed / 0 failed / 259 filtered; original hazard reproduced |
+| Real guard after that same flip | Exit 1; zero tests and required guard diagnostic |
+| Real debug ABI contract after restoring private manifest | Exit 0; debug console-number test passes; 1 passed / 258 filtered |
+| Actual repository `tools/test-ci-gates.sh --release`, private temporary root | Harness exit 0; deliberate regression rejected at guard exit 1; private probe tree cleaned |
+| Controlled valid two-pass evidence | Exit 0 |
+| Controlled zero tests | Exit 1 |
+| Controlled missing ABI test | Exit 1 |
+| Controlled missing dispatcher test | Exit 1 |
+| Controlled wrong fully qualified ABI name | Exit 1 |
+| Controlled required test ignored | Exit 1 |
+| Controlled third passing matching test | Exit 1 |
+| Controlled required two passes plus extra ignored match | Exit 0; intentional acceptance |
+| Controlled failure summary | Exit 1 |
+| Controlled Cargo exit 42 after valid successful transcript | Exit 42; pipeline failure preserved |
+| Unexpected guard argument | Exit 2; usage diagnostic |
+| Exact Cargo argument vector / temporary gate-log cleanup | Asserted for every controlled Cargo case; cleanup passed |
+| ShellCheck 0.11.0, actionlint 1.7.12, Bash syntax, range whitespace | All exit 0 |
+| Changed Markdown relative links and heading anchors | 295 relative references, including 26 heading fragments; all resolve |
+| Read-only GitHub run metadata for exact reviewed HEAD | All five jobs successful; release/probe/kernel/perf steps successful |
+| Branch / worktree / reviewed HEAD | `development`, clean, `5cd9ee8a01ac523e48146e2224284b871e3619ab` |
+
+Independent test driver: `/tmp/tyrne-b21-t030-r2-code-checks.py`; complete captured results: `/tmp/tyrne-b21-t030-round2-code-checks.json`. Python `tempfile.TemporaryDirectory` owns the snapshot, its Cargo target, fixture binaries and temporary logs; cleanup completed. No shared `hello.bin` or kernel ELF was built or overwritten. The actual harness's own implementation was run unchanged and its cleanup observed.
+
+One review-fixture correction was necessary: the first documentation-link scanner treated the literal inline-code example `](...)` in a task criterion as a real link. Excluding inline code and fenced examples corrected the scanner; the corrected full scan passed. This was a reviewer fixture false positive, not a repository defect or an accepted failed check.
+
+Coordinator/task-recorded local evidence separately reports full fmt, host/debug/release/perf/userland clippy, debug/release/perf builds, 366 debug and 356 release host passes, 366 Miri passes with no UB failure and existing warnings, 59 stubbed QEMU argument fixtures, matching image restoration and debug-image SHA-256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`. This reviewer did not rerun that entire suite. This round's independent real tests and controlled failure matrix directly test the changed enforcement contract; no new production behavior or unsafe invariant warrants a duplicate guest smoke here. T-034 retains hosted release EL0 runtime enforcement.
+
+### Documentation
+
+**No actionable finding.** The task, CI guide's job/local command tables, workflow header and infrastructure/testing/release standards describe the implemented release host tests, exact named execution assertion, isolated profile-flip rejection, release kernel build/clippy and restored-debug perf build/lint. The QEMU guide provides the two release aliases with a matching-userland prerequisite and an explicit restoration instruction before returning to debug. The new command is documented at the script header and in the guide.
+
+The task's recorded totals are correctly 249 kernel + 46 HAL + 58 test-HAL + 3 doctests = 356 release passes, with two ignored HAL doctests excluded. Debug has 366 passing tests. The first hosted release step spans 13 seconds, distinct from the 1.49-second warm local run and from guest performance. Historical task rows retain their point-in-time pending states; the final row and active current-focus/index pointers agree on T-030 `In Review`, first round passed and second round pending. No final-PR, merged-main, Done or hosted release-runtime claim is made.
+
+Governance is consistent: Accepted ADR-0040 authorizes the CI execution policy; ADR-0030/0031 govern the debug console; ADR-0039 governs the explicit source-built matching-image pipeline. Standards changes are minimal and downstream summaries were updated, with existing references to ADR-0040. No architectural reversal, new policy choice, principle amendment or new ADR is needed. Round 1's parser wording now correctly distinguishes a third passing match from an extra ignored match, independently verified here. Both prior review artifacts preserve T-038's exclusion and honest evidence provenance.
+
+The corrected link scan covers every changed Markdown file's ordinary inline relative links outside code, including heading targets, and reports no broken link. It is not a whole-repository Markdown parser or an external URL availability audit.
+
+### Integration
+
+**Clean within T-030.** No workspace member/default-member, toolchain, lockfile, dependency, third-party action SHA, cache key, workflow trigger, required job display name or permission changes. New checks are ordinary blocking steps in the existing required jobs. Host tests and bare-metal compilation remain target-correct. The negative probe reads the current tracked source and the same canonical guard rather than a historical checkout, and does not commit a broken regression or create an alternate branch.
+
+Hosted evidence has two explicitly different provenances:
+
+1. **Independently fetched exact-HEAD metadata.** `gh run view 38180378759 --json headSha,conclusion,status,url,jobs` returned completed/success at exact `5cd9ee8a01ac523e48146e2224284b871e3619ab`, with all five job conclusions successful. The host release test, explicit syscall guard, profile-flip probe, release kernel build/clippy, debug-image restoration and perf build/lint steps are individually successful. The metadata is saved at `/tmp/tyrne-b21-t030-round2-code-hosted.json`. [Exact-HEAD hosted run](https://github.com/HodeTech/Tyrne/actions/runs/38180378759).
+2. **Direct inspection of coordinator-downloaded first-green metadata/logs.** `/tmp/tyrne-b21-step4/hosted-run.json` identifies successful run `38179424325` at `c716ae3d312b1a6213ec35346a87940a79af3465`, all five jobs green. This reviewer inspected those supplied files; their original download was the coordinator's. Fast-lane log lines 672/928/992/1014 corroborate 46 + 249 + 58 + 3 = 356 release passes; line 999 records two ignored doctests; lines 1027–1032 show both exact names, two passes and guard PASS; line 1040 shows the isolated flip rejected at exit 1. Kernel log lines 173/225/257 show 117 → 69 → 117 bytes; lines 247/266/275 show completed release clippy and final debug perf build/lint. Metadata supports the first release step's 13-second span. [First-green hosted run](https://github.com/HodeTech/Tyrne/actions/runs/38179424325).
+
+`git diff --name-only c716ae3..5cd9ee8` contains only task/current/review Markdown and indexes, so the earlier detailed logs cover the same executable delta; the second metadata fetch additionally establishes a full green run at the exact reviewed tip. No claim is made to independently download or inspect the second run's full logs. These are development/pre-merge results; post-merge main, final PR approval, runtime smoke, ARM-job registration and later protection changes are not inferred.
+
+#### Complete code-review checklist
+
+| Required item | Explicit disposition |
+|---|---|
+| Intent first / actual tests before implementation / topological traversal | Pass; task and release tests, then prerequisites/guard/probe, workflow and downstream docs |
+| Correctness | Pass; tested named execution, profile-flip rejection and matching-image order |
+| Capability semantics | No production change; valid-cap release rejection remains asserted before handler side effects |
+| Fault containment | No fault handling or BSP runtime change; no new userspace-to-kernel failure path; T-034 owns runtime verification |
+| Unsafe discipline | No new/modified unsafe, assembly or safety reasoning; no audit record/amendment needed; T-038 not certified |
+| Error handling | Real/controlled failure paths propagate; unrelated failures cannot independently satisfy the negative probe |
+| Tests | Real positive, reproduced regression, actual negative harness, debug contract and controlled adversarial cases pass |
+| Documentation | New commands/profile obligations and status/evidence distinctions documented; links checked |
+| Architectural principles | All P1–P12 explicitly considered below |
+| Dependencies | None added/upgraded; add-dependency procedure not triggered |
+| Naming/style | English, minimal cfg import scopes, executable scripts, independent ShellCheck/actionlint/syntax clean |
+| Commit messages | Four intelligible conventional commits, valid ADR references, truthful review follow-up |
+| Post-fix downstream sweep | Release commands and summaries reconciled across workflow, guides, task/index/current and three standards; no production rename |
+| Separate security review | Same-delta Round 1 security artifact read; distinct fresh Round 2 pass is separately commissioned and parent must reconcile it |
+| Local execution / behavioral validation | Independent private host execution and failure reproduction completed; unchanged guest behavior does not require an additional T-030 smoke |
+| Canonical output/index/lifecycle | Parent explicitly owns publication/index/history; this full temporary report is the requested deliverable; no Done or merge action |
+
+#### Architectural principles P1–P12
+
+| Principle | Disposition |
+|---|---|
+| P1 — No ambient authority | Pass for delta; release number rejection is enforced without granting new authority |
+| P2 — Smallest defensible TCB | Pass; only host verification grows, production code unchanged |
+| P3 — Drivers/filesystems/network in userspace | Unaffected; no subsystem placement change |
+| P4 — Capability checks at trust boundaries | Pass for delta; unchanged runtime checks and valid-cap release-denial test remain meaningful |
+| P5 — Rust-only kernel / audited assembly | Pass for delta; shell/Python here are host tooling; no assembly or unsafe edit approved |
+| P6 — HAL separation | Pass; cfg-scoped test imports retain HAL/fake abstractions; no board detail enters kernel runtime |
+| P7 — No proprietary binary blobs | Pass; matching images built from existing Rust source; no committed binary |
+| P8 — ADR governance | Pass; Accepted ADR-0040 and existing 0030/0031/0039 govern the work; standards follow Acceptance |
+| P9 — English artifacts | Pass; changed artifacts, diagnostics and commits are English |
+| P10 — Mermaid diagrams | Not triggered; no diagram added |
+| P11 — Reproducibility | Preserved for delta; pin/lock unchanged, isolated negative target and explicit matching profile order; no bit-for-bit reproducibility certification |
+| P12 — Complete declared scope | Pass for T-030 implementation; review lifecycle and T-034 runtime ownership remain explicit; task stays In Review |
+
+#### Read coverage and limits
+
+Read full AGENTS and CLAUDE, current roadmap including historical banners, all 39 existing numbered ADRs in numerical traversal (0001–0033, 0035–0040; reserved 0034 has no file), every standards file including its index, skill index, both applicable review skills, complete code-review master plan and standard-change skill. Bounded follow-up reads recovered truncated substantive portions. Read full prior Track B.2-1 preflight, current T-030 Round 1 code/security artifacts, T-030 task, approved sequence/index context, actual release tests and adjacent fixtures/cfg references, complete changed scripts/configuration/workflow, image helper/BSP build script, full CI guide, changed QEMU guide/task/status/standards/index material, four commit descriptions and hosted evidence described above.
+
+This is full governing-document coverage plus focused change review, not a re-audit of every unchanged subsystem. No complete unchanged dispatcher/assembly reread, full roadmap backlog re-review, hardware/SMP test, guest QEMU execution, new performance study, broad fresh Miri/stable/full-host rerun, signal/kill cleanup stress test, hostile toolchain/process test or external URL crawl is claimed. Normal and tested error cleanup passed. Shell/regression tooling assumes trusted tracked source and ordinary Cargo/libtest output. Known HIGH T-038 (`x2` clobber/safety-claim debt in the userland console shim) is unchanged, excluded and unmitigated by these gates; compiling/linting or passing host Miri does not certify SVC assembly soundness.
+
+### Verdict
+
+**Approve T-030 at `5cd9ee8` for this fresh Round 2 code review. No actionable findings and no source correction requested.** All five axes, every code-review checklist item and P1–P12 are covered. Independent real positive/regression/negative checks, controlled failure cases, inspected first-green logs and independently fetched exact-tip hosted metadata support the scoped verdict.
+
+The parent must reconcile the separate fresh Round 2 security verdict and publish the complete reports before declaring the two-round step cycle complete. T-030 remains `In Review` for the final maintainer PR. This review does not promote Done, merge, certify whole-kernel/assembly safety, or claim hosted release EL0 coverage.
