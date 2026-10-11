@@ -4,10 +4,11 @@
 # locally before opening a PR is also enforced here. A red CI blocks
 # merge.
 #
-# What actually gates merge (configured in GitHub branch protection):
+# Required gates (ARM registration follows hosted green and two reviews):
 #   - lint-and-host-test, kernel-build, host-stable-check  (fast lane)
 #   - miri                                                 (required, slow)
 #   - qemu-smoke                                           (debug + release)
+#   - arm64-host-check                                     (native + Miri)
 # Fast lane includes ShellCheck and bare-metal userland clippy, with isolated
 # expected-failure regression probes; no extra required-check names.
 # Host release tests and the two-test release syscall guard run in the fast
@@ -95,9 +96,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-${{ env.NIGHTLY_PIN }}-
+            ${{ runner.os }}-${{ runner.arch }}-cargo-${{ env.NIGHTLY_PIN }}-
       - name: cargo fmt --check
         run: cargo +"$NIGHTLY_PIN" fmt --all -- --check
       - name: ShellCheck tooling scripts
@@ -152,9 +153,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-
+            ${{ runner.os }}-${{ runner.arch }}-cargo-aarch64-${{ env.NIGHTLY_PIN }}-
       - name: build userland image (ADR-0039)
         # Produces userland/hello/hello.bin (rust-objcopy of the userland crate)
         # which the BSP embeds via include_bytes!; MUST run before kernel-build,
@@ -230,9 +231,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-
+            ${{ runner.os }}-${{ runner.arch }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-
       - name: Smoke rejection survives workflow log pipeline (synthetic trace)
         run: |
           if tools/probe-smoke-pipeline.sh 2>&1 | tee "$SMOKE_EVIDENCE/pipeline-probe.output.log"; then
@@ -270,6 +271,52 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # ─── Native ARM64 workspace checks, including host-gated userland ──────
+  arm64-host-check:
+    name: ARM64 host check + clippy + tests + Miri (nightly)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install pinned native nightly with clippy + Miri
+        run: |
+          rustup toolchain install "$NIGHTLY_PIN" --component clippy --component miri --no-self-update
+          rustup override set "$NIGHTLY_PIN"
+      - name: Verify actual native ARM64 host
+        run: |
+          uname -m
+          rustc -Vv
+          test "$(uname -m)" = aarch64
+          rustc -Vv | grep -Fx 'host: aarch64-unknown-linux-gnu'
+      - name: Cache native ARM64 registry and targets
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-arm64-host-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-arm64-host-${{ env.NIGHTLY_PIN }}-
+      - name: Native workspace check (excl. only BSP)
+        run: cargo +"$NIGHTLY_PIN" check --workspace --exclude tyrne-bsp-qemu-virt
+      - name: Native workspace clippy, all targets (excl. only BSP)
+        run: cargo +"$NIGHTLY_PIN" clippy --workspace --exclude tyrne-bsp-qemu-virt --all-targets -- -D warnings
+      - name: Arch-only hello regression probe (isolated, expected failure)
+        run: tools/test-ci-gates.sh --arm-host
+      - name: Native workspace tests (excl. only BSP)
+        run: cargo +"$NIGHTLY_PIN" test --workspace --exclude tyrne-bsp-qemu-virt
+      - name: Native ARM64 Miri setup
+        run: cargo +"$NIGHTLY_PIN" miri setup
+      - name: Native workspace Miri (excl. only BSP)
+        run: cargo +"$NIGHTLY_PIN" miri test --workspace --exclude tyrne-bsp-qemu-virt
+
   # ─── Host stable check: host crates compile + test on stable ────────────
   # A genuine "the host-buildable crates compile and pass tests on stable
   # Rust" gate. The kernel image itself needs nightly (inline asm / lang
@@ -304,9 +351,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-stable-
+            ${{ runner.os }}-${{ runner.arch }}-cargo-stable-
       # Explicit `+stable` bypasses the rust-toolchain.toml override so this
       # job exercises stable for real. `cargo build` / `host-test` operate on
       # default-members (host-buildable crates only); the bare-metal BSP is
@@ -343,9 +390,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-miri-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-miri-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-miri-${{ env.NIGHTLY_PIN }}-
+            ${{ runner.os }}-${{ runner.arch }}-miri-${{ env.NIGHTLY_PIN }}-
       - name: cargo miri setup
         run: cargo +"$NIGHTLY_PIN" miri setup
       - name: cargo miri test (excl. BSP)
@@ -394,9 +441,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-llvmcov-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-llvmcov-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-llvmcov-${{ env.NIGHTLY_PIN }}-
+            ${{ runner.os }}-${{ runner.arch }}-llvmcov-${{ env.NIGHTLY_PIN }}-
       - name: cargo llvm-cov --summary-only
         # Exclude the bare-metal crates: the BSP is no_std/no_main (cannot host-
         # build) and the userland crates (tyrne-user / hello) host-compile only

@@ -9,19 +9,35 @@ This guide describes the GitHub Actions pipeline configured in [`.github/workflo
 | `lint-and-host-test` | pinned nightly + `rustfmt` + `clippy` | ~2 min | `cargo fmt --check` diff, clippy warning, debug/release host test failure, absent release-only syscall tests, tooling ShellCheck finding, expected-failure probe mismatch or stubbed QEMU argument regression |
 | `kernel-build` | pinned nightly + `aarch64-unknown-none` + `clippy` | ~1 min | Debug/release kernel or debug perf-bench build error, kernel/userland/perf-bench clippy warning or expected-failure probe mismatch |
 | `qemu-smoke` | pinned nightly + `llvm-tools-preview` + QEMU | ~2–4 min; 10 min bound | Missing debug/release EL0 markers, release greeting, panic/CPU-fault trace, build failure or expected-failure probe mismatch |
+| `arm64-host-check` | pinned nightly + `clippy` + `miri`, `ubuntu-24.04-arm` | 15 min bound; hosted timing pending | Native workspace check/clippy/test/Miri failure, wrong host or arch-only regression probe mismatch |
 | `host-stable-check` | stable (no extra components) | ~2 min | host crates failing to build or test on stable Rust |
 | `miri` | pinned nightly + `miri` component | ~10–15 min | Any Stacked Borrows violation in `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` |
 | `coverage` | pinned nightly + `llvm-tools-preview` + `cargo-llvm-cov` | ~3–5 min | **Never** (informational only, `continue-on-error: true`) |
 
-All jobs run on `ubuntu-latest`. Each caches cargo registry + build artefacts keyed by `Cargo.lock` hash, so warm runs are far faster than first runs.
+The ARM job runs on `ubuntu-24.04-arm`; the remaining jobs use `ubuntu-latest` (x86_64). Every cache key and restore prefix includes `runner.os` and `runner.arch`, plus toolchain and lockfile identity, so ARM cannot restore x86_64 build artifacts.
 
 ### Why do the kernel jobs run on the pinned nightly, not stable?
 
-The kernel needs nightly to build (inline asm intrinsics / lang items — see `rust-toolchain.toml` and ADR-0002). `rust-toolchain.toml` pins `nightly-2026-01-15` at the repo root, and rustup's override precedence means that file selects the pinned nightly for **every** in-repo `cargo` invocation regardless of `rustup default`. So `lint-and-host-test`, `kernel-build`, `qemu-smoke`, `miri`, and `coverage` all select the pin explicitly (`cargo +$NIGHTLY_PIN …`) — the same toolchain a contributor's local `cargo` uses.
+The kernel needs nightly to build (inline asm intrinsics / lang items — see `rust-toolchain.toml` and ADR-0002). `rust-toolchain.toml` pins `nightly-2026-01-15` at the repo root, and rustup's override precedence means that file selects the pinned nightly for **every** in-repo `cargo` invocation regardless of `rustup default`. So `lint-and-host-test`, `kernel-build`, `qemu-smoke`, `arm64-host-check`, `miri`, and `coverage` all select the pin explicitly (`cargo +$NIGHTLY_PIN …`) — the same toolchain a contributor's local `cargo` uses.
 
 ### What does `host-stable-check` give us, then?
 
 A genuine "the host-buildable crates compile and pass tests on **stable** Rust" signal. It runs `cargo +stable build` and `cargo +stable host-test` over the workspace `default-members` (kernel, hal, test-hal) — the bare-metal BSP is excluded because it needs nightly. The `+stable` prefix bypasses the `rust-toolchain.toml` override so this job exercises stable for real. It deliberately does **not** run clippy/fmt with `-D warnings`: `clippy::pedantic` is `warn` workspace-wide and stable is a rolling toolchain, so a future stable pedantic lint could redden the gate with no code change of ours — lint/format enforcement lives only on the pinned-nightly jobs. If a host crate ever grows a `#![feature(...)]` it does not strictly need, this job is the one that goes red on stable.
+
+### Why an ARM64 host job?
+
+An arch-only `target_arch = "aarch64"` cfg accidentally includes bare-metal panic handlers and entry points on an ARM host. Cross-building on x86 cannot expose that host hazard. `arm64-host-check` verifies the machine is `aarch64` and Rust targets `aarch64-unknown-linux-gnu`, then runs all four native commands below with the pinned nightly. Only the BSP is excluded; both userland crates participate. Miri is mandatory alongside native compilation and execution.
+
+```sh
+cargo check --workspace --exclude tyrne-bsp-qemu-virt
+cargo clippy --workspace --exclude tyrne-bsp-qemu-virt --all-targets -- -D warnings
+cargo test --workspace --exclude tyrne-bsp-qemu-virt
+cargo miri setup
+cargo miri test --workspace --exclude tyrne-bsp-qemu-virt
+tools/test-ci-gates.sh --arm-host
+```
+
+The ARM-only probe restores hello's six arch-only predicates in a temporary copy, then requires the exact workspace clippy command to reject duplicate `panic_impl`. A successful probe means the compiler rejected the regression, not that Miri failed in production. It refuses non-ARM Rust hosts, uses a private Cargo target and removes the temporary copy on exit. [T-036](../analysis/tasks/phase-b2/T-036-ci-arm64-host-check-job.md) separates Apple Silicon, hosted Linux ARM, final PR and post-merge evidence. Its exact display name is `ARM64 host check + clippy + tests + Miri (nightly)`; live registration awaits hosted green and both fresh review rounds.
 
 ### How the action versions are pinned
 
@@ -62,6 +78,7 @@ The CI matrix mirrors what a contributor should run locally before opening a PR:
 | `tools/smoke.sh --int` + `tools/smoke.sh --release --int` (matching images) | `qemu-smoke` |
 | `tools/test-smoke-gates.sh` (synthetic traces) | `lint-and-host-test` and `qemu-smoke` |
 | `tools/test-smoke-gates.sh --real` (also private kernel variants) | `qemu-smoke` |
+| Native workspace check/clippy/test/Miri and `tools/test-ci-gates.sh --arm-host` (commands above) | `arm64-host-check` |
 | `cargo +stable build` + `cargo +stable host-test` (host crates) | `host-stable-check` |
 | `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` | `miri` |
 | `cargo llvm-cov --workspace --exclude tyrne-bsp-qemu-virt --summary-only` | `coverage` |

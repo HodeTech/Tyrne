@@ -78,6 +78,7 @@ These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.git
 - Debug `perf-bench` build and clippy: restore the debug image with `tools/build-userland.sh` immediately before `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench`, then `cargo clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings` (`kernel-build`). Do not append Cargo flags to the existing lint alias after its `--` delimiter.
 - Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
 - Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
+- Native ARM workspace check/clippy/test/Miri on `ubuntu-24.04-arm` (`arm64-host-check`), excluding only the BSP. Verify the actual ARM machine and Rust host; run the isolated arch-only hello clippy rejection probe after positive clippy. All four commands are mandatory; see [ci.md](../guides/ci.md#why-an-arm64-host-job) for exact commands. Its live required-check registration follows hosted green and both fresh rounds.
 
 - Single-core debug/release QEMU EL0 smoke (`qemu-smoke`, display `QEMU debug + release smoke (nightly)`) after matching userland/kernel builds, with `--int`. Debug requires greeting/exit/completion; release requires exit/completion and forbids greeting. Both reject panic/CPU-fault traces; explicit Bash/pipefail preserves smoke failure through `tee`, with an inherited-shell rejection guard. Synthetic trace fixtures and three isolated real kernel mutations must demonstrate intended rejection. Always-uploaded diagnostic artifacts retain production/probe traces and metadata for 14 days. Live required-check registration was completed on 2026-10-12 after corrected remote green and both fresh rounds, recorded in [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
 
@@ -105,12 +106,13 @@ The `miri` job runs the host-test suite under Stacked Borrows on the pinned nigh
 - GitHub Actions is the default. Workflows live under `.github/workflows/`.
 - Jobs are reusable — shared setup (install toolchain, cache cargo registry) is a composite action.
 - A top-level `permissions: contents: read` block applies least privilege to the auto-provisioned `GITHUB_TOKEN`: the pipeline reads the repo, runs checks and uploads diagnostic artifacts through runtime artifact credentials without widening token scope. A future job that genuinely needs wider GITHUB_TOKEN permissions must declare them at the job level rather than widen the workflow default.
-- CI caches `~/.cargo/registry` and `target/` keyed by the toolchain hash.
+- CI caches cargo data and `target/` keyed by toolchain and lockfile identity; every key and restore prefix includes `runner.os` and `runner.arch`, preventing cross-architecture restoration.
 - Secrets never enter CI. If a future workflow needs a secret (e.g. publishing artifacts), it is scoped and rotated.
 
 ### Runners
 
-- `ubuntu-latest` for the standard toolchain matrix.
+- `ubuntu-latest` (x86_64) for the standard toolchain matrix.
+- `ubuntu-24.04-arm` for mandatory native workspace check/clippy/test/Miri, including host-gated userland and excluding only the BSP; the job verifies the native machine/Rust host and has a 15-minute bound.
 - `qemu-system-aarch64` from `qemu-system-arm` on the `ubuntu-latest` smoke runner; the job records its version and has a 10-minute bound. Debug/release use one core, with no SMP claim.
 - Real-hardware jobs (Raspberry Pi lab, when it exists) are self-hosted runners, off the PR hot path, running on release cadence.
 
@@ -189,6 +191,7 @@ When the project moves out of solo phase:
 - `main` is protected.
 - PRs to `main` require at least one approval (two for security-sensitive changes — see [security-review.md](security-review.md)).
 - Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), `miri (Stacked Borrows)` (job `miri`), and `QEMU debug + release smoke (nightly)` (job `qemu-smoke`, registered 2026-10-12 after corrected remote green and reviews). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
+- The new `ARM64 host check + clippy + tests + Miri (nightly)` gate is intended to become required after its remote green and two fresh review rounds; [T-036](../analysis/tasks/phase-b2/T-036-ci-arm64-host-check-job.md) records pending live registration separately from the five already registered checks.
 - Force-push to `main` disabled.
 - Force-push to protected `release/*` branches disabled.
 
@@ -211,7 +214,7 @@ The lint set is canonical at [`code-style.md` §Lints](code-style.md#lints); eve
 | `rustfmt.toml` | Formatter config. |
 | `clippy.toml` | Linter thresholds and allowed lints. |
 | `.cargo/config.toml` | Target triples, linker flags per target. |
-| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `qemu-smoke`, `host-stable-check`, `miri`, `coverage`. Third-party actions are SHA-pinned (see §"GitHub Actions pinning"). |
+| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `qemu-smoke`, `arm64-host-check`, `host-stable-check`, `miri`, `coverage`. Third-party actions are SHA-pinned (see §"GitHub Actions pinning"). |
 
 ### Planned (when first external dependency lands)
 

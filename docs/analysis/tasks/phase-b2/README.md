@@ -43,7 +43,7 @@ The scope includes release kernel clippy and release EL0 smoke now. The current 
 | [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 (+B.2-3) | In Review | — |
 | [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | In Review | T-030, T-033 |
 | [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | Ready | T-034, T-036 |
-| [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | Ready | T-037 |
+| [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | In Review | T-037 |
 | [T-037](T-037-userland-bare-metal-cfg-gate.md) | Fix the bare-metal target gate in the userland crates | B.2-3 | In Review | — |
 | [T-038](T-038-console-write-x2-clobber.md) | Mark `x2` as clobbered in the `console_write` syscall shim | B.2-3 | Ready | T-037 |
 | [T-039](T-039-console-write-bounded-spin-and-length-cap.md) | Bound `console_write`'s per-byte spin and cap its length | B.2-3 | Draft | — |

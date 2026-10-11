@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-1 (polish; not exit-gating)
-- **Status:** Ready
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-037](T-037-userland-bare-metal-cfg-gate.md)
@@ -17,18 +17,20 @@ As the maintainer developing on Apple Silicon, I want a CI job that builds, lint
 
 ## Context
 
-Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md), which marks this task as polish and optional for the Phase B.2 exit: if it is not completed it is recorded as a carry-forward in the closure review. Every CI job runs on `ubuntu-latest` (`.github/workflows/ci.yml:74,109,161,199,233`), an x86_64 host, so a cfg gate that tests only `target_arch = "aarch64"` evaluates false there and looks correct. On an arm64 host it is true for the host build too: `cargo miri test --workspace --exclude tyrne-bsp-qemu-virt` (CI's exact Miri command) fails with `error[E0152]: found duplicate lang item panic_impl` (measured 2026-10-11 on an Apple-Silicon Mac). The userland gates were added in T-027's review round (`ce25727` "cfg-gate for --workspace/Miri", `68f07ec` "gate hello.ld to aarch64") and CI could only ever exercise them on x86_64; [T-037](T-037-userland-bare-metal-cfg-gate.md) fixes the gates, this task adds the signal that would have caught them.
+Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md), which marks this task as polish and optional for the Phase B.2 exit; the requested Track B.2-1 sequence nevertheless includes it. At the opening baseline, every CI job ran on `ubuntu-latest`, an x86_64 host, so a cfg gate that tested only `target_arch = "aarch64"` evaluated false there and looked correct. On an arm64 host it matched the host build too: `cargo miri test --workspace --exclude tyrne-bsp-qemu-virt` failed with `error[E0152]: found duplicate lang item panic_impl` (measured 2026-10-11 on an Apple-Silicon Mac). The userland gates were added in T-027's review round (`ce25727` "cfg-gate for --workspace/Miri", `68f07ec` "gate hello.ld to aarch64"); [T-037](T-037-userland-bare-metal-cfg-gate.md) fixes them, and this task adds the native ARM signal that would have caught the bug.
 
 This task covers the Polish item "Extend the aarch64-host build-hazard fix (Track B.2-3) with an actual periodic or PR-gated arm64 host-check CI job" (line 601 of the opening snapshot of `phase-b2.md`) and the closing sentence of the Track B.2-3 HIGH item "The arch-only cfg gate is not confined to `build.rs`" (line 323): "Track B.2-1 tracks adding the arm64-host CI signal". Locate both by headline, since that file shifts as banners are added.
 
 ## Acceptance criteria
 
 - [x] ADR-0040's Track B.2-1 policy is Accepted before implementation: D1 required PR check, D2 `ubuntu-24.04-arm`, D3 native check/clippy/test, D4 workspace Miri included. Record routine command/runner setup details in task history.
-- [ ] `.github/workflows/ci.yml` has a job on `ubuntu-24.04-arm` using the pinned nightly that runs `cargo check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` and `cargo miri test`, each with `--workspace --exclude tyrne-bsp-qemu-virt`; architecture-specific caches cannot restore x86_64 build artifacts.
-- [ ] The job is green on `development` and the final PR after T-037; record wall time in the review history. Verify the first merged `main` run after maintainer merge, and keep that evidence pending until it exists.
+- [x] `.github/workflows/ci.yml` has a job on `ubuntu-24.04-arm` using the pinned nightly that runs `cargo check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` and `cargo miri test`, each with `--workspace --exclude tyrne-bsp-qemu-virt`; architecture-specific caches cannot restore x86_64 build artifacts.
+- [ ] The job is green on `development` after T-037; record wall time in the review history.
+- [ ] The final PR's ARM check is green.
+- [ ] Verify the first merged `main` run after maintainer merge; this evidence remains pending until it exists.
 - [ ] Negative test, recorded in the review history: restoring the arch-only gate in an isolated temporary copy of `userland/hello/src/main.rs` makes the exact ARM workspace gate command fail. Repeat in an isolated hosted ARM runner workspace with an expected-failure assertion; never create a scratch branch or commit the regression. Record the original Miri failure class separately from a harness's successful assertion of that failure.
 - [ ] Add the job's exact display name to live branch protection after the remote green run; record the date and read-back evidence and include it in T-035's versioned definition. Preserve all existing required checks.
-- [ ] Documentation: `docs/guides/ci.md` (job table, and a short "why an arm64 job" paragraph) and `docs/standards/infrastructure.md` (the "Runners" list at lines 106-110 and the workflow job list at line 209) describe the job; the `ci.yml` header comment stays accurate.
+- [x] Documentation: `docs/guides/ci.md` (job table and "why an arm64 job") and `docs/standards/infrastructure.md` (runners and workflow jobs) describe the job; the `ci.yml` header comment distinguishes intended and live registration.
 
 ## Out of scope
 
@@ -38,19 +40,19 @@ This task covers the Polish item "Extend the aarch64-host build-hazard fix (Trac
 
 ## Approach
 
-Add one job that mirrors the existing `lint-and-host-test` toolchain setup (`ci.yml:81-84`) on an arm64 runner, then runs the three cargo commands above. The commands are the ones recorded as passing after T-037 on a scratch copy (check, clippy `--all-targets`, test, and Miri). Land it after T-037, otherwise it is red from its first run. If Miri is included, mirror the `miri` job's `cargo miri setup` step and expect a longer runtime than the plain commands.
+Run all four mandatory native workspace commands on `ubuntu-24.04-arm`, with the pinned nightly, clippy and Miri installed and `cargo miri setup` before interpretation. Verify the actual machine and Rust host before running checks. Exclude only the bare-metal BSP so both host-gated userland crates participate. Every workflow cache key and restore prefix includes `runner.arch`. After positive clippy, `tools/test-ci-gates.sh --arm-host` restores only hello's six arch-only predicates in a private tracked-worktree copy and requires the exact workspace clippy command to fail with the duplicate `panic_impl` diagnostic. Native ARM is required; the probe refuses x86 hosts before making a copy. Its success asserts rejection and is separate from the historical Miri failure.
 
 ## Definition of done
 
 Beyond the acceptance criteria:
 
-- [ ] `cargo fmt --all -- --check` clean.
-- [ ] `cargo host-clippy` clean with `-D warnings`.
-- [ ] `cargo kernel-clippy` clean.
-- [ ] `cargo host-test` passes.
-- [ ] Every touched markdown file has all `](...)` link targets resolving.
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with a `Refs: ADR-0040` trailer.
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] `cargo fmt --all -- --check` clean.
+- [x] `cargo host-clippy` clean with `-D warnings`.
+- [x] `cargo kernel-clippy` clean.
+- [x] `cargo host-test` passes.
+- [x] Every touched markdown file has all `](...)` link targets resolving.
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with a `Refs: ADR-0040` trailer.
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
 ## Design notes
 
@@ -69,3 +71,5 @@ Beyond the acceptance criteria:
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Draft |
 | 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |
 | 2026-10-11 | @cemililik; Codex recorded the decision | ADR-0040 Accepted after the [approval follow-up](../../reviews/code-reviews/2026-10-11-adr-0040-approval-follow-up.md); design choices settled, status Ready. Implementation and hosted evidence remain pending. |
+| 2026-10-12 | Codex (AI agent) | Step 7 implementation: required native ARM job, all four commands, exact host verification and architecture-isolated caches throughout CI. On `aarch64-apple-darwin`, pinned rustc `1.94.0-nightly (86a49fd71 2026-01-14)`, workspace check/clippy/test/Miri passed (366 tests, two ignored HAL doctests; existing Miri optimization/provenance warnings, no UB). The private arch-only clippy regression exited 101 with `error[E0152]: found duplicate lang item panic_impl`; the harness correctly returned success. fmt, host/kernel clippy and host tests passed. Linux ARM hosted timing, two fresh rounds, live registration and final PR evidence remain pending. |
+| 2026-10-12 | Codex (AI agent) | Ten controlled ARM probe/CLI cases passed under system Bash 3.2, covering intended rejection, unexpected success, unrelated failure, x86 host refusal, anchor drift, argument errors, paths with spaces, private Cargo targets, source preservation and cleanup. Actionlint, ShellCheck, changed Markdown link resolution and whitespace checks passed. |

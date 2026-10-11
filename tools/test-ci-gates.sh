@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
 # Assert that deliberate regressions fail the real CI commands in a disposable
 # copy of the tracked worktree. Never alters repository source or branches.
-# Usage: tools/test-ci-gates.sh --shell | --userland | --release | --hal | --bsp
+# Usage: tools/test-ci-gates.sh --shell | --userland | --release | --hal | --bsp | --arm-host
 set -euo pipefail
 
 usage() {
-    echo "Usage: tools/test-ci-gates.sh --shell | --userland | --release | --hal | --bsp" >&2
+    echo "Usage: tools/test-ci-gates.sh --shell | --userland | --release | --hal | --bsp | --arm-host" >&2
 }
 
 [[ $# -eq 1 ]] || { usage; exit 2; }
 MODE="$1"
 case "$MODE" in
-    --shell|--userland|--release|--hal|--bsp) ;;
+    --shell|--userland|--release|--hal|--bsp|--arm-host) ;;
     -h|--help) usage; exit 0 ;;
     *) usage; exit 2 ;;
 esac
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
+if [[ "$MODE" == "--arm-host" ]]; then
+    HOST_TARGET="$(rustc -vV | sed -n 's/^host: //p')"
+    [[ "$HOST_TARGET" == aarch64-* ]] || {
+        echo "error: --arm-host requires a native aarch64 Rust host; got $HOST_TARGET" >&2
+        exit 1
+    }
+fi
 PROBE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tyrne-ci-gates.XXXXXX")"
 trap 'rm -rf "$PROBE_DIR"' EXIT
 TREE="$PROBE_DIR/tree"
@@ -51,6 +58,21 @@ run_negative() {
 }
 
 case "$MODE" in
+    --arm-host)
+        # Restore only hello's six original arch-only predicates in the copy.
+        # Keep build.rs and the syscall shim unchanged to isolate this hazard.
+        python3 - <<'PROBE'
+from pathlib import Path
+path = Path("userland/hello/src/main.rs")
+source = path.read_text()
+gate = 'all(target_arch = "aarch64", target_os = "none")'
+if source.count(gate) != 6:
+    raise SystemExit("FAIL: ARM probe expected exactly six hello target predicates")
+path.write_text(source.replace(gate, 'target_arch = "aarch64"'))
+PROBE
+        # shellcheck disable=SC2016  # Backticks are literal compiler diagnostic data, not commands.
+        run_negative 'error[E0152]: found duplicate lang item `panic_impl`' cargo clippy --workspace --exclude tyrne-bsp-qemu-virt --all-targets -- -D warnings
+        ;;
     --shell)
         cat > tools/ci-lint-probe.sh <<'PROBE'
 #!/usr/bin/env bash
