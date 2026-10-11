@@ -54,7 +54,7 @@ The maintainer authorises `Done` per the [tasks README](../README.md); here that
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `docs/analysis/tasks/phase-b/README.md`, `docs/analysis/tasks/phase-b/T-02[0-9]-*.md`, `docs/analysis/tasks/phase-b/T-011-missing-tests-bundle.md`, `docs/analysis/tasks/phase-a/T-002-kernel-object-storage.md`, `docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md`, `docs/analysis/tasks/TEMPLATE.md`, and this task file.
+- [ ] `git diff --stat` lists only: `docs/analysis/tasks/phase-b/README.md`, `docs/analysis/tasks/phase-b/T-02[0-9]-*.md`, `docs/analysis/tasks/phase-b/T-011-missing-tests-bundle.md`, `docs/analysis/tasks/phase-a/T-002-kernel-object-storage.md`, `docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md`, `docs/analysis/tasks/TEMPLATE.md`, `docs/roadmap/current.md`, and this task file.
 - [ ] Text is English; no new untagged fences ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.

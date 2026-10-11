@@ -5,7 +5,7 @@
 - **Status:** Draft
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
-- **Dependencies:** every Phase B.2 task except the two optional polish tasks — [T-030](T-030-ci-release-profile-gate.md) to [T-035](T-035-ci-hygiene-tail.md), [T-037](T-037-userland-bare-metal-cfg-gate.md) to [T-055](T-055-adr-append-only-corrections.md), [T-057](T-057-typed-addresses-phys-virt.md) to [T-074](T-074-phase-c-readiness-sweep.md); [T-036](T-036-ci-arm64-host-check-job.md) and [T-056](T-056-docs-consistency-automation.md) are optional and, if still open, become recorded carry-forwards
+- **Dependencies:** every Phase B.2 task except the two optional polish tasks — [T-030](T-030-ci-release-profile-gate.md) to [T-035](T-035-ci-hygiene-tail.md), [T-037](T-037-userland-bare-metal-cfg-gate.md) to [T-055](T-055-adr-append-only-corrections.md), [T-057](T-057-typed-addresses-phys-virt.md) to [T-074](T-074-phase-c-readiness-sweep.md), and every task numbered T-076 or later opened in `docs/analysis/tasks/phase-b2/` (for example items pulled forward by T-074, which adds each one to this list when it opens it); [T-036](T-036-ci-arm64-host-check-job.md) and [T-056](T-056-docs-consistency-automation.md) are optional and, if still open, become recorded carry-forwards
 - **Informs:** Phase C (opens when this task is `Done`)
 - **ADRs required:** [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) (a closing revision note is appended)
 
@@ -28,6 +28,7 @@ Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md
 - [ ] A **business review / retrospective** is filed under `docs/analysis/reviews/business-reviews/` following the [business master plan](../../reviews/business-reviews/master-plan.md), including what was learned about the plan-outruns-execution pattern and whether the ADR-0040 scope checkpoint was used; the closure-batch index sweep is done (all four review-family README indices list the new artefacts).
 - [ ] The unsafe log is consistent: audit tags in code and log cross-checked in both directions with **zero orphans**, entry/amendment counts recorded against the 33 / 49 baseline.
 - [ ] Roadmap pointers are restored: `current.md` names Phase C as the active phase and B.2 as the last closed phase; `phases/README.md`, `phase-b2.md` (status Closed), `phase-c.md` (status banner removed), `README.md` and `CLAUDE.md` status sentences are updated; ADR-0040 gets an append-only closing revision note; unfinished polish tasks are listed as carry-forwards.
+- [ ] Every task in `docs/analysis/tasks/phase-b2/` — including any opened after 2026-10-11 — is `Done` or recorded as a carry-forward; comparing `ls docs/analysis/tasks/phase-b2/T-*.md` with the index and with this task's Dependencies shows no open task outside that set.
 - [ ] Verification: every relative link in the touched files resolves; the closure review documents `Done` only after the verbatim smoke trace and a clean fault count, per the business master plan's acceptance rule.
 
 ## Out of scope

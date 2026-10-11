@@ -59,7 +59,7 @@ Mermaid only for diagrams, per the documentation-style standard.
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `docs/architecture/{hal,scheduler,exceptions,security-model,memory-management,boot,ipc}.md` and this task file.
+- [ ] `git diff --stat` lists only: `docs/architecture/{hal,scheduler,exceptions,security-model,memory-management,boot,ipc}.md`, `docs/roadmap/current.md` and this task file.
 - [ ] New or changed diagrams are Mermaid with a prose lead-in; all fences are tagged; text is English ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.

@@ -54,7 +54,7 @@ The NOTICE/LICENSE alignment waits on the maintainer's decision; if it is still 
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `README.md`, `docs/guides/README.md`, `docs/glossary.md`, `.agents/skills/add-bsp/SKILL.md`, `NOTICE`, `LICENSE`, and this task file.
+- [ ] `git diff --stat` lists only: `README.md`, `docs/guides/README.md`, `docs/glossary.md`, `.agents/skills/add-bsp/SKILL.md`, `NOTICE`, `LICENSE`, `docs/roadmap/current.md`, and this task file.
 - [ ] Text is English; fences are tagged ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.

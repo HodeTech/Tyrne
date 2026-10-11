@@ -6,7 +6,7 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 
 ## How to use this folder
 
-1. **Accept ADR-0040** first (re-read it; flip its status and its index row — nothing else in the repository needs to change).
+1. **Accept ADR-0040** first (re-read it; flip its status and its index row — nothing else in the repository needs to change). This is a phase-level precondition: no task starts before the ADR is `Accepted`, which is why individual tasks do not list it as a dependency.
 2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory.
 3. Start it with the [`start-task`](../../../../.agents/skills/start-task/SKILL.md) skill's status rules (`Ready` → `In Progress`; update [`current.md`](../../../roadmap/current.md)).
 4. **Every task begins by re-verifying its plan item against the live tree** (ADR-0040 rule 5). The source review was static; if an item no longer reproduces, close the task with evidence and no code change.
@@ -33,14 +33,14 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 | [T-044](T-044-bootstrap-as-handle-invariant.md) | Reconcile the bootstrap address-space handle with the real allocation | B.2-3 | Ready | — |
 | [T-045](T-045-docs-overview-taskloader-arch-index.md) | Refresh the entry-point architecture docs (overview, task-loader, architecture index) | B.2-2 | Ready | — |
 | [T-046](T-046-docs-subsystem-chapters-refresh.md) | Refresh the subsystem architecture chapters (hal, scheduler, exceptions, security-model, memory-management, boot, ipc) | B.2-2 | Ready | — |
-| [T-047](T-047-roadmap-state-and-phase-index-sync.md) | Synchronise roadmap live state and phase index | B.2-2 | Ready | ADR-0040 |
+| [T-047](T-047-roadmap-state-and-phase-index-sync.md) | Synchronise roadmap live state and phase index | B.2-2 | Ready | — |
 | [T-048](T-048-phase-b-task-corpus-sync.md) | Synchronise the Phase B task corpus and fix task-file links | B.2-2 | Ready | — |
 | [T-049](T-049-review-indices-sync.md) | Synchronise the review-family indices | B.2-2 | Ready | — |
 | [T-050](T-050-entry-docs-and-glossary-sync.md) | Refresh README, guides index, glossary, and the add-bsp skill trace | B.2-2 | Ready | — |
 | [T-051](T-051-contributing-and-security-status.md) | Update CONTRIBUTING.md and SECURITY.md to the post-Phase-B state | B.2-2 | Ready | — |
 | [T-052](T-052-standards-docs-reality-sync.md) | Reconcile standards claims with CI and lint reality (decisions required) | B.2-2 | Ready | T-032 |
 | [T-053](T-053-standards-docs-mechanical-fixes.md) | Apply mechanical corrections to the standards docs | B.2-2 | Ready | — |
-| [T-054](T-054-adr-ledger-renumbering-cascade.md) | Cascade the ADR ledger renumbering across phase files | B.2-2 | Ready | ADR-0040 |
+| [T-054](T-054-adr-ledger-renumbering-cascade.md) | Cascade the ADR ledger renumbering across phase files | B.2-2 | Ready | — |
 | [T-055](T-055-adr-append-only-corrections.md) | Apply append-only corrections to Accepted ADRs | B.2-2 | Ready | — |
 | [T-056](T-056-docs-consistency-automation.md) | Automate docs-corpus consistency checks *(polish; optional for exit)* | B.2-2 | Draft | T-048, T-049, T-054 |
 | [T-057](T-057-typed-addresses-phys-virt.md) | Give `PhysAddr`/`VirtAddr` an audited API and use typed addresses at public boundaries | B.2-4 | Ready | T-042, T-043 |
@@ -81,7 +81,7 @@ The single plan item "`current.md` and T-029's own task file are stale" is owned
 
 ## Dependency graph
 
-Only hard `Dependencies` are drawn. T-047 and T-054 additionally need ADR-0040 `Accepted`; T-075 depends on every non-polish task.
+Only hard `Dependencies` are drawn. ADR-0040 `Accepted` is a phase-level precondition for every task (step 1 of *How to use this folder*), not a per-task dependency; T-075 depends on every non-polish task and on any task opened after T-075.
 
 ```mermaid
 flowchart LR

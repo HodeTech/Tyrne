@@ -5,7 +5,7 @@
 - **Status:** Ready
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
-- **Dependencies:** [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) (must be `Accepted` before this task starts)
+- **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
 - **Informs:** [T-056](T-056-docs-consistency-automation.md), [T-074](T-074-phase-c-readiness-sweep.md)
 - **ADRs required:** none
 
@@ -24,12 +24,12 @@ Current ledger inventory (verify before editing): Phase C 5 rows (0040–0044), 
 ## Acceptance criteria
 
 - [ ] **Decision recorded** (see Open decisions) on numeric re-sequencing vs slug-based placeholders, in this task's review history.
-- [ ] After the change no two ledger rows across all phase files carry the same number, and no ledger row carries a number that belongs to a written ADR (`ls docs/decisions/` vs `grep -n '^| ADR-' docs/roadmap/phases/*.md`). With numeric re-sequencing the target mapping is: C 0041–0045, D 0046–0050, E 0051–0056, F 0057–0061, G 0062–0066, H 0067–0069, I 0070–0072 (adjust if the inventory above has changed).
+- [ ] After the change no two ledger rows across all phase files carry the same number (under the slug workflow: no ledger row carries a tentative number and every slug appears once), and no ledger row carries a number that belongs to a written ADR (`ls docs/decisions/` vs `grep -n '^| ADR-' docs/roadmap/phases/*.md`). With numeric re-sequencing the target mapping is: C 0041–0045, D 0046–0050, E 0051–0056, F 0057–0061, G 0062–0066, H 0067–0069, I 0070–0072 (adjust if the inventory above has changed).
 - [ ] Every prose reference to a planned ADR number inside the phase files is updated consistently with its ledger row — including cross-phase references, which must be resolved one by one because the same string means different ADRs in different files (for example `phase-d.md` quoting Phase C's "ADR-0043, roadmap C4").
-- [ ] Each ledger that shifted carries a dated downstream-renumbering note analogous to the one already in `phase-e.md` (§"Downstream-renumbering note"); `phase-d.md` gets one; the Phase C note added at kickoff is updated to point at the final numbers.
+- [ ] Each ledger carries a dated note: under the numeric workflow a downstream-renumbering note analogous to the one already in `phase-e.md` (§"Downstream-renumbering note"), including `phase-d.md`; under the slug workflow a note that tentative numbers were removed. The Phase C note added at kickoff is updated to match.
 - [ ] `phase-b2.md`'s two mentions and `docs/decisions/README.md`'s *Numbering gaps* note are consistent with the new ledgers.
 - [ ] Historical documents (reviews, dated banners in `current.md`) keep the numbers they quoted; the note in the ledger states that older documents use the old tentative numbers.
-- [ ] A reproducible duplicate check exists and is recorded (a `grep`/`awk` one-liner in this task or, if [T-056](T-056-docs-consistency-automation.md) has landed, its check) and reports no duplicates.
+- [ ] A reproducible duplicate check exists and is recorded (a `grep`/`awk` one-liner in this task or, if [T-056](T-056-docs-consistency-automation.md) has landed, its check) and reports no duplicates (slug workflow: no duplicate slugs and no remaining tentative numbers).
 
 ## Out of scope
 
@@ -40,12 +40,16 @@ Current ledger inventory (verify before editing): Phase C 5 rows (0040–0044), 
 
 ## Approach
 
-Process one phase file at a time with its own old→new mapping; do **not** run one global search-and-replace, because Phase C's and Phase D's old numbers are the same strings. After each file, grep for the old numbers inside that file to catch leftovers, then resolve cross-phase references by reading the sentence. Update the ledger rows' *Note* column with "renumbered 2026-MM-DD, was ADR-00NN" in the existing style so history stays traceable. Finish with the duplicate check across all phase files.
+Decide first (see Open decisions), then follow the matching workflow.
+
+**Numeric workflow** (if numeric placeholders are kept). Process one phase file at a time with its own old→new mapping; do **not** run one global search-and-replace, because Phase C's and Phase D's old numbers are the same strings. After each file, grep for the old numbers inside that file to catch leftovers, then resolve cross-phase references by reading the sentence. Update the ledger rows' *Note* column with "renumbered 2026-MM-DD, was ADR-00NN" in the existing style so history stays traceable. Finish with the duplicate check across all phase files.
+
+**Slug workflow** (if stable slugs are preferred). There is no old→new numeric mapping and no renumbering note. Replace each tentative number in a ledger row with a stable slug identifier (for example `ADR-C1 secondary-core-start`), use the same identifier in every prose reference, and add one dated note per ledger saying that tentative numbers were removed and that the real number is assigned when the ADR is written. Phase files can be done in any order because the identifiers are unique by construction. Finish by checking that each identifier appears in exactly one ledger row, that no tentative `ADR-004x…006x` number remains in any phase file, and that cross-phase references name the identifier rather than a number.
 
 ## Definition of done
 
 - [ ] Every relative link in each touched file resolves.
-- [ ] `git diff --stat` is limited to `docs/roadmap/phases/*.md` and `docs/decisions/README.md`.
+- [ ] `git diff --stat` is limited to `docs/roadmap/phases/*.md`, `docs/decisions/README.md`, this task file and `docs/roadmap/current.md`.
 - [ ] The duplicate check output is pasted into the review history.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `roadmap`).
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.

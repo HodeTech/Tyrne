@@ -54,7 +54,7 @@ For the uniformity item, wait for T-032 (the declared dependency) and then descr
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `docs/standards/{testing,error-handling,code-style,logging-and-observability}.md`, any ADR or follow-up task file created by a decision, `Cargo.toml` only if `unimplemented = "deny"` was chosen (then `cargo host-clippy` and `cargo kernel-clippy` are clean), and this task file.
+- [ ] `git diff --stat` lists only: `docs/standards/{testing,error-handling,code-style,logging-and-observability}.md`, any ADR or follow-up task file created by a decision, `Cargo.toml` only if `unimplemented = "deny"` was chosen (then `cargo host-clippy` and `cargo kernel-clippy` are clean), `docs/roadmap/current.md`, and this task file.
 - [ ] Text is English; fences are tagged ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040` (plus any ADR a rule change adds).
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.

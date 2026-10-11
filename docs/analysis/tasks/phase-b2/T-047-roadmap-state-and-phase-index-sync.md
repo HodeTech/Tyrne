@@ -5,7 +5,7 @@
 - **Status:** Ready
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
-- **Dependencies:** [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) (must be `Accepted` before this task starts)
+- **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
 - **Informs:** [T-074](T-074-phase-c-readiness-sweep.md)
 - **ADRs required:** none
 
@@ -29,7 +29,7 @@ The ADR-0040 kickoff (2026-10-11) already did the following, so this task must *
 - [ ] The dated banners are in reverse-chronological order again (the 2026-05-08 / 2026-05-09 / 2026-05-08 sequence is out of order), and the file's opening sentence describes what the file now is. **Open decision** (record it in the review history): keep banners inline vs move banners older than a chosen cut-off to an archive file such as `docs/roadmap/current-archive.md`.
 - [ ] `phase-c.md` §"Carry-forwards from Phase B" gains the three missing seam-review forward-flags — gate-#3 context-resolution atomicity (relevant to C2/C3), gate-#1 loader trust, and an `SP_EL1` high-water-mark bullet distinct from the IRQ/`TTBR1` item — each cross-referenced to [the consolidated Phase-B security review](../../reviews/security-reviews/2026-06-01-phase-b-closure.md) and the milestone that makes it live (plan item at snapshot line 132).
 - [ ] `phase-b.md` B6 dependency-ordered task sequence: the status tags of steps 1, 5 and 6 read **Done** with their merge PRs (T-022 → #36, T-027 → #41, T-028 → #42), or the pre-closure narrative is wrapped in a "preserved as historical record" framing as the B5 section above it is (plan item at snapshot line 229).
-- [ ] Verification: every relative link in `current.md`, `phase-b.md` and `phase-c.md` resolves; `grep -n "it is active" docs/roadmap/phases/README.md` returns nothing; `git diff --stat` touches only these three files.
+- [ ] Verification: every relative link in `current.md`, `phase-b.md` and `phase-c.md` resolves; `grep -n "it is active" docs/roadmap/phases/README.md` returns nothing; `git diff --stat` touches only these three files and this task file.
 
 ## Out of scope
 
@@ -45,7 +45,7 @@ Edit `current.md` from the bottom up (the stale tail first) so that the kickoff'
 ## Definition of done
 
 - [ ] Every relative link in each touched file resolves (`grep -o '](\.\./[^)]*' | sort -u`, then `ls` each target).
-- [ ] `git diff --stat` is limited to `docs/roadmap/current.md`, `docs/roadmap/phases/phase-b.md`, `docs/roadmap/phases/phase-c.md`.
+- [ ] `git diff --stat` is limited to `docs/roadmap/current.md`, `docs/roadmap/phases/phase-b.md`, `docs/roadmap/phases/phase-c.md` and this task file.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `roadmap`).
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 

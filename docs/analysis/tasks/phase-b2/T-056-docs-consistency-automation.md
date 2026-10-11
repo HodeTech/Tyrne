@@ -41,7 +41,7 @@ Start with the cheapest high-value checks (link resolution, index-versus-disk) a
 
 ## Definition of done
 
-- [ ] `shellcheck` clean; the script runs on both macOS and Linux (no GNU-only flags without a fallback — the maintainer's machine is macOS, CI is Ubuntu).
+- [ ] If the shell implementation is chosen: `shellcheck` clean and the script runs on both macOS and Linux (no GNU-only flags without a fallback — the maintainer's machine is macOS, CI is Ubuntu). If another language is chosen: that language's standard formatter/linter is clean, the script runs on both macOS and Linux, and any new dependency is named in the recorded design decision.
 - [ ] The script's own run on the final tree is green; its output is pasted into the review history.
 - [ ] Every relative link in each touched Markdown file resolves.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `tooling`) with `Refs: ADR-0040`.

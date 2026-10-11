@@ -29,7 +29,7 @@ The ADR-0040 kickoff already updated the README "Status at a glance" and the CLA
 - [ ] `CONTRIBUTING.md:3` is rewritten to the current state (Phase B closed 2026-06-01, first EL0 userspace task running through the capability-gated syscall boundary, Phase B.2 active, Phase C next and gated by B.2), consistent with the README "Status at a glance"; `grep -n "mid-way through Phase B\|two-task IPC demo" CONTRIBUTING.md` returns nothing.
 - [ ] `CONTRIBUTING.md:14` no longer says "milestones B0–B3 closed; B4 active"; the boundary for unsolicited pull requests is restated against the active phase and points to [`current.md`](../../../roadmap/current.md) as the source of truth instead of repeating milestone IDs; `grep -n "B4 active" CONTRIBUTING.md` returns nothing.
 - [ ] `SECURITY.md:7` (Project status and guarantees): "not yet a userspace-bearing OS", "B4 active", and "refined as Phase B progresses" are removed; the pre-alpha, no-production-use, and no-security-guarantees statements are kept; the link to `docs/architecture/security-model.md` still resolves.
-- [ ] `SECURITY.md` states precisely what is reachable from EL0 today, verified against `kernel/src/syscall/abi.rs` (`SyscallNumber`, lines 50-62, and its `decode`) and ADR-0030 / ADR-0031: the five-syscall v1 set (`ipc_send`, `ipc_recv`, `task_yield`, `task_exit`, `console_write`), that `console_write` is both capability-gated and debug-build-only (number 5 decodes to `BadSyscallNumber` in a non-debug build), and that EL0 has no capability-management, notification, or address-space syscalls in v1.
+- [ ] `SECURITY.md` states precisely what is reachable from EL0 today, verified against `kernel/src/syscall/abi.rs` (`SyscallNumber`, lines 50-62, and its `decode`) and ADR-0030 / ADR-0031: the five-syscall v1 set (`ipc_send`, `ipc_recv`, `task_yield`, `task_exit`, `console_write`), that `console_write` is both capability-gated and debug-build-only (in a non-debug build `SyscallNumber::decode` returns `None` for number 5, and the dispatcher maps that `None` to `BadSyscallNumber`, `kernel/src/syscall/dispatch.rs` line 133), and that EL0 has no capability-management, notification, or address-space syscalls in v1.
 - [ ] Any statement about when the withheld syscalls will be wired cites the document that says so (ADR-0031 "Negative" consequences, or the Phase E plan), not a date or phase invented here; `grep -n "Phase E" SECURITY.md` is either empty or each hit is backed by a cited roadmap line.
 
 ## Out of scope
@@ -51,7 +51,7 @@ Keep the language factual and free of marketing adjectives, per the documentatio
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `CONTRIBUTING.md`, `SECURITY.md`, and this task file.
+- [ ] `git diff --stat` lists only: `CONTRIBUTING.md`, `SECURITY.md`, `docs/roadmap/current.md`, and this task file.
 - [ ] The SECURITY.md wording is reviewed by the maintainer before merge, since it is security-policy text (CLAUDE.md rule on flagging security-relevant changes).
 - [ ] Text is English ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.

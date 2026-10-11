@@ -4,7 +4,7 @@ Individual task user stories, organized per phase. Each task is a short markdown
 
 ## Layout
 
-```
+```text
 tasks/
 ├── README.md        — this file
 ├── TEMPLATE.md      — user-story template

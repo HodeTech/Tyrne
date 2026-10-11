@@ -53,7 +53,7 @@ Then add the closure-batch index-sweep criterion to the business master-plan, us
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only the three family READMEs, `reviews/README.md` (and `docs/analysis/README.md` if its wording changed), `performance-optimization-reviews/2026-06-01-B6-closure.md`, the business `master-plan.md`, the files that carry rewritten `.claude/skills/` links under option (b), any new report, and this task file.
+- [ ] `git diff --stat` lists only the three family READMEs, `reviews/README.md` (and `docs/analysis/README.md` if its wording changed), `performance-optimization-reviews/2026-06-01-B6-closure.md`, the business `master-plan.md`, the files that carry rewritten `.claude/skills/` links under option (b), any new report, `docs/roadmap/current.md`, and this task file.
 - [ ] Text is English; new tables stay within a readable width ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.

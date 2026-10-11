@@ -58,7 +58,7 @@ Finally add the freshness-marker convention and the master-plan closure item so 
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `docs/architecture/overview.md`, `docs/architecture/task-loader.md`, `docs/architecture/README.md`, `docs/analysis/reviews/business-reviews/master-plan.md`, and this task file.
+- [ ] `git diff --stat` lists only: `docs/architecture/overview.md`, `docs/architecture/task-loader.md`, `docs/architecture/README.md`, `docs/analysis/reviews/business-reviews/master-plan.md`, `docs/roadmap/current.md`, and this task file.
 - [ ] New or changed diagrams are Mermaid, preceded by a short prose description; all fences are tagged; text is English ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.

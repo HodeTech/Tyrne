@@ -43,7 +43,7 @@ Verify each statement against its source of truth first (`.cargo/config.toml`, `
 ## Definition of done
 
 - [ ] Every relative link in each touched file resolves.
-- [ ] `git diff --stat` is limited to the standards documents named above.
+- [ ] `git diff --stat` is limited to the standards documents named above, this task file and `docs/roadmap/current.md`.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `standards`).
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
