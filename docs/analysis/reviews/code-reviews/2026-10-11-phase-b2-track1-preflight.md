@@ -38,6 +38,7 @@ Baseline checks on 2026-10-11, pinned `nightly-2026-01-15`, Apple Silicon:
 - `cargo host-test --quiet`: 46 HAL + 259 kernel + 58 test-HAL + 3 passing doctests = **366**; two pre-existing HAL doctest examples are ignored and are not counted as passing.
 - `cargo test --release --quiet`: 46 HAL + 249 kernel + 58 test-HAL + 3 passing doctests = **356**; the same two doctest examples are ignored. Three cfg-dependent unused imports are reported in `kernel/src/syscall/dispatch.rs` tests; T-030 will clean those while establishing release verification, without changing syscall gate logic.
 - The independent CI review reproduced ShellCheck 0.11.0's one warning/four information findings (exit 1), matching T-031's recorded baseline.
+- `tools/smoke.sh --release --int --timeout 5`: PASS with QEMU 11.1.1; the 69-byte release hello image reaches task exit/completion with no greeting or panic/fault, boot-to-end 4,742,000 ns. This was a baseline trace inspection; T-034 still owns executable marker enforcement and negative probes.
 
 These checks establish existing evidence and correct the count claims; they do not substitute for the implementation's negative tests, hosted results, artifacts or live protection read-back. Each gate task specifies both its positive run and isolated negative probes. A probe harness that correctly detects failure can pass; it must not be reported as a red production workflow.
 
@@ -45,7 +46,7 @@ These checks establish existing evidence and correct the count claims; they do n
 
 The reviewed policy packet is ADR-0040, the Track B.2-1 sequence in the task index, T-030…T-037 and the narrowly related T-075 exit-accounting clarification. A separate ADR number is unnecessary because the governing ADR is still `Proposed`. After Acceptance, implementation updates the affected guides/standards alongside each step and performs a final cross-document reconciliation before the PR.
 
-Release kernel clippy is included now. Release EL0 smoke needs a valid scenario for the intentionally absent debug-console syscall; the current hello expects that syscall. T-065/T-067 retain their feature/scenario contracts, and the CI docs must state the existing limitation rather than imply release boot coverage.
+Release kernel clippy and release EL0 smoke are included now. The first correction draft incorrectly claimed that hello requires a successful console call: source re-review confirmed it ignores that result and always exits. T-034 can therefore require the greeting in debug, forbid it in release, and require exit/completion with no panic/fault in both. T-065 later re-keys those expectations to its explicit feature; T-067 retains adversarial-image coverage. No source behaviour change is needed for release smoke.
 
 ## Integration
 
@@ -73,3 +74,5 @@ Implementation may begin only after the maintainer approves the concrete revised
 | 2026-10-11 | `b21_docs_ci_review`, GPT-6.1-sol high | Independent source/CI/task-contract pass; eight verified findings, incorporated above. No edits. |
 | 2026-10-11 | `b21_docs_governance_review`, GPT-6-astra high | Independent governance/dependency pass and complete supplementary roadmap/task-corpus pass; verified contract issues incorporated above. No edits. |
 | 2026-10-11 | Codex root | Reconciled findings against source/standards; reran debug/release baselines; drafted the corrected policy packet. |
+| 2026-10-11 | Round 1: `b21_preflight_round1_contracts`, GPT-6.1-sol high | Reviewed `fac9047`; identified the inaccurate release-smoke deferral (P2) and a residual decision-only exit sentence (P3). Both verified against hello/rule 3 and corrected. All 375 relative link targets, including anchors, resolved. No edits. |
+| 2026-10-11 | Round 1: `b21_preflight_round1_policy`, GPT-6-astra high | Independent governance/security-policy pass on `fac9047`; no blocking governance/security issue. Confirmed the same residual consistency issues and schedule-operation caveats. Root verified release boot, included coverage now, and recorded the schedule caveats in T-035. No edits. |

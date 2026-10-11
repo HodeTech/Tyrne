@@ -66,7 +66,7 @@ The project's standards docs (`infrastructure.md`, `code-review.md`, `error-hand
 
 - The bare-metal BSP is built with `--release`, and the host kernel/HAL/test-HAL crates are tested with `cargo test --release` on every PR. Both release-only `console_write` regressions must execute; the bare-metal BSP has no host-test target.
 - `tyrne-user` and `tyrne-userland-hello` are clippy-checked in CI on the `aarch64-unknown-none` target.
-- A `qemu-smoke` job runs `tools/smoke.sh` on every PR and gates merge on its exit code.
+- A `qemu-smoke` job runs debug and release `tools/smoke.sh --int` checks on every PR and gates merge on their exit codes; it verifies profile-appropriate EL0 evidence, completion, and absence of panic/CPU faults.
 - `hal` and `bsp-qemu-virt` carry the same `clippy::panic`/`unwrap_used`/`expect_used` denies `kernel` already has.
 - `tools/run-qemu.sh` and `tools/smoke.sh` accept an `--smp N` override, unblocking Milestone C1's own smoke acceptance criterion.
 - The remaining low/info items (perf-bench build, perf-harness.sh scheduling, shellcheck, "what gates merge" as code) are tracked even if not all land within B.2.

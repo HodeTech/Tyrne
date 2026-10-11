@@ -23,7 +23,7 @@ The 2026-10-11 preflight review is recorded in [the review artifact](../../revie
 | 3 | T-031 | Enforce userland clippy and ShellCheck; resolve measured findings; prove deliberate lint violations are rejected. |
 | 4 | T-030 | Add release build/run aliases, release host tests, an assertion that both release-only tests executed, release kernel clippy, and default/perf-bench build/lint coverage; test the debug-assertions regression. |
 | 5 | T-032 | Enforce the HAL/BSP panic-family denies; classify every scoped exception; verify default/perf variants, negative lint probes, Miri and smoke; obtain distinct security review where required. |
-| 6 | T-034 | Add required QEMU smoke with failure artifacts; require the existing EL0 greeting and task-exit markers as well as completion; prove missing EL0/completion and panic/fault traces fail. |
+| 6 | T-034 | Add required debug and release QEMU smoke with failure artifacts; require the debug EL0 greeting and forbid it in release, require task exit/completion and no fault in both; prove each gate rejects a matching negative trace. |
 | 7 | T-036 | Add the required native ARM workspace check/clippy/test/Miri job; verify the arch-only regression is detected and register the remote-green check. |
 | 8 | T-035 | Add weekly/on-demand informational performance reports and the classic branch-protection JSON definition with export/check/apply tooling; reconcile live policy without weakening existing protection. |
 
@@ -31,7 +31,7 @@ Each step follows the maintainer's requested cycle: implement → run applicable
 
 Stay on `development`; negative probes use disposable copies, never alternate branches or deliberately broken commits. Push clean step commits to `development` for hosted verification. Open the final PR after the sequence and integrated documentation/verification pass. Before that PR is reviewed and merged, tasks stay `In Review`: neither a local pass nor an agent verdict substitutes for maintainer authorisation of `Done`. Checks specific to the PR, the first merged `main` run and default-branch workflow registration are recorded when they actually occur, rather than reported as pre-merge evidence.
 
-The scope includes the inexpensive release kernel-clippy pass. A release EL0 smoke scenario is not added here: the current hello program expects the debug-only console syscall, which is deliberately absent in release; the dedicated console-feature and adversarial-image contracts remain owned by T-065/T-067. Record this existing limitation explicitly in the CI documentation while adding the release compilation and security-regression gates. This is a scenario-design dependency, not a claim that release boot has been verified.
+The scope includes release kernel clippy and release EL0 smoke now. The current hello program ignores a rejected console call and exits cleanly, so release smoke can require the greeting's absence plus task exit/completion without changing userland or the syscall gate. T-065 later re-keys these expectations to its explicit console feature; T-067 remains the separate adversarial-image task. No release runtime coverage is claimed until the actual local and hosted runs pass.
 
 ## Index
 
@@ -41,8 +41,8 @@ The scope includes the inexpensive release kernel-clippy pass. A release EL0 smo
 | [T-031](T-031-ci-userland-clippy-and-shellcheck.md) | Clippy the userland crates and shellcheck the tooling scripts in CI | B.2-1 | Ready | — |
 | [T-032](T-032-panic-family-denies-hal-bsp.md) | Deny panic-family lints in `tyrne-hal` and `tyrne-bsp-qemu-virt` | B.2-1 | Ready | — |
 | [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 (+B.2-3) | Ready | — |
-| [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | Ready | T-033 |
-| [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | Draft | T-034 |
+| [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | Ready | T-030, T-033 |
+| [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | Draft | T-034, T-036 |
 | [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | Draft | T-037 |
 | [T-037](T-037-userland-bare-metal-cfg-gate.md) | Fix the bare-metal target gate in the userland crates | B.2-3 | Ready | — |
 | [T-038](T-038-console-write-x2-clobber.md) | Mark `x2` as clobbered in the `console_write` syscall shim | B.2-3 | Ready | T-037 |
@@ -112,9 +112,11 @@ flowchart LR
     T038 --> T064
     T037 --> T067[T-067 adversarial image]
     T033[T-033 smp/timeout] --> T034[T-034 qemu-smoke job]
+    T030[T-030 release gate] --> T034
     T034 --> T035[T-035 CI tail]
+    T036 --> T035
     T034 --> T067
-    T030[T-030 release gate] --> T065[T-065 debug-console flag]
+    T030 --> T065[T-065 debug-console flag]
     T032[T-032 hal/bsp denies] --> T052[T-052 standards sync]
     T039[T-039 console bound] --> T073[T-073 perf decision]
     T042[T-042 PMM] --> T057[T-057 typed addresses]
@@ -142,13 +144,13 @@ The waves are a suggestion that respects the dependencies and puts code and CI a
 |------|------|-------|
 | 0 | Governance | Accept ADR-0040. Decide whether the local-only 2026-07-15 review should be tracked (nothing in B.2 depends on it). |
 | 1 | Restore and extend the verification loop; close the small HIGH defects | T-037 → T-038; T-033; T-030; T-031; T-032; T-041; T-042; T-043; T-044; T-051 (small, highest-visibility documentation fix) |
-| 2 | Make the gates real; remaining HIGH behaviour | T-034 (after T-033); T-035 (after T-034; its decisions first); T-039 and T-040 (both need a recorded decision first) |
+| 2 | Make the gates real; remaining HIGH behaviour | T-034 (after T-030 and T-033); T-036 (after T-037, included in the requested Track B.2-1 sequence); T-035 (after T-034 and T-036; its decisions first); T-039 and T-040 (both need a recorded decision first) |
 | — | **Scope checkpoint (ADR-0040 rule 8):** reassess the remaining scope on evidence. Changing the chosen scope to Option B requires a new superseding ADR; a revision note cannot reverse the Accepted outcome. | |
 | 3 | Documentation catch-up (can run in parallel with Wave 4) | T-045, T-046, T-048, T-049, T-050, T-053, T-055, then T-047, T-054, T-052 (after T-032) |
 | 4 | Quality refactors, now guarded by live gates | T-057 → T-060, T-061; T-058 → T-059; T-062; T-063; T-064; T-066; T-068; decisions first for T-065 and T-067 |
 | 5 | Unsafe-audit and doc-comment hygiene; the perf decision | T-069, T-070, T-071, T-072, T-073 |
 | 6 | Readiness and closure | T-074, then T-075 |
-| optional | Polish; may close as carry-forwards | T-036, T-056 |
+| optional | Polish; may close as carry-forwards | T-056; T-036 remains phase-optional but is included in Wave 2 for the requested Track B.2-1 sequence. |
 
 Security-sensitive refactors — T-058, T-059, T-060, T-065, T-066, T-070, T-071 — should start only after T-030 and T-034 are `Done`, so a regression is caught by CI rather than by hand.
 

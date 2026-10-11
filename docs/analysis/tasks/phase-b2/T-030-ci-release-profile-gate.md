@@ -31,11 +31,11 @@ This task covers four items of `phase-b2.md` Track B.2-1 (line numbers as of the
 - [ ] Root `Cargo.toml` carries a comment next to `[profile.release]` stating that `debug-assertions` must stay at Cargo's release default (false) because `SyscallNumber::decode` gates `console_write` on it (`abi.rs:87`); `grep -n "debug-assertions" Cargo.toml` finds it and no `debug-assertions = true` key exists.
 - [ ] CI builds and lints the `perf-bench` variant in `kernel-build`: `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench` and `cargo clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings`, both green (any finding surfaced by never-linted code is fixed or given a scoped `#[allow]` with a reason).
 - [ ] CI also runs release kernel clippy (`cargo clippy --release --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`), after the release userland build.
-- [ ] Documentation: `docs/guides/ci.md` job table and local-command table, `docs/standards/infrastructure.md` "Required gates", and the `ci.yml` header comment (lines 7-9) describe the new steps; release-profile EL0 QEMU smoke remains an explicit scenario limitation, with T-065/T-067 ownership, rather than a claimed gate.
+- [ ] Documentation: `docs/guides/ci.md` job table and local-command table, `docs/standards/infrastructure.md` "Required gates", and the `ci.yml` header comment (lines 7-9) describe the new steps; release-profile EL0 QEMU smoke is owned by T-034 and is not claimed enforced until that job passes remotely.
 
 ## Out of scope
 
-- Running the release ELF under QEMU (`tools/smoke.sh --release`): needs the `qemu-smoke` job of [T-034](T-034-ci-qemu-smoke-job.md); until then it is a recorded planned gate.
+- Running the release ELF under QEMU (`tools/smoke.sh --release --int`): [T-034](T-034-ci-qemu-smoke-job.md) implements and verifies this alongside its debug smoke.
 - Replacing the `debug_assertions` mechanism with a dedicated Cargo feature: [T-065](T-065-debug-console-feature-flag.md).
 - Any change to the gate logic in `abi.rs` or `dispatch.rs`.
 
