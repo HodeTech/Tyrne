@@ -23,7 +23,7 @@
 # performance-optimization review master plan.
 #
 # Per-run timeout: each QEMU invocation is wrapped in a watchdog because the
-# Tyrne kernel halts in a WFI loop after the demo finishes — QEMU does not
+# Tyrne demo keeps spinning after completion — QEMU does not
 # exit on its own. The default 5 s gives the demo (~5-10 ms typical wall
 # clock under TCG) plenty of headroom; bump it with --timeout if the build
 # is unusually slow on the host.
@@ -526,7 +526,7 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
         echo
         echo "Each iteration invokes \`tools/run-qemu.sh\` under a per-run watchdog;"
         echo "QEMU emits the boot trace through to \`tyrne: all tasks complete\` plus"
-        echo "the \`boot-to-end elapsed = X ns\` line, then halts in WFI. The watchdog"
+        echo "the \`boot-to-end elapsed = X ns\` line, then keeps spinning. The watchdog"
         echo "kills the QEMU process after the per-run timeout (the kernel never"
         echo "exits on its own). The integer ns delta is parsed out of stdout."
         echo

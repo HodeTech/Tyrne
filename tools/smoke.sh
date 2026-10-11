@@ -3,7 +3,7 @@
 #
 # Unlike tools/run-qemu.sh (interactive, mon:stdio), this runs QEMU with a
 # pure serial console (no monitor — so an stdin EOF cannot quit QEMU early),
-# bounds the run with a wall-clock timeout (the kernel idles in WFI after
+# bounds the run with a wall-clock timeout (the demo keeps spinning after
 # "tyrne: all tasks complete" and never exits on its own), captures the full
 # trace to a log file, and reports the boot markers.
 #
@@ -62,7 +62,7 @@ fi
 # Validate the budget: it is passed to `timeout`/`alarm()` as integer seconds.
 # Both fail (or misbehave) on a non-numeric value, and zero is worse than
 # invalid — `timeout 0s` *disables* the timeout and `alarm(0)` cancels it, so a
-# zero budget would let the WFI-idling kernel hang the run forever. Require a
+# zero budget would let the completed demo hang the run forever. Require a
 # strictly positive integer (the regex rejects "0", non-numerics, and "").
 if ! [[ "$TO" =~ ^[1-9][0-9]*$ ]]; then
     usage_error "--timeout must be a positive integer (seconds); got '$TO'"
@@ -90,7 +90,7 @@ fi
 LOG="${TMPDIR:-/tmp}/tyrne-smoke.$$.log"
 echo "smoke: $KERNEL  (budget ${TO}s)  log -> $LOG" >&2
 
-# The kernel idles in WFI after completion and never exits on its own, so the
+# The demo keeps spinning after completion and never exits on its own, so the
 # run must be bounded by a wall-clock timeout. Prefer coreutils `timeout(1)`
 # (present on most Linux CI images); fall back to a Perl `alarm()` wrapper
 # (macOS ships Perl but not `timeout`); error out if neither is available.
@@ -125,7 +125,7 @@ echo "===== fault classes (int log, if --int) =====" >&2
 grep -nE "Taking exception|Translation fault|Permission fault|Data Abort|Prefetch Abort" "$LOG" | head -40 || true
 
 # ── Gate (usable as a CI / regression check) ──────────────────────────────────
-# The kernel idles in WFI after completion and is SIGTERM'd, so a non-zero QEMU
+# The demo keeps spinning after completion and is SIGTERM'd, so a non-zero QEMU
 # exit is expected and ignored above (|| true). Pass/fail is decided by the
 # trace contents, not QEMU's exit code: the completion marker must appear, and
 # there must be no panic or CPU fault. `--int` uses `-d int,unimp` (no

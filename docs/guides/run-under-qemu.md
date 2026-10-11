@@ -70,7 +70,7 @@ Boot the single-core debug kernel, observe the userspace greeting, task exit and
        -kernel target/aarch64-unknown-none/debug/tyrne-bsp-qemu-virt
    ```
 
-4. **Exit QEMU** after the completion marker: press `Ctrl-A`, then `x`. Alternatively, press `Ctrl-A`, then `c` to enter the monitor and type `quit`. The completed kernel idles in WFI and does not exit QEMU itself.
+4. **Exit QEMU** after the completion marker: press `Ctrl-A`, then `x`. Alternatively, press `Ctrl-A`, then `c` to enter the monitor and type `quit`. The completed demo continues spinning in task A and does not exit QEMU itself.
 
 ### Automated smoke and release builds
 
