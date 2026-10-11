@@ -81,8 +81,8 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
 
 **Entry-point & core architecture docs**
 
-- **[🟠 HIGH]** overview.md — the designated entry-point document — describes the system as stuck at end-of-Phase-A, but Phase B is fully closed and Phase C is active — `docs/architecture/overview.md:5`
-  **Action:** Rewrite the status banner to reflect Phase B closure and Phase C's start; thread ADR-0027..0039 into the relevant sections (Address spaces, Syscall surface, Boot flow). Add this doc to whatever checklist/skill governs phase closure so it is updated as part of every phase's closure quartet, not left behind.
+- **[🟠 HIGH]** overview.md — the designated entry-point document — describes the system as stuck at end-of-Phase-A, but Phase B is fully closed, Phase B.2 is active, and Phase C is next and gated by B.2 — `docs/architecture/overview.md:5`
+  **Action:** Rewrite the status banner to reflect Phase B closure, active Phase B.2 and gated Phase C; thread ADR-0027..0039 into the relevant sections (Address spaces, Syscall surface, Boot flow). Add this doc to whatever checklist/skill governs phase closure so it is updated as part of every phase's closure quartet, not left behind.
 
 - **[🟠 HIGH]** task-loader.md's central claims are now false: the loader is described as producing a non-runnable descriptor loading an unexecuted placeholder blob, but the code runs a real EL0 task end-to-end — `docs/architecture/task-loader.md:13-21,92-103`
   **Action:** Rewrite the "Scope boundary" and "Embedded image content" sections to describe the landed state: `load_image` → `task_create_from_image` (T-024) → `add_user_task` (T-023) → scheduled EL0 execution (T-028), with the real `hello` image and ADR-0039's build pipeline. Retire or clearly historically-mark the 8-byte placeholder code sample.
@@ -176,7 +176,7 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
 **Standards docs**
 
 - **[🟠 HIGH]** CONTRIBUTING.md and SECURITY.md describe a project state roughly two milestones and a whole phase behind reality; SECURITY.md's core factual claim is now false — `CONTRIBUTING.md:3,14`; `SECURITY.md:7`
-  **Action:** Update both files' opening status paragraphs to match README.md's "Status at a glance"/CLAUDE.md's project-state paragraph: Phase B (B0–B6) closed 2026-06-01; Phase C active; first EL0 userspace task running through the syscall boundary. In SECURITY.md specifically, remove or correct "not yet a userspace-bearing OS" — that claim is now the opposite of true, and the syscall/capability boundary is exactly the surface SECURITY.md exists to describe accurately. Also update the trailing "refined as Phase B progresses" (SECURITY.md:7) since Phase B is closed.
+  **Action:** Update both files' opening status paragraphs to match README.md's "Status at a glance"/CLAUDE.md's project-state paragraph: Phase B (B0–B6) closed 2026-06-01; Phase B.2 active; Phase C next and gated by B.2; first EL0 userspace task running through the syscall boundary. In SECURITY.md specifically, remove or correct "not yet a userspace-bearing OS" — that claim is now the opposite of true, and the syscall/capability boundary is exactly the surface SECURITY.md exists to describe accurately. Also update the trailing "refined as Phase B progresses" (SECURITY.md:7) since Phase B is closed.
 
 - **[🟡 MEDIUM]** testing.md's mandated test-naming convention has 0% adoption in the actual codebase — `docs/standards/testing.md:63-77`
   **Action:** Either update testing.md to document the convention actually in use (`<subject>_<condition>_<expected_outcome>`, without a `test_` prefix, which real names already follow reasonably well), or do a mechanical rename sweep and add a clippy/CI check flagging new `#[test]` fns lacking the prefix.
@@ -265,7 +265,7 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
 
 ### Acceptance criteria
 
-- overview.md, task-loader.md, hal.md, scheduler.md, exceptions.md, security-model.md, memory-management.md, boot.md, and docs/architecture/README.md all reflect Phase B closed / Phase C active, with correct ADR cross-links.
+- overview.md, task-loader.md, hal.md, scheduler.md, exceptions.md, security-model.md, memory-management.md, boot.md, and docs/architecture/README.md all reflect Phase B closed / Phase B.2 active / Phase C next and gated by B.2, with correct ADR cross-links.
 - current.md's live-state bullets match HEAD; the phase-b task index lists all 23 tasks with correct statuses; all nine "In Review" task frontmatters flip to Done with `date_done` entries.
 - CONTRIBUTING.md, SECURITY.md, and the affected standards docs (testing.md, error-handling.md, code-review.md, logging-and-observability.md, commit-style.md, code-style.md) match current CI/tooling reality.
 - All four review-family README indices include every Phase-B-closing entry.
