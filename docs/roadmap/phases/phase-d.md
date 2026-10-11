@@ -1,5 +1,7 @@
 # Phase D — Raspberry Pi 4 (first real hardware)
 
+> **Gate (2026-10-11):** no Phase D milestone opens and no Phase D implementation task leaves `Draft` while [Phase B.2](phase-b2.md) is open ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md), rule 2). The ADR numbers in this file's ledger are tentative placeholders that still collide with Phase C's; task T-054 re-sequences them.
+
 **Exit bar:** `bsp-pi4` boots on a real Pi 4 at feature parity with `bsp-qemu-virt` — all of Phase A / B / C features work on hardware.
 
 **Scope:** A second BSP (`bsp-pi4`) with its own reset, UART, timer, GIC-400, MMU setup; a DTB parser (`tyrne-dt`) so the kernel learns board topology at runtime; SD-card boot. HAL traits that worked for QEMU continue to work; differences are isolated to the BSP.

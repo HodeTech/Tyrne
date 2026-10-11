@@ -1,7 +1,7 @@
 # T-074 — Run the Phase C readiness sweep
 
 - **Phase:** B.2
-- **Milestone:** Track B.2 readiness (Polish items; prepares Phase C, not exit-gating on its own)
+- **Milestone:** Track B.2 readiness (exit-gating: [T-075](T-075-phase-b2-closure.md) depends on it; consumes Polish items)
 - **Status:** Draft
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
@@ -37,7 +37,7 @@ Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md
 
 ## Approach
 
-Read `phase-c.md` §§1–4 and "Polish & excellence (SMP prep)" in full, then build the index table first and fold each row into the milestone text, linking back to the original item. Keep the reasoning for each classification in one line. Run the sweep after the code tasks of Tracks B.2-1 and B.2-3 have landed so the baseline reflects the post-B.2 tree.
+Read `phase-c.md` §§1–4 and "Polish & excellence (SMP prep)" in full, then build the index table first and fold each row into the milestone text, linking back to the original item. Keep the reasoning for each classification in one line. Run the sweep late. The index, folding and classification (criteria 1-5) need only the four dependencies; the baseline of criterion 6 must be taken on the post-B.2 tree, that is after the Track B.2-1 and B.2-3 code tasks have landed, and the commit it was taken at is recorded.
 
 ## Definition of done
 

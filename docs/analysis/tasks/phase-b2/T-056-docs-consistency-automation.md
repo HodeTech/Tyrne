@@ -1,4 +1,4 @@
-# T-056 — Automate docs-corpus consistency checks (polish)
+# T-056 — Automate docs-corpus consistency checks (polish; optional for exit)
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2 (Polish items; not exit-gating)

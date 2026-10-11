@@ -5,7 +5,7 @@
 - **Status:** Ready
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
-- **Dependencies:** none ([T-034](T-034-ci-qemu-smoke-job.md) recommended first, for the smoke pairing)
+- **Dependencies:** none
 - **Informs:** [T-067](T-067-adversarial-el0-smoke-image.md) (the adversarial image exercises the same trust boundary end to end)
 - **ADRs required:** none
 

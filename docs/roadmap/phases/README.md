@@ -42,7 +42,7 @@ flowchart LR
     H --> I
 ```
 
-The edges `B2 --> C` and `B2 --> D` are **binding gates** ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)): no Phase C milestone opens and no Phase C implementation task leaves `Draft` while Phase B.2 is open.
+The edges `B2 --> C` and `B2 --> D` are **binding gates** ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)): no Phase C or Phase D milestone opens and no Phase C or Phase D implementation task leaves `Draft` while Phase B.2 is open.
 
 Phases C and D may overlap: Pi 4 bring-up does not strictly require multi-core, but multi-core is easier to design and test against real hardware.
 

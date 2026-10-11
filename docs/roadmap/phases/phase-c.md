@@ -1,6 +1,6 @@
 # Phase C — Multi-core
 
-> **Status (2026-10-11): next — gated by [Phase B.2](phase-b2.md)** ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)). Phase C was marked "active" on 2026-06-01 but no milestone, task or ADR was ever opened. While Phase B.2 is open, no Phase C milestone opens and no Phase C implementation task leaves `Draft`; scoping drafts and `Proposed` ADRs are allowed (see task T-074, the Phase C readiness sweep). The two SMP-critical entry gates in §"Review-derived work items" remain **Phase C** work; only the misleading `pmm.rs` comment is corrected earlier, under T-042.
+> **Status (2026-10-11): next — gated by [Phase B.2](phase-b2.md)** ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)). Phase C was marked "active" on 2026-06-01 but no milestone, task or ADR was ever opened. While Phase B.2 is open, no Phase C milestone opens and no Phase C implementation task leaves `Draft`; scoping drafts and `Proposed` ADRs are allowed (see task T-074, the Phase C readiness sweep). The two SMP-critical entry gates in §"Review-derived work items" remain **Phase C** work; only the misleading `pmm.rs` comment is corrected earlier, under T-042. ADR numbers quoted in this file (ADR-0040…0044) are tentative placeholders: the real ADR-0040 is the Phase B.2 governance ADR, and task T-054 re-sequences them.
 
 **Exit bar:** Two or more cores running concurrently, scheduled preemptively, with working cross-core IPC.
 
@@ -16,7 +16,7 @@ Bring secondary cores online via PSCI `CPU_ON`. Each core arrives at a kernel en
 
 ### Sub-breakdown
 
-1. **ADR-0040 — Secondary core start protocol.** PSCI vs. spin-table. Entry point for secondaries (shared with primary or separate). Rendezvous semantics (when the primary considers a secondary "up").
+1. **ADR-0040 — Secondary core start protocol.** *(Tentative number: the real ADR-0040 is the Phase B.2 governance ADR; see the ledger note below and T-054.)* PSCI vs. spin-table. Entry point for secondaries (shared with primary or separate). Rendezvous semantics (when the primary considers a secondary "up").
 2. **`Cpu` trait v3 extension** — adds `start_core(core_id, entry, context)` and `core_count()`; probably as a sibling `MultiCore` trait to keep `Cpu` v2 stable.
 3. **Secondary-core asm entry** in `bsp-qemu-virt` — minimal per-core stack setup before Rust.
 4. **Per-core state struct** introduced here (fully fleshed out in C2).
@@ -24,7 +24,7 @@ Bring secondary cores online via PSCI `CPU_ON`. Each core arrives at a kernel en
 
 ### Acceptance criteria
 
-- ADR-0040 Accepted.
+- The C1 secondary-core-start ADR (tentatively numbered ADR-0040; see the ledger note below and T-054) Accepted.
 - `Cpu::start_core` (or sibling trait) lands in `tyrne-hal`.
 - All configured cores reach the Rust-level rendezvous point on QEMU.
 

@@ -1,4 +1,4 @@
-# T-042 — Harden PMM input validation
+# T-042 — Harden PMM input validation (+ correct the false atomicity comment)
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-3

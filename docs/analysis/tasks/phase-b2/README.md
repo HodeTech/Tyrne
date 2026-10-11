@@ -6,11 +6,11 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 
 ## How to use this folder
 
-1. **Accept ADR-0040** first (re-read it; flip its status and its index row — nothing else in the repository needs to change). This is a phase-level precondition: no task starts before the ADR is `Accepted`, which is why individual tasks do not list it as a dependency.
+1. **Accept ADR-0040** first (re-read it; flip its status and its index row, and replace the "Proposed — awaiting the maintainer's Accept" wording in the `current.md` decision banner, the only other place that records the pending status). This is a phase-level precondition: no task starts before the ADR is `Accepted`, which is why individual tasks do not list it as a dependency.
 2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory.
 3. Start it with the [`start-task`](../../../../.agents/skills/start-task/SKILL.md) skill's status rules (`Ready` → `In Progress`; update [`current.md`](../../../roadmap/current.md)).
 4. **Every task begins by re-verifying its plan item against the live tree** (ADR-0040 rule 5). The source review was static; if an item no longer reproduces, close the task with evidence and no code change.
-5. Tasks marked `Draft` carry an open design decision (listed in the task under *Open decisions*); settle it — in an ADR, a revision-note rider, or the task's review history as the task says — before implementing.
+5. Tasks marked `Draft` carry an open design decision (listed in the task under *Open decisions*); settle it — in an ADR, a revision-note rider, or the task's review history as the task says — before implementing. (T-075 is `Draft` for a different reason: its dependency set is still growing; promote it to `Ready` when the last implementation task is `In Review`.)
 
 ## Index
 
@@ -19,7 +19,7 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 | [T-030](T-030-ci-release-profile-gate.md) | Gate the release profile in CI (build, test, release-only regression tests) | B.2-1 | Ready | — |
 | [T-031](T-031-ci-userland-clippy-and-shellcheck.md) | Clippy the userland crates and shellcheck the tooling scripts in CI | B.2-1 | Ready | — |
 | [T-032](T-032-panic-family-denies-hal-bsp.md) | Deny panic-family lints in `tyrne-hal` and `tyrne-bsp-qemu-virt` | B.2-1 | Ready | — |
-| [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 | Ready | — |
+| [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 (+B.2-3) | Ready | — |
 | [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | Ready | T-033 |
 | [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | Draft | T-034 |
 | [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | Draft | T-037 |
@@ -50,7 +50,7 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 | [T-061](T-061-mechanical-dedup-bundle.md) | Remove mechanical duplication (object boilerplate, bitflag types, descriptor encoders, GIC enable/disable) | B.2-4 | Ready | T-057 |
 | [T-062](T-062-linker-and-boot-consistency-checks.md) | Add linker and boot consistency checks | B.2-4 | Ready | — |
 | [T-063](T-063-syscall-error-taxonomy-polish.md) | Polish the kernel `SyscallError` taxonomy | B.2-4 | Ready | — |
-| [T-064](T-064-tyrne-user-api-polish.md) | Polish the `tyrne-user` API (CapWord, error decode, docs) | B.2-4 | Ready | T-037, T-038 |
+| [T-064](T-064-tyrne-user-api-polish.md) | Polish the `tyrne-user` API (CapWord, error decode, docs) | B.2-4 (+B.2-5) | Ready | T-037, T-038 |
 | [T-065](T-065-debug-console-feature-flag.md) | Gate `console_write` on a dedicated `debug-console` feature | B.2-4 | Draft | T-030 |
 | [T-066](T-066-bsp-syscall-context-extraction.md) | Extract the BSP syscall-context selection into a host-testable function | B.2-4 | Ready | — |
 | [T-067](T-067-adversarial-el0-smoke-image.md) | Add an adversarial EL0 userland image to the smoke suite | B.2-4 | Draft | T-034, T-037 |
@@ -65,19 +65,19 @@ All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide seque
 
 ## Coverage
 
-Every plan item of [`phase-b2.md`](../../../roadmap/phases/phase-b2.md) has exactly one owning task. The counts below are plan items (the review's finding counts), not tasks.
+Every plan item of [`phase-b2.md`](../../../roadmap/phases/phase-b2.md) has exactly one owning task, with one item split between two tasks (see below). The counts below are plan items (the review's finding counts), not tasks.
 
 | Track | Items | Owning tasks (items each) |
 |-------|------:|---------------------------|
 | B.2-1 CI enforcement & merge gates | 12 | T-030 (4), T-031 (2), T-032 (1), T-033 (1), T-034 (2), T-035 (2) |
-| B.2-2 Documentation cascade | 58 | T-045 (5), T-046 (8), T-047 (6), T-048 (6), T-049 (6), T-050 (7), T-051 (1), T-052 (5), T-053 (8), T-054 (1), T-055 (5) |
+| B.2-2 Documentation cascade | 58 | T-045 (5), T-046 (8), T-047 (5), kickoff (1), T-048 (6), T-049 (6), T-050 (7), T-051 (1), T-052 (5), T-053 (8), T-054 (1), T-055 (5) |
 | B.2-3 Correctness & robustness | 16 | T-037 (3), T-038 (1), T-039 (2), T-040 (1), T-041 (1), T-042 (3), T-043 (3), T-044 (1), T-033 (1, the `smoke.sh --timeout` item) |
 | B.2-4 Code quality & API design | 32 | T-057 (5), T-058 (1), T-059 (1), T-060 (1), T-061 (4), T-062 (2), T-063 (2), T-064 (2), T-065 (1), T-066 (1), T-067 (1), T-068 (11) |
 | B.2-5 Unsafe-audit & doc hygiene | 21 | T-069 (3), T-070 (1), T-071 (2), T-072 (12), T-064 (3, the `tyrne-user` documentation items) |
 | B.2-6 Performance micro-fixes | 2 | T-073 (2) |
 | **Total** | **141** | |
 
-The single plan item "`current.md` and T-029's own task file are stale" is owned by T-047 (the `current.md` half); T-048 flips the task file. Not plan items, added by the ADR-0040 kickoff: the correction of the false atomicity comment in `pmm.rs` (in T-042; it was routed "now" by `phase-c.md`), and the stale-block cleanup of `current.md` beyond the plan item (in T-047). Polish items consumed by tasks: T-033 (QEMU core-count parameter), T-036 (arm64 host check), T-045 (freshness marker), T-048 (`date_done` template field), T-056 (automation), T-057, T-061, T-064, T-066, T-070, T-074 and others as named in each task.
+The single plan item "`current.md` and T-029's own task file are stale" is owned by T-047 (the `current.md` half); T-048 flips the task file. The plan item about the `phases/README.md` living-document note was already fixed by the ADR-0040 kickoff (counted as "kickoff" above); T-075's verification report records it as fixed at kickoff. Not plan items, added by the ADR-0040 kickoff: the correction of the false atomicity comment in `pmm.rs` (in T-042; it was routed "now" by `phase-c.md`), and the stale-block cleanup of `current.md` beyond the plan item (in T-047), and, from the PR review, the dotted-ID path-template generalisation and the *Bridge phase* / *Track* glossary entries (in T-050). Polish items consumed by tasks: T-033 (QEMU core-count parameter), T-036 (arm64 host check), T-045 (freshness marker), T-048 (`date_done` template field), T-056 (automation), T-057, T-061, T-064, T-066, T-070, T-074 and others as named in each task.
 
 ## Dependency graph
 
@@ -121,7 +121,7 @@ The waves are a suggestion that respects the dependencies and puts code and CI a
 |------|------|-------|
 | 0 | Governance | Accept ADR-0040. Decide whether the local-only 2026-07-15 review should be tracked (nothing in B.2 depends on it). |
 | 1 | Restore and extend the verification loop; close the small HIGH defects | T-037 → T-038; T-033; T-030; T-031; T-032; T-041; T-042; T-043; T-044; T-051 (small, highest-visibility documentation fix) |
-| 2 | Make the gates real; remaining HIGH behaviour | T-034 (after T-033); T-039 and T-040 (both need a recorded decision first) |
+| 2 | Make the gates real; remaining HIGH behaviour | T-034 (after T-033); T-035 (after T-034; its decisions first); T-039 and T-040 (both need a recorded decision first) |
 | — | **Scope checkpoint (ADR-0040 rule 8):** reassess the remaining scope on evidence. Narrowing to a smaller set requires a new ADR or a revision note. | |
 | 3 | Documentation catch-up (can run in parallel with Wave 4) | T-045, T-046, T-048, T-049, T-050, T-053, T-055, then T-047, T-054, T-052 (after T-032) |
 | 4 | Quality refactors, now guarded by live gates | T-057 → T-060, T-061; T-058 → T-059; T-062; T-063; T-064; T-066; T-068; decisions first for T-065 and T-067 |
@@ -133,6 +133,6 @@ Security-sensitive refactors — T-058, T-059, T-060, T-065, T-066, T-070, T-071
 
 ## Conventions
 
-- Files are named `T-NNN-<slug>.md`; sections follow [`../TEMPLATE.md`](../TEMPLATE.md); statuses follow the [vocabulary](../README.md#status-vocabulary). The `Phase` field reads `B.2` and `Milestone` reads `Track B.2-N`.
+- Files are named `T-NNN-<slug>.md`; sections follow [`../TEMPLATE.md`](../TEMPLATE.md); statuses follow the [vocabulary](../README.md#status-vocabulary). The `Phase` field reads `B.2` and `Milestone` reads `Track B.2-N` (T-074 reads `Track B.2 readiness`, T-075 reads `B.2 closure`).
 - When a task is split, the original ID stays and the new tasks take the next free numbers (continue after T-075); add them to this index in the same change.
 - When a task becomes `Done`, add a `date_done` field to its frontmatter (the T-019 precedent, formalised by [T-048](T-048-phase-b-task-corpus-sync.md)) and update this index.

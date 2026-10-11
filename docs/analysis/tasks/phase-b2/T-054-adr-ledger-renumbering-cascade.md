@@ -19,7 +19,7 @@ As the author of a future ADR, I want the phase ledgers to assign each planned A
 
 Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md). Each phase file carries a ledger of *planned* ADRs with *tentative* numbers ("final numbers are assigned when the ADR is actually written"). Two problems exist. First, the plan item at `phase-b2.md` (snapshot line 226) records that Phase C's 2026-06-01 renumbering (ADR-0040…0044) was never cascaded: Phase C and Phase D both claim ADR-0042, 0043 and 0044 (`phase-c.md` ledger vs `phase-d.md` ledger). Second, the real ADR-0040 is now the Phase B.2 governance ADR, so *every* placeholder from 0040 upward is off by at least one. This is the third time the same cascade is needed (Blockers D4-001/D4-002 of the 2026-05-22 master review, the 2026-06-01 shift, now 0040).
 
-Current ledger inventory (verify before editing): Phase C 5 rows (0040–0044), D 5 ADR rows plus one `_(none)_` row (0042–0046), E 6 (0047–0052), F 5 (0053–0057), G 5 (0058–0062), H 3 (0063–0065), I 3 (0066–0068); about 106 mentions of `ADR-004x…006x` across `phase-b2.md`, `phase-c.md`…`phase-i.md`.
+Current ledger inventory (verify before editing): Phase C 5 rows (0040–0044), D 5 ADR rows plus one `_(none)_` row (0042–0046), E 6 (0047–0052), F 5 (0053–0057), G 5 (0058–0062), H 3 (0063–0065), I 3 (0066–0068); about 110 lines (143 occurrences) mentioning `ADR-004x…006x` across `phase-b2.md`, `phase-c.md`…`phase-i.md` (counted 2026-10-11; recount before editing).
 
 ## Acceptance criteria
 
