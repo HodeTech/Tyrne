@@ -40,7 +40,7 @@ usage_error() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --release) PROFILE="release"; shift ;;
-        --int) INT_FLAGS=(-d int,unimp); shift ;;  # no guest_errors: PL011 noise interleaves the trace
+        --int) INT_FLAGS=(-d "int,unimp"); shift ;;  # no guest_errors: PL011 noise interleaves the trace
         --timeout)
             [[ $# -ge 2 ]] || usage_error "--timeout requires a value"
             TO="$2"; shift 2 ;;

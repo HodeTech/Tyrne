@@ -64,6 +64,7 @@ CURRENT_WATCHDOG_PID=""
 # already exited) `kill -KILL` returns ESRCH which `2>/dev/null || true` swallows.
 # Therefore the trap is safe to fire multiple times — EXIT will run after a
 # preceding INT/TERM has already cleaned up the in-flight processes.
+# shellcheck disable=SC2329  # invoked indirectly by the EXIT, INT and TERM traps below
 cleanup_in_flight() {
     if [[ -n "$CURRENT_CMD_PID" ]]; then
         kill -KILL "$CURRENT_CMD_PID" 2>/dev/null || true
@@ -481,7 +482,7 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
     # merely conventional. (The stats are already on stdout above, so nothing
     # is lost — only the file write is skipped.)
     if [[ -e "$REPORT_PATH" ]]; then
-        echo "error: refusing to overwrite existing report: ${REPORT_PATH#${REPO_ROOT}/}" >&2
+        echo "error: refusing to overwrite existing report: ${REPORT_PATH#"${REPO_ROOT}"/}" >&2
         echo "hint: baseline reports are append-only; pick a fresh --report=CONTEXT slug" >&2
         exit 1
     fi
@@ -516,7 +517,7 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
         echo "| Iterations failed | ${FAIL_COUNT} |"
         echo "| Per-run timeout | ${TIMEOUT_S} s |"
         echo "| Build profile | ${PROFILE_LABEL} |"
-        echo "| Kernel ELF | \`${KERNEL_ELF#${REPO_ROOT}/}\` |"
+        echo "| Kernel ELF | \`${KERNEL_ELF#"${REPO_ROOT}"/}\` |"
         echo "| Git HEAD | \`${GIT_HEAD}\` on \`${GIT_BRANCH}\` |"
         echo "| QEMU | \`${QEMU_VERSION}\` |"
         echo "| Host \`uname -a\` | \`${HOST_UNAME}\` |"
@@ -594,7 +595,7 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
     } > "$REPORT_PATH"
 
     echo
-    echo "report written: ${REPORT_PATH#${REPO_ROOT}/}"
+    echo "report written: ${REPORT_PATH#"${REPO_ROOT}"/}"
 fi
 
 exit 0
