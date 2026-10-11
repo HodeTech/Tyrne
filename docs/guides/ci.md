@@ -9,7 +9,7 @@ This guide describes the GitHub Actions pipeline configured in [`.github/workflo
 | `lint-and-host-test` | pinned nightly + `rustfmt` + `clippy` | ~2 min | `cargo fmt --check` diff, clippy warning, debug/release host test failure, absent release-only syscall tests, tooling ShellCheck finding, expected-failure probe mismatch or stubbed QEMU argument regression |
 | `kernel-build` | pinned nightly + `aarch64-unknown-none` + `clippy` | ~1 min | Debug/release kernel or debug perf-bench build error, kernel/userland/perf-bench clippy warning or expected-failure probe mismatch |
 | `qemu-smoke` | pinned nightly + `llvm-tools-preview` + QEMU | ~2–4 min; 10 min bound | Missing debug/release EL0 markers, release greeting, panic/CPU-fault trace, build failure or expected-failure probe mismatch |
-| `arm64-host-check` | pinned nightly + `clippy` + `miri`, `ubuntu-24.04-arm` | 15 min bound; hosted timing pending | Native workspace check/clippy/test/Miri failure, wrong host or arch-only regression probe mismatch |
+| `arm64-host-check` | pinned nightly + `clippy` + `miri`, `ubuntu-24.04-arm` | 101 s first hosted run; 15 min bound | Native workspace check/clippy/test/Miri failure, wrong host or arch-only regression probe mismatch |
 | `host-stable-check` | stable (no extra components) | ~2 min | host crates failing to build or test on stable Rust |
 | `miri` | pinned nightly + `miri` component | ~10–15 min | Any Stacked Borrows violation in `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` |
 | `coverage` | pinned nightly + `llvm-tools-preview` + `cargo-llvm-cov` | ~3–5 min | **Never** (informational only, `continue-on-error: true`) |
