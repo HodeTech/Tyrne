@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-3
-- **Status:** Ready
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -23,13 +23,13 @@ Measured 2026-10-11 on an Apple-Silicon Mac (nightly-2026-01-15): `cargo miri te
 
 ## Acceptance criteria
 
-- [ ] `userland/hello/build.rs` emits `cargo:rustc-link-arg=-T…/hello.ld` only when both `CARGO_CFG_TARGET_ARCH == "aarch64"` and `CARGO_CFG_TARGET_OS == "none"`; its header comment and the comment at lines 16-17 describe the OS check.
-- [ ] Every `target_arch = "aarch64"` gate in `userland/hello/src/main.rs` (lines 23, 25, 31, 41, 54, 63) and `userland/tyrne-user/src/lib.rs` (lines 28, 35, 44, 83, 126, 134, 152) becomes `all(target_arch = "aarch64", target_os = "none")` (negated as `not(all(...))` for the host stubs at `main.rs:63`, `lib.rs:126` and `:152`). `grep -rn 'target_arch = "aarch64"' userland --include='*.rs'` shows no gate that lacks `target_os = "none"`.
-- [ ] Each of the three files carries a one-line comment at its gate cross-referencing the other two and `bsp-qemu-virt/src/main.rs:144`, so the pattern cannot drift independently again.
-- [ ] On an arm64 host, `cargo check --workspace --exclude tyrne-bsp-qemu-virt`, `cargo clippy --workspace --exclude tyrne-bsp-qemu-virt --all-targets -- -D warnings` and `cargo test --workspace --exclude tyrne-bsp-qemu-virt` pass.
-- [ ] Tests: `cargo miri test --workspace --exclude tyrne-bsp-qemu-virt` (the exact CI command, `.github/workflows/ci.yml:224`) passes on an arm64 host; the verified scratch run was 46 hal + 259 kernel + 58 test-hal + 3 doc tests.
-- [ ] The bare-metal output is unchanged: `tools/build-userland.sh` yields `hello.bin` of 117 bytes with sha256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`, and `cargo kernel-build`, `cargo kernel-clippy` and `tools/smoke.sh --int` pass as before.
-- [ ] Decision recorded in this task's review history: keep the spelled-out inline `all(...)` form (the verified one) or centralise it as a `tyrne_bare_metal` cfg alias (see Design notes).
+- [x] `userland/hello/build.rs` emits `cargo:rustc-link-arg=-T…/hello.ld` only when both `CARGO_CFG_TARGET_ARCH == "aarch64"` and `CARGO_CFG_TARGET_OS == "none"`; its header comment and the comment at lines 16-17 describe the OS check.
+- [x] Every `target_arch = "aarch64"` gate in `userland/hello/src/main.rs` (lines 23, 25, 31, 41, 54, 63) and `userland/tyrne-user/src/lib.rs` (lines 28, 35, 44, 83, 126, 134, 152) becomes `all(target_arch = "aarch64", target_os = "none")` (negated as `not(all(...))` for the host stubs at `main.rs:63`, `lib.rs:126` and `:152`). `grep -rn 'target_arch = "aarch64"' userland --include='*.rs'` shows no gate that lacks `target_os = "none"`.
+- [x] Each of the three files carries a one-line comment at its gate cross-referencing the other two and `bsp-qemu-virt/src/main.rs:144`, so the pattern cannot drift independently again.
+- [x] On an arm64 host, `cargo check --workspace --exclude tyrne-bsp-qemu-virt`, `cargo clippy --workspace --exclude tyrne-bsp-qemu-virt --all-targets -- -D warnings` and `cargo test --workspace --exclude tyrne-bsp-qemu-virt` pass.
+- [x] Tests: `cargo miri test --workspace --exclude tyrne-bsp-qemu-virt` (the exact CI command, `.github/workflows/ci.yml:224`) passes on an arm64 host; the verified scratch run was 46 hal + 259 kernel + 58 test-hal + 3 doc tests.
+- [x] The bare-metal output is unchanged: `tools/build-userland.sh` yields `hello.bin` of 117 bytes with sha256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`, and `cargo kernel-build`, `cargo kernel-clippy` and `tools/smoke.sh --int` pass as before.
+- [x] Decision recorded in this task's review history: keep the spelled-out inline `all(...)` form (the verified one) or centralise it as a `tyrne_bare_metal` cfg alias (see Design notes).
 
 ## Out of scope
 
@@ -46,15 +46,15 @@ Apply the verified fix: in `userland/hello/src/main.rs` and `userland/tyrne-user
 
 Beyond the acceptance criteria:
 
-- [ ] `cargo fmt --all -- --check` clean.
-- [ ] `cargo host-clippy` clean with `-D warnings`.
-- [ ] `cargo kernel-clippy` clean.
-- [ ] `cargo host-test` passes.
-- [ ] Miri: the workspace command in the acceptance criteria is the gate; the narrower `cargo miri test -p tyrne-hal -p tyrne-kernel -p tyrne-test-hal` only matters when kernel/hal/test-hal code changes, which it does not here.
-- [ ] `tools/smoke.sh --int` PASS (userland code changed).
+- [x] `cargo fmt --all -- --check` clean.
+- [x] `cargo host-clippy` clean with `-D warnings`.
+- [x] `cargo kernel-clippy` clean.
+- [x] `cargo host-test` passes.
+- [x] Miri: the workspace command in the acceptance criteria is the gate; the narrower `cargo miri test -p tyrne-hal -p tyrne-kernel -p tyrne-test-hal` only matters when kernel/hal/test-hal code changes, which it does not here.
+- [x] `tools/smoke.sh --int` PASS (userland code changed).
 - [ ] No new `unsafe` identifier is needed; append the target-narrowing amendment to UNSAFE-2026-0033 and obtain a distinct security review of the changed compilation boundary, recording the artifact and `Security-Review:` trailer.
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
 ## Design notes
 
@@ -70,3 +70,5 @@ Beyond the acceptance criteria:
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |
+| 2026-10-11 | Codex (AI agent) | Started after maintainer Acceptance of ADR-0040 (`960bdef`). Live source still reproduces the three arch-only gates and ARM Miri failure recorded in the approval follow-up. Keep the inline `all(target_arch = "aarch64", target_os = "none")` form: no custom cfg registration or build-script host/target ambiguity. |
+| 2026-10-11 | Codex (AI agent) | Implementation gates passed on Apple Silicon / `nightly-2026-01-15`: workspace check, workspace clippy `--all-targets -D warnings`, workspace test and exact workspace Miri (each excluding only BSP); native/Miri totals 366 passed plus two ignored HAL doctests. `cargo host-clippy`, `cargo host-test`, `cargo fmt --all -- --check`, userland build, kernel build/clippy and `tools/smoke.sh --int --timeout 5` passed. Debug image remains 117 bytes / SHA-256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`. Smoke contains greeting, userspace exit and completion with two SVCs and no fault. A compiled build-script matrix emitted the linker argument only for aarch64/none, not ARM macOS/Linux, x86 Linux/none, or missing target variables. In Review for two fresh rounds; security approval remains pending. |
