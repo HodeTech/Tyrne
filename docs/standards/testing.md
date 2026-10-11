@@ -108,7 +108,7 @@ Enforced in CI today (block merge):
 - `cargo fmt --all -- --check` — must pass.
 - Host crates on stable Rust (`host-stable-check`) — must build/lint/test clean.
 - Miri (Stacked Borrows) over the host-test suite — must pass.
-- Native ARM workspace check/clippy/test/Miri on `ubuntu-24.04-arm`, excluding only the BSP; host-gated userland remains included. An isolated arch-only hello regression must fail workspace clippy with duplicate `panic_impl`. The workflow is enabled; live required-check registration awaits hosted green and both fresh review rounds. See [ci.md](../guides/ci.md#why-an-arm64-host-job).
+- Native ARM workspace check/clippy/test/Miri on `ubuntu-24.04-arm`, excluding only the BSP; host-gated userland remains included. An isolated arch-only hello regression must fail workspace clippy with duplicate `panic_impl`. Live required-check registration and full-policy read-back completed on 2026-10-12 after hosted green and both fresh rounds. See [ci.md](../guides/ci.md#why-an-arm64-host-job).
 
 - Debug/release single-core QEMU EL0 smoke (`qemu-smoke`) with matching images, required profile markers and panic/CPU-fault rejection. Synthetic trace fixtures and three actual private kernel mutations verify rejection; production/probe traces and provenance are uploaded even on failure. Exact SVC counting and adversarial EL0 images remain separate scope.
 

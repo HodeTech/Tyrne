@@ -4,7 +4,7 @@
 # locally before opening a PR is also enforced here. A red CI blocks
 # merge.
 #
-# Required gates (ARM registration follows hosted green and two reviews):
+# What actually gates merge (configured in GitHub branch protection):
 #   - lint-and-host-test, kernel-build, host-stable-check  (fast lane)
 #   - miri                                                 (required, slow)
 #   - qemu-smoke                                           (debug + release)

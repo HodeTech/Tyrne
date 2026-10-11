@@ -4,7 +4,7 @@
 - **Round 1 reviewers:** fresh `b21_step7_round1_code` and `b21_step7_round1_integration`, each requested `gpt-6.1-sol` / high, empty inherited context. Configuration provenance, not runtime identity attestation.
 - **Risk:** Ordinary CI/tooling-only delta; no shipped Rust or unsafe change.
 
-> **Reconciliation:** Round 1 both Approve, one duplicate Low premature merge-enforcement wording finding. Coordinator verified and corrected it; actual hosted Linux ARM job passed in 101 s and all seven development jobs passed. Both fresh Round 2 reviewers Approve with zero new findings and verify the Low correction. Live registration, final PR and post-merge evidence remain pending. T-036 stays In Review.
+> **Reconciliation:** Round 1 both Approve, one duplicate Low premature merge-enforcement wording finding. Coordinator verified and corrected it; actual hosted Linux ARM job passed in 101 s and all seven development jobs passed. Both fresh Round 2 reviewers Approve with zero new findings and verify the Low correction. Coordinator subsequently registered the ARM check with full-policy read-back; final PR and post-merge evidence remain pending. T-036 stays In Review.
 
 ## Round 1 — code
 
@@ -478,3 +478,7 @@ Live ARM registration/full-policy read-back, final maintainer PR green/review an
 ## Coordinator Round 2 reconciliation
 
 Fresh `b21_step7_round2_code` and `b21_step7_round2_integration`, each requested `gpt-6.1-sol` / high with empty inherited context, independently Approve. Both full reports were read before integration. No new finding or fix commit is needed. Independent actual/compiler and controlled failure checks support the unchanged implementation; live registration/read-back is the next separately authorized action. Final PR and first merged main evidence remain pending.
+
+## Subsequent live registration
+
+After both fresh rounds, coordinator added exactly the ARM check from remotely green source bf20ec9. The full policy immediately before and after was compared against the prior five-check baseline: all six app bindings15368, strict and every non-status setting were preserved. This subsequent action does not rewrite either immutable review verdict. Final PR and first merged main remain pending.
