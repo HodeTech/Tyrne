@@ -6,7 +6,7 @@
 - **Unsafe audit cross-reference:** UNSAFE-2026-0025, the T-032 unused-argument amendment.
 - **Paired code review:** [code-review artifact](../code-reviews/2026-10-12-t032-panic-family-denies.md).
 
-> **Current reconciliation:** Round 1 security Approve, no new finding; changed UNSAFE-2026-0025 reasoning explicitly approved. No new BSP unmap runtime or SMP verification is claimed; existing HIGH T-038 remains excluded. Paired Round 1 code review also Approve; second fresh round and final maintainer PR review remain pending. The coordinator records the actual approval append-only and in this follow-up's trailer; no retroactive implementation-commit trailer is claimed.
+> **Current reconciliation:** Both fresh code/security rounds Approve with no new actionable finding. Changed UNSAFE-2026-0025 reasoning is explicitly approved in both rounds, with actual approval recorded append-only. Independent compiler mutations verify sibling and callee exception boundaries; historical audit bytes are preserved. Local/hosted implementation gates passed. Runtime BSP unmap, SMP and unchanged HIGH T-038 remain outside this scoped approval. Final maintainer PR review remains pending; T-032 stays In Review.
 
 ## Round 1 security review
 
@@ -188,3 +188,186 @@ No independent whole-suite positive build/test/Miri, hosted fetch, QEMU, BSP unm
 **Approve Round 1 for `8591ceb..4f2c38c`. No new finding requiring correction. Explicitly approve the changed UNSAFE-2026-0025 unmap argument/SAFETY reasoning as stated above.** All changed-surface checklist items are OK; the unchanged HIGH T-038 invariant remains flagged and excluded without downgrade. The original SMP claim is not endorsed; runtime BSP unmap remains unverified.
 
 Coordinator should publish the full report and index/cross-reference, record the truthful Security-Review trailer and append this actual unsafe approval to 0025 while preserving the historical pending statement. Fresh independent Round 2 and final maintainer PR review remain required. This verdict neither promotes any task to Done nor authorizes merge.
+
+## Round 2 security review
+
+**Approve the scoped T-032 delta at `6e191e2`. No new actionable security finding. Explicit approval of the changed UNSAFE-2026-0025 reasoning is recorded below.**
+
+- **Change:** approved Track B.2-1 step 5 on `development`, `8591ceb..6e191e229d932ea7a3e330cfa55e9e0dc981f4e8`; source `c3f32c8`, actual-SHA reconciliation `b6572cc`, hosted evidence `4f2c38c`, Round 1 reports/approval recording `6e191e2`.
+- **Reviewer:** independent Codex security agent `/root/b21_step5_round2_security`, acting on behalf of the maintainer, not impersonating a human approval.
+- **Configuration provenance:** parent requested `gpt-6-astra`, high reasoning, fresh context (`fork_turns=none`); these are requested orchestration settings, not independently attested runtime model identity.
+- **Separation from code review:** separate agent/context from the paired Round 2 code pass; began an independent security checklist and did not implement this change.
+- **Unsafe audit cross-reference:** `docs/audits/unsafe-log.md`, UNSAFE-2026-0025, T-032 amendment and Round 1 recording.
+- **Procedure:** `perform-security-review`, `conduct-review`, security master plan and standard; consulted `justify-unsafe`. All eight axes, 32 standard items plus the master-plan allocation item (33 total), and P1–P12.
+- **Mutation boundary:** report and evidence only under `/tmp`; no repository/GitHub mutation, commit, branch change or external communication. Coordinator owns canonical report publication, index, cross-reference, trailer and append-only recording. No Done or merge action.
+
+### Scope and reading
+
+Read AGENTS and full CLAUDE; current roadmap including historical banners; numbered ADR corpus in numerical order (0001–0033, 0035–0040; no 0034 file); standards corpus and skill index; full security model/master plan and applicable skills. Bounded follow-up reads recovered truncated passages. Read T-032 and actual negative-probe harness before inspecting the implementation; also read T-037 and the full Track B.2-1 preflight for evidence limits. Read both full Round 1 reports, changed executable files, complete attached exception bodies and relevant callers, actual MMU walker/contracts, cap_unmap/FakeMmu contract, Cargo aliases, image build helper, BSP build script, workflow delta, unsafe entry/history, guide and lifecycle changes, and range commit messages.
+
+The runtime delta is one ignored-argument substitution inside `QemuVirtMmu::unmap`. Remaining Rust changes are lint attributes and comments; the host test harness gains two modes and CI invokes them after positive lints. No syscall body, assembly, capability policy, fatal-fault policy, dependency, toolchain, or public API changes. Git-object comparisons confirm BSP syscall, userspace shim, lockfile and toolchain pin are byte-identical to the baseline; no non-documentation change follows `c3f32c8`.
+
+### 1. Capability correctness
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S01 — Privileged operations require capabilities | **OK for delta.** Can passing the root twice bypass authorization? No operation or entry point is added; unchanged `cap_unmap` resolves the capability and live arena object before MMU entry. |
+| S02 — Narrowest sufficient capability | **OK for delta.** Does the reused frame broaden authority? `PhysFrame` is a copied aligned address, not a capability grant. Existing kind-based address-space authorization is unchanged. |
+| S03 — Checks precede effects; failures leak no state | **OK for delta.** Can the new operand mutate before checks? No: capability/arena checks and VA alignment still precede the same walker mutation. |
+| S04 — Move-only transfer | **N/A.** Could frame copying duplicate transferable authority? No capability representation or transfer changes. |
+| S05 — Explicit duplication authority | **N/A.** No new capability-copy path exists to evade its authority requirement. |
+| S06 — Atomic revocation | **N/A.** No revocation, CDT or concurrency operation changes that could leave partial revocation. |
+
+Demo task tables retain SEND/RECV for the fixed endpoint; benchmark driver/partner retain their separate SEND/RECV grants. Their IPC calls pass no transferred capability. The default EL0 table receives its console capability, not demo endpoint rights; the benchmark EL0 table is empty. This review does not invent MAP/UNMAP rights that v1 does not have, or certify unrelated existing lifecycle/revocation debt.
+
+### 2. Trust boundaries
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S07 — Validate userspace input | **OK for delta.** Can arbitrary syscall input enter a newly broadly exempt scope? No family allowance exists in syscall; function exceptions retain their original routing and bodies. Independent syscall-module unwrap injection is rejected. |
+| S08 — Validate user pointers through mappings | **OK for delta.** Can the placeholder root become a user dereference? The argument is unused on unmap; actual root/pointer computations and copy-user paths are unchanged. |
+| S09 — Range-check buffer lengths | **OK for delta.** No buffer/window/length arithmetic or acceptance check changes. |
+| S10 — Typed message parsing | **N/A.** No new wire parser or byte reinterpretation could admit malformed input. |
+| S11 — IPC transfers only held authority | **OK for delta.** Trusted demo/benchmark bodies and grants are unchanged; none of the lint exceptions adds a transfer or grants foreign rights. |
+
+The new evidence boundary is source-to-Clippy: non-test root functions outside all allowed functions use `black_box(None::<u64>).unwrap()`. Exact `cargo host-clippy` and `cargo kernel-clippy` aliases preserve package/target/warning selection. The harness requires both nonzero exit and `clippy::unwrap_used`; unrelated failure alone and unexpected success cannot pass. It enumerates tracked current files using NUL separators, copies with modes preserved, assigns a private target directory, and uses quoted EXIT cleanup. BSP userland is built only in its private source copy, so an absent shared image cannot mask the intended diagnostic.
+
+Independent executions reached the intended compiler error and removed both disposable roots. The temporary fixture used paths containing spaces and `/bin/bash`. This is a regression guard over trusted source and build tools, not authentication of maliciously forged compiler output or protection against an authorized contributor rewriting both gate and code. Existing cleanup under forced termination is not newly certified.
+
+CI adds fixed commands within the existing required jobs, following positive lints. Trigger, permissions, action pins, secrets and cache policy are unchanged. A successful negative-probe step means the deliberate regression was rejected; it is not a red production workflow.
+
+### 3. Memory safety
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S12 — Unsafe policy | **OK for changed reasoning.** Does the operand change lack justification? Adjacent SAFETY plus append-only amendment explain ignored `pa`, retained contracts and rejected allowance. Actual source SHA and real first approval are recorded. |
+| S13 — Invariants hold for callers | **OK for delta; existing HIGH T-038 flagged and excluded.** Can any true-branch success/error path consume the placeholder? All intermediate calls propagate true and do not receive `pa`; the whole true leaf arm ignores it. Unchanged unrelated x2 asm contract remains defective. |
+| S14 — No uninitialized exposure | **OK for delta.** The return frame remains masked from the existing L3 descriptor; placeholder contents never enter a descriptor or result. |
+| S15 — No use-after-free; justified lifetimes | **OK for delta.** Copying `PhysFrame` neither frees nor acquires ownership nor extends lifetime. Root/table validity and exclusive ownership remain caller obligations. |
+| S16 — Aliasing discipline | **OK for delta.** Two value copies create no mutable references; address-space borrow and descriptor access scopes are unchanged. |
+
+**Explicit unsafe approval:** Reviewed the changed `unsafe` call and adjacent SAFETY reasoning in `bsp-qemu-virt/src/mmu.rs:307–333`, particularly `walk_and_install_leaf` at :319–328; I agree with and approve the changed SAFETY reasoning under **UNSAFE-2026-0025**. With literal `unmap = true`, `pa` is unused. Replacing the infallible dummy-zero frame construction/unwrap with already-valid `as_.root` preserves the operation under the existing root/table validity, ownership and lifetime contracts.
+
+The actual helper computes indices from VA, traverses the same L0/L1/L2 tables, returns unchanged typed errors for missing/block mappings, reads the existing L3 descriptor, masks its output PA, clears that leaf slot and returns the descriptor-derived frame. `pa` appears operationally only in the false/map arm, where it is encoded and returned. The new value affects no pointer, descriptor access, allocation, return value or error. Root argument, VA, flags, null provider and true selector are identical. `PhysFrame` is Copy, has no ownership/destructor effect, and the removed constructor always accepts aligned zero. The caller still receives `MapperFlush`; unchanged `cap_unmap` flushes before returning the frame.
+
+Independent historical-byte verification removes exactly the new T-032 amendment plus Round 1 recording (2,571 bytes) and reconstructs the complete baseline audit log byte-for-byte. Thus original fields and prior amendments are preserved. The new amendment accurately identifies `c3f32c8`; it does not silently rewrite the old SMP claim.
+
+**Round 1 recording verified:** Read both complete canonical reports. The security report explicitly Approves the changed call/reasoning for `8591ceb..4f2c38c`, limits its approval to the ignored-argument equivalence, excludes runtime BSP unmap/SMP/T-038, and asks for append-only actual approval recording. The code report explicitly agrees and records the distinct security result. The appended recording at `6e191e2` states those same facts and preserves the earlier pending sentence as history. Its real commit message contains `Audit: UNSAFE-2026-0025` and `Security-Review: b21_step5_round1_security (docs/analysis/reviews/security-reviews/2026-10-12-t032-panic-family-denies.md)`. No fabricated or retroactive implementation-commit approval is present.
+
+**Limits retained:** ordinary smoke exercises boot/map, not this BSP unmap branch. The FakeMmu test asserts returned PA and both flushes; rollback tests concern kernel-layer cleanup, not physical BSP table walking. No runtime BSP unmap test was newly executed. The original SMP-forward claim is expressly not endorsed; T-069 retains ownership. This narrow proof does not certify the whole walker or historical caller-contract debt.
+
+**Existing HIGH T-038 retained:** the userspace shim declares x2 input-only while the unchanged BSP return path writes x2. Both files are byte-preserved. Clean Clippy, host Miri and successful guest boot cannot certify that assembly; this review neither fixes nor downgrades it.
+
+### 4. Kernel-mode discipline
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S17 — No ISR allocation | **OK for delta.** IRQ annotation adds no allocation; its unchanged timer/spurious paths return and unhandled path EOIs before fatal abort. |
+| S18 — Bounded loops | **OK for delta.** No attacker-dependent loop is introduced. Existing idle/parking/cooperative loops remain unchanged; no new blanket termination claim. |
+| S19 — Minimal critical sections | **OK for delta.** No lock, IRQ mask, borrow lifetime or context-switch sequencing changes. |
+| S20 — No new hot-path panic | **OK.** One redundant unwrap is removed; no new runtime panic/expect appears. Exactly ten reasoned function exceptions, with no HAL/syscall/MMU family allow. |
+| MP-1 — Allocation exhaustion returns typed errors | **OK for delta.** No new allocation or conversion of attacker-driven failure to expect. Existing trusted setup exceptions stay scoped; MMU error paths are unchanged. |
+
+#### Full exception inventory
+
+| Function | Allowed family members | Classification and boundary |
+|---|---|---|
+| `main::kernel_main_high` | expect, panic | One-shot trusted static image/capacity/object setup before scheduler start. |
+| `main::idle_entry` | expect | Post-start trusted current-task invariant; accurately not described as initialization. |
+| `main::task_a` | expect, panic | Trusted one-round kernel demo and fixed IPC protocol. |
+| `main::task_b` | expect, panic | Trusted matching receiver/reply demo protocol. |
+| `perf_bench::run` | expect, panic | One-shot trusted measurement-build setup and publish-before-start sequence. |
+| `perf_bench::driver_yield` | expect | Trusted current-task invariant after scheduler start. |
+| `perf_bench::driver_send` | expect | Static SEND capability and fixed ping-pong protocol. |
+| `perf_bench::partner_recv` | expect | Static RECV capability and fixed matching protocol. |
+| `exceptions::irq_entry` | panic | Existing deliberate fatal unhandled-IRQ abort after EOI. |
+| `exceptions::panic_entry` | panic | Existing fatal unhandled-exception policy. |
+
+All ten groups have reasons and attach to functions; none permits unwrap. Full bodies, multiline attributes and variant selection were inspected. Fatal exception handling is hostile-event reachable under the existing policy; approval of its annotation is not a claim of full task-fault containment and does not allocate that unchanged debt to a future phase. Future changes inside these allowed functions remain review-sensitive. Assertions are outside these three lints; no panic-free-kernel claim follows.
+
+### 5. Cryptography
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S21 — Reviewed primitives | **N/A.** No cryptographic primitive is introduced or changed. |
+| S22 — Keys absent from diagnostics | **N/A.** No key handling or key-bearing diagnostic is added. |
+| S23 — Constant-time comparison | **N/A.** Public diagnostic matching is not a secret comparison; no cryptographic timing path changes. |
+| S24 — Acceptable randomness | **N/A.** No security RNG change. Host mktemp creates an exclusive disposable directory, not a cryptographic token. |
+| S25 — Nonce/IV/salt discipline | **N/A.** No such state or operation changes. |
+
+### 6. Secrets and logging
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S26 — No sensitive diagnostic leakage | **OK for delta.** Runtime diagnostics are unchanged; new output is fixed test status and compiler/build output, with no new secret argument. |
+| S27 — Redacted sensitive Debug | **N/A.** No new type/formatter could reveal capability identity or key fields. |
+
+### 7. Dependencies
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S28 — Dependencies evaluated under policy | **N/A.** No crate, action or binary dependency is added/upgraded. |
+| S29 — Trust category understood | **OK for delta.** Additional probing is host-only; no unreviewed runtime component enters the TCB. |
+| S30 — cargo-vet decisions recorded | **N/A.** No dependency graph/trust decision changes; lockfile preserved. |
+
+### 8. Threat-model impact
+
+| Item | Disposition and adversarial rationale |
+|---|---|
+| S31 — Reconciled with security model | **OK.** The change improves detection of developer error on hostile-input paths while keeping intentional exceptions explicit; runtime authority, user-memory and hardware boundaries remain unchanged. |
+| S32 — Model changes recorded/tracked | **N/A — no model shift.** No new adversary/principal or defense claim is introduced. Existing fatal handling, SMP and assembly limitations remain explicit. |
+
+Accepted ADR-0040 governs the consolidation workflow; existing MMU/direct-map/image ADRs govern the preserved implementation contracts. No architecture or standard policy is changed through attributes, and no new ADR is required for the ignored-value substitution.
+
+### Architectural principles P1–P12
+
+| Principle | Disposition |
+|---|---|
+| P1 — No ambient authority | **OK:** no authority surface added or bypassed. |
+| P2 — Small defensible TCB | **OK:** host probes add no privileged runtime subsystem. |
+| P3 — Userspace drivers | **N/A:** placement unchanged. |
+| P4 — Capability boundaries | **OK for delta:** checks unchanged; syscall module retains lint enforcement. |
+| P5 — Rust/audited unsafe | **OK for changed reasoning:** explicit 0025 approval; existing T-038 excluded. |
+| P6 — HAL separation | **OK:** crate-root enforcement preserves the abstraction boundary. |
+| P7 — No proprietary blobs | **OK:** no committed binary; private image built from source. |
+| P8 — ADR governance | **OK:** existing Accepted policy implemented, history preserved. |
+| P9 — English | **OK:** changed repository prose/code/diagnostics English. |
+| P10 — Mermaid | **N/A:** no diagram needed or changed. |
+| P11 — Reproducibility | **OK for delta:** pin/lock preserved and independent private image matches recorded hash; no whole-kernel reproducibility certification. |
+| P12 — Complete scoped work | **OK for this review:** concrete implementation/evidence exists; coordinator must record Round 2 and retain final human PR/Done boundaries. |
+
+### Independent execution and evidence
+
+Independent execution used the pinned nightly, `/bin/bash`, Python `TemporaryDirectory` paths with spaces, private source copies and private CARGO_TARGET_DIR. Script `/tmp/tyrne-b21-r2-security-check.py`; logs and results `/tmp/tyrne-b21-t032-round2-security-checks/`.
+
+| Check | Observed outcome |
+|---|---|
+| Actual production `tools/test-ci-gates.sh --hal` | Harness 0; real host Clippy 101, intended `clippy::unwrap_used`; private cleanup confirmed. |
+| Actual production `tools/test-ci-gates.sh --bsp` | Harness 0; real kernel Clippy 101, intended `clippy::unwrap_used`; private image build and cleanup confirmed. |
+| Fresh private debug userland build | Exit 0; 117 bytes, SHA-256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`. |
+| Private positive `cargo host-clippy` / `cargo kernel-clippy` | Both exit 0. |
+| Inject sibling non-test unwrap in BSP syscall module | Kernel Clippy 101, `clippy::unwrap_used`. |
+| Inject sibling non-test unwrap in MMU module | Kernel Clippy 101, `clippy::unwrap_used`. |
+| Inject sibling non-test expect in exceptions module | Kernel Clippy 101, `clippy::expect_used`; fatal function exceptions do not exempt module siblings. |
+| Inject sibling non-test panic in perf module with feature enabled | Feature-selected Clippy 101, `clippy::panic`; benchmark allowances do not exempt module siblings. |
+| Mutation isolation | Each private file restored between cases; outer TemporaryDirectory removed. Watched shared HAL/BSP/MMU/syscall sources, hello.bin and debug kernel ELF SHA-256 unchanged. |
+| Historical audit and source comparison | Two new blocks removed reproduce baseline log exactly; syscall/shim/pin/lock unchanged, no non-doc delta after source commit. |
+| Final repository check | Exact reviewed HEAD and clean tracked working tree. |
+
+The private lint mutations directly challenge exception scope instead of merely restating the implementation. No failed fixture is counted as success. No broad suite was rerun after these targeted checks because the source delta and uncertainty did not warrant it.
+
+#### Supplied evidence inspected versus reported
+
+Inspected coordinator-downloaded `hosted-run.json`, `hosted-fastlane.log`, `hosted-kernel.log` under `/tmp/tyrne-b21-step5/`. Metadata binds completed success to exact `b6572cc65857b99f3ac3661b99cea809a7b12e88`, with all five jobs successful in [run 38181326486](https://github.com/HodeTech/Tyrne/actions/runs/38181326486). Supplied fast-lane line 202 and kernel line 214 show the intended HAL/BSP unwrap rejection at exit 101; kernel line 213 shows its private 117-byte image. Production image sequence is 117 → 69 → restored 117 bytes (lines 173/244/276). Fast-lane summaries establish 366 debug and 356 release passes plus two ignored HAL doctests. This is inspection of supplied metadata/logs, not independent GitHub retrieval.
+
+Coordinator reports additional all-five-green docs-only `4f2c38c` [run 38181458269](https://github.com/HodeTech/Tyrne/actions/runs/38181458269). During report finalization the coordinator also reported a read-only `gh run list` metadata result binding exact reviewed `6e191e2` to all five successful jobs in [run 38181945962](https://github.com/HodeTech/Tyrne/actions/runs/38181945962). These two later runs are coordinator-retrieved metadata attribution, not independent retrieval by this reviewer. All non-documentation files are unchanged after the detailed hosted source/evidence tip.
+
+Other broad validation remains coordinator/task/first-review attribution: fmt/ShellCheck/actionlint; default/release/perf builds and Clippy; 366 host and Miri passes, existing Miri warnings and two ignored doctests; real debug greeting/exit/completion/two SVCs/no unexpected fault; eleven controlled probe/CLI cases and 59 QEMU argv cases. The full R1 reports document independent unwrap-deny-removal controls and root expect/panic checks in both crates. This reviewer read those reports but did not independently repeat those particular controls or the broad host/Miri/QEMU suite. Parent's corrected escaped-NUL fixture failure is not accepted as passing evidence.
+
+No new guest smoke, BSP unmap runtime, hardware/SMP, forced-termination cleanup, live protection, whole-tree unsafe, or assembly correctness certification is claimed. Successful ordinary boot, host FakeMmu and Miri evidence cannot establish those properties.
+
+### Verdict
+
+**Approve Round 2 SECURITY for `8591ceb..6e191e2`, with no new actionable finding. Explicitly approve the changed UNSAFE-2026-0025 unmap argument and adjacent SAFETY reasoning as scoped above. The actual Round 1 approval recording and trailer accurately match the full first-round report.**
+
+All 33 checklist items and P1–P12 are dispositioned. Unchanged HIGH T-038 stays flagged/excluded without downgrade; the original SMP-forward claim is not endorsed and runtime BSP unmap remains unverified. Coordinator should publish this full review and record its actual approval append-only. T-032 remains In Review for the final maintainer PR; this verdict does not promote Done or authorize merge.
