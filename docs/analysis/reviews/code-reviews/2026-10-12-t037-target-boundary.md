@@ -1,5 +1,7 @@
 # Code review 2026-10-12 — T-037 target boundary
 
+**Current review state (2026-10-12):** both fresh code/security rounds approve the scoped T-037 target narrowing. Round 2 reviews `960bdef..69a4109`, verifies both Low lifecycle fixes and finds no new issue. T-038's existing HIGH x2 defect remains excluded. Final PR and maintainer review remain pending; no Done or merge-readiness certification. See [Round 2](#round-2). The original round-1 report below is preserved as dated history.
+
 Independent round 1 review of the first approved Track B.2-1 implementation step: restrict the hello entry/build script and userspace SVC shims to bare-metal aarch64 while restoring ARM host workspace tooling.
 
 - **Reviewer:** `b21_step1_round1_code`, independent fresh agent context, delegated by Codex root.
@@ -89,3 +91,89 @@ The complete two-round cycle, committed follow-up review, security-record/traile
 |------|----------|-------------------|
 | 2026-10-12 | `b21_step1_round1_code` | Fresh independent round 1 on `960bdef..f2d577f`: AGENTS/CLAUDE/current roadmap, numbered ADRs in numerical order, all standards, skills, prior evidence, full changed source and local checks. Approve code scope; two Low lifecycle findings returned. |
 | 2026-10-12 | `b21_step1_round1_code` | Parent authorized only this artifact and index row after the verdict. Limited inspection of root's working lifecycle corrections noted above; second fresh round remains pending. |
+
+## Round 2
+
+**Approve — scoped code review of `960bdef..69a4109`.** No new findings. Both first-round Low lifecycle findings are resolved. This verdict does not certify assembly soundness, Done promotion, hosted CI or merge readiness; the final PR and maintainer review remain pending.
+
+- **Reviewer:** `b21_step1_round2_code`, fresh independent agent context.
+- **Date:** 2026-10-12, Europe/Istanbul.
+- **Reviewed tip:** `69a4109e12ad814cec9a1fe9cfef3070155b852b`, on `development`.
+- **Procedure:** `perform-code-review`, `conduct-review` and the code master plan, all five roles. Context included AGENTS/CLAUDE, current roadmap, numbered ADRs in numerical order, every standard, relevant skills, first-round reports, task criteria/evidence, complete changed source, manifests, linker/build configuration and affected consumers. Truncated reads were repaired.
+- **Risk:** security-sensitive compilation boundary enclosing existing unsafe syscall assembly; no instruction or operand change.
+- **Paired fresh security review:** `b21_step1_round2_security` independently communicated **Approve** for `960bdef..69a4109` and its recording follow-up, with no new finding; its distinct full report is recorded in the [paired security artifact](../security-reviews/2026-10-12-t037-target-boundary.md#round-2). Both verdicts expressly exclude T-038's existing HIGH x2 defect.
+- **Recording boundary:** the verdict pass was read-only. Root subsequently authorized only this report's appended round-2 section, a top current-state note and its code-review index row. Root's later task/current/audit coordination edits are outside the reviewed `69a4109` range and are not certified by this report.
+
+### Correctness
+
+**Pass for the delta.** All 13 userland architecture cfg gates require `all(target_arch = "aarch64", target_os = "none")`; three host branches use its exact negation. The build script checks Cargo's target architecture and OS, matching the Rust predicates and existing BSP gate. ARM hosts select ordinary hello `std`/`main` and the library's pre-existing safe stubs.
+
+No public signature, syscall number, capability word, assembly instruction or operand, error branch, bare-metal entry/link section or panic behavior changes. All three source blobs are identical between implementation `f2d577f` and follow-up `69a4109`. Removing comments and cfg attributes yields identical baseline/current Rust bodies for hello and tyrne-user.
+
+### Style
+
+**Pass.** The inline predicate and synchronization comments follow the approved approach without a custom cfg, feature, dependency or toolchain change. Prior independent fmt and clippy evidence remains applicable because the follow-up changes no source. A fresh `git diff --check 960bdef..69a4109` passes. No preference-only refactor is requested.
+
+### Test coverage
+
+**Pass for the declared scope.** Existing native ARM workspace commands directly exercise the regression. The first-round before/after compilation probe, compiled environment matrix, native/Miri runs, bare-metal image and QEMU checks cover both selected paths. Fresh compiler expansion, exact source comparisons and recording checks below complement those gates.
+
+No new persistent test was added by this change. The recorded before/after probe reproduces the baseline duplicate panic handler and compiles the fixed source; the future permanent native ARM hosted gate remains [T-036](../../tasks/phase-b2/T-036-ci-arm64-host-check-job.md)'s explicitly separate scope.
+
+### Documentation
+
+**Pass.** Both first-round Low findings are resolved in committed `69a4109`:
+
+| ID | Severity / current location | Verified resolution |
+|----|-----------------------------|---------------------|
+| T037-CR1-01 | Low — `docs/analysis/tasks/phase-b2/T-037-userland-bare-metal-cfg-gate.md:20`, `:22` | Context labels the pre-implementation opening snapshot and identifies `f2d577f` as the applied fix. |
+| T037-CR1-02 | Low — `docs/roadmap/current.md:84`, `:85`, `:87` | Active task and In review identify T-037; Working branch identifies `development`. Historical material remains labeled. |
+
+At the reviewed tip, task/index status remains In Review. Checked behavioral and security-recording criteria are backed by the dated evidence, distinct security artifact and actual follow-up trailer. Historical pending statements are retained and qualified rather than presented as current state. No Done claim or completed second-round claim existed in the reviewed commit.
+
+The original unsafe log at `960bdef` is an exact 208,577-byte prefix of the reviewed log: 2,231 bytes are appended overall. The follow-up resolves only the provisional introducing-commit reference in the new amendment and appends explicitly scoped first-round review completion. Original entry fields and the amendment's historical pending-review sentence remain intact.
+
+### Integration
+
+**Pass locally.** Source gates, linker selection and BSP predicate agree. Default members, workspace membership, coverage exclusions, CI commands, dependencies and architectural contracts remain unchanged. Native ARM hosted CI remains T-036. The separate fresh security review approves the narrowing and recording, without approving the unchanged assembly defect.
+
+The full code-standard checklist was considered:
+
+| Item | Outcome |
+|------|---------|
+| Correctness | Satisfied for target selection and follow-up recording; bare-metal bodies unchanged. |
+| Capability semantics | No authority, handle, rights, transfer, revocation or privileged-operation change. |
+| Fault containment | No kernel exception, dispatcher, user-pointer validation or isolation change. Hosted targets exclude Tyrne SVC code. |
+| Unsafe discipline | No added operation or broadened reachability. Existing safety references retained; amendment identifies scope, invariants and alternatives. Separate security approval and trailer recorded. T-038 remains excluded. |
+| Error handling | No new error, swallowed result, hot-path panic or changed return behavior. Existing host stubs and build-time `expect` remain unchanged. |
+| Tests | Relevant first-round regression/gate evidence reviewed; fresh read-only validation below complements it. |
+| Documentation | Both Low findings fixed; statuses, historical snapshots and remaining gates accurately distinguished. |
+| Architectural principles | P1–P12 respected by the delta: no ambient authority, TCB expansion, driver movement, trust-model change, blob, dependency or unrecorded design change. English and reproducibility maintained; no diagram required. Incremental scope follows ADR-0040. |
+| Dependencies | No manifest, lockfile, dependency or trust decision change. |
+| Naming and style | Existing names preserved; approved inline predicate consistently applied. |
+| Commit messages | Conventional subjects and valid `Refs: ADR-0040` / `Audit: UNSAFE-2026-0033`. Follow-up `69a4109` records `Security-Review: b21_step1_round1_security`, matching the distinct artifact. |
+
+**Post-fix sweep:** no architecture-only userland Rust gate remains. Original architecture-only audit wording is historical and qualified by the amendment. The task's old “has NOT been applied” wording is gone, and all three live roadmap prefixes agree.
+
+### Fresh independent verification and limits
+
+| Check performed in this round | Result |
+|--------------------------------|--------|
+| Pinned `rustc --edition=2021 --crate-type lib --target … -Zunpretty=expanded userland/tyrne-user/src/lib.rs` | ARM macOS: zero SVC sites, two host stubs. Bare-metal ARM: two SVC sites, zero host stubs. |
+| `rustc --print cfg --target …` | ARM Linux reports `aarch64`/`linux`; x86 Linux reports `x86_64`/`linux`. |
+| Mechanical sweep of userland Rust architecture cfg gates | All 13 use the required conjunction; three negated gates. |
+| Git-object source comparison | All three changed source blobs identical between `f2d577f` and `69a4109`; both main/lib bodies identical to baseline after removing comments and cfg attributes. |
+| Git-object unsafe-log comparison | Original 208,577-byte baseline is an exact prefix; total append 2,231 bytes. Follow-up amendment-header resolution and appended completion inspected separately. |
+| Existing `userland/hello/hello.bin` | 117 bytes, SHA-256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`. |
+| Local Markdown destinations across changed documents | 462 path destinations resolve. |
+| Task/current consistency assertions | Opening/current distinction and the three live roadmap prefixes pass. |
+| `git diff --check 960bdef..69a4109` | PASS. |
+| HEAD and tracked working tree at end of verdict pass | `69a4109e12ad814cec9a1fe9cfef3070155b852b`; clean. |
+
+Broad build/Miri/smoke runs were not repeated: existing independent evidence covers the unchanged implementation, including 366 native/Miri passes and bare-metal smoke. This code pass checks an existing image rather than claiming a fresh rebuild. ARM Linux expansion was attempted but could not run because that target's `core` is uninstalled; target cfg identity was verified without installing anything. No Linux, hosted CI, release or hardware execution is claimed. The paired fresh security reviewer separately reports a fresh isolated bare-metal build and expanded environment/stub checks; those are its evidence, not execution by this code reviewer.
+
+**Existing HIGH issue unchanged:** input-only x2 at `userland/tyrne-user/src/lib.rs:107` conflicts with kernel write-back at `bsp-qemu-virt/src/syscall.rs:224`, restored by `bsp-qemu-virt/src/vectors.s:237`. [T-038](../../tasks/phase-b2/T-038-console-write-x2-clobber.md) explicitly owns it. Matching bytes and host Miri do not establish its soundness. This approval covers the target narrowing and truthful recording only.
+
+### Verdict
+
+**Approve — T-037 target-boundary delta and committed first-round recording corrections.** No new findings. Both fresh round-2 code/security passes approve their scoped changes; final PR, maintainer review and Done promotion remain pending. Later root coordination edits are outside this reviewed range.
