@@ -80,7 +80,7 @@ The kernel job builds debug first, then release with its matching userland image
 
 ### Guest smoke and diagnostic artifacts
 
-`qemu-smoke` (display name `QEMU debug + release smoke (nightly)`) builds each matching userland/kernel profile explicitly before booting it with `--int`. Debug requires exact serial lines `hello from userspace`, `tyrne: userspace task exited` and `tyrne: all tasks complete`. Release requires exit/completion and forbids any userspace greeting. Both reject panic/CPU-fault patterns. An explicit ELF skips compilation; pass `--release` for release expectations. These are marker checks, not an exact SVC count or proof of exit code zero.
+`qemu-smoke` (display name `QEMU debug + release smoke (nightly)`) builds each matching userland/kernel profile explicitly before booting it with `--int`. Debug requires exact serial lines `hello from userspace`, `tyrne: userspace task exited` and `tyrne: all tasks complete`. Release requires exit/completion and forbids any userspace greeting. Both reject panic/CPU-fault patterns. Job-scoped explicit Bash enables pipefail so `tee` cannot turn a failed production smoke into a green step. A separate synthetic completion-only probe deliberately fails the actual smoke entry point through the inherited CI log pipeline; it requires nonzero pipeline status plus the real missing-exit diagnostic, and retains its output artifact. Removing pipefail makes this guard fail. An explicit ELF skips compilation; pass `--release` for release expectations. These are marker checks, not an exact SVC count or proof of exit code zero.
 
 ```sh
 tools/build-userland.sh

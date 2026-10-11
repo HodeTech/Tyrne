@@ -190,6 +190,10 @@ jobs:
     name: QEMU debug + release smoke (nightly)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        # Explicit bash enables pipefail; unspecified Linux shell is bash -e.
+        shell: bash
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -229,6 +233,13 @@ jobs:
           key: ${{ runner.os }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-
+      - name: Smoke rejection survives workflow log pipeline (synthetic trace)
+        run: |
+          if tools/probe-smoke-pipeline.sh 2>&1 | tee "$SMOKE_EVIDENCE/pipeline-probe.output.log"; then
+            echo "FAIL: workflow log pipeline discarded smoke rejection"
+            exit 1
+          fi
+          grep -Fq "FAIL: 'tyrne: userspace task exited' marker missing" "$SMOKE_EVIDENCE/pipeline-probe.output.log"
       - name: Build matching debug userland and kernel
         run: |
           tools/build-userland.sh

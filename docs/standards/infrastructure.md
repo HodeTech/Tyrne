@@ -79,7 +79,7 @@ These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.git
 - Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
 - Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
 
-- Single-core debug/release QEMU EL0 smoke (`qemu-smoke`, display `QEMU debug + release smoke (nightly)`) after matching userland/kernel builds, with `--int`. Debug requires greeting/exit/completion; release requires exit/completion and forbids greeting. Both reject panic/CPU-fault traces. Synthetic trace fixtures and three isolated real kernel mutations must demonstrate intended rejection. Always-uploaded diagnostic artifacts retain production/probe traces and metadata for 14 days. Live required-check registration follows the first remote green run, recorded in [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
+- Single-core debug/release QEMU EL0 smoke (`qemu-smoke`, display `QEMU debug + release smoke (nightly)`) after matching userland/kernel builds, with `--int`. Debug requires greeting/exit/completion; release requires exit/completion and forbids greeting. Both reject panic/CPU-fault traces; explicit Bash/pipefail preserves smoke failure through `tee`, with an inherited-shell rejection guard. Synthetic trace fixtures and three isolated real kernel mutations must demonstrate intended rejection. Always-uploaded diagnostic artifacts retain production/probe traces and metadata for 14 days. Live required-check registration follows the first remote green run, recorded in [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
 
 ### Planned gates (not yet enforced)
 
