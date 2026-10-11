@@ -2,7 +2,7 @@
 
 A short pointer file updated as work progresses. For the full plan see [`phases/`](phases/); for the process see [ADR-0013](../decisions/0013-roadmap-and-planning.md).
 
-**Active implementation:** [T-031](../analysis/tasks/phase-b2/T-031-ci-userland-clippy-and-shellcheck.md), approved Track B.2-1 step 3, `In Review` on `development`; local implementation gates passed, hosted evidence and both fresh review rounds pending. T-037 and T-033 completed implementation gates and both fresh review rounds; they remain `In Review` for the final maintainer PR.
+**Active implementation:** [T-031](../analysis/tasks/phase-b2/T-031-ci-userland-clippy-and-shellcheck.md), approved Track B.2-1 step 3, `In Review` on `development`; local and hosted implementation gates passed; first fresh code/integration round approved with its Low documentation finding fixed; second fresh round pending. T-037 and T-033 completed implementation gates and both fresh review rounds; they remain `In Review` for the final maintainer PR.
 
 > **2026-10-12 implementation update — T-037 is In Review.** Commit `f2d577f` fixes the ARM host target gate: native workspace check/clippy/test and the exact workspace Miri command now pass (366 tests; two ignored HAL doctests). The bare-metal debug image remains 117 bytes with its recorded SHA-256, and QEMU shows the EL0 greeting, task exit and completion. Both independent code/security rounds passed; two Low first-round documentation findings were corrected and the second round found no new issue. This update supersedes the ARM Miri failure in the decision-time baseline below. CI release/smoke automation remains pending its owning Track B.2-1 steps.
 

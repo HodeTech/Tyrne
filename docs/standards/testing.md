@@ -102,7 +102,8 @@ Coverage is measured with `cargo llvm-cov` on host-runnable tests. Hardware-only
 Enforced in CI today (block merge):
 
 - `cargo test` (host crates, `default-members`) — must pass.
-- Clippy with `-D warnings` — must pass (run as the `host-clippy` + `kernel-clippy` aliases, which together cover the workspace; see [infrastructure.md](infrastructure.md) §"Required gates").
+- Clippy with `-D warnings` — must pass through the `host-clippy` and `kernel-clippy` aliases plus `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` after the userland image build; these cover distinct host and bare-metal targets (see [infrastructure.md](infrastructure.md) §"Required gates").
+- `shellcheck tools/*.sh` at default severity — must pass. Isolated expected-failure probes also verify that the shell and userland lint commands reject their deliberate regressions; the production source stays clean.
 - `cargo fmt --all -- --check` — must pass.
 - Host crates on stable Rust (`host-stable-check`) — must build/lint/test clean.
 - Miri (Stacked Borrows) over the host-test suite — must pass.
@@ -142,6 +143,7 @@ When a test fails in CI:
 
 ## References
 
+- [ADR-0040 — Phase B.2 consolidation bridge](../decisions/0040-phase-b2-consolidation-bridge.md).
 - The Rust Book, Testing chapter: https://doc.rust-lang.org/book/ch11-00-testing.html
 - Embedded Rust testing patterns: https://docs.rust-embedded.org/book/
 - `cargo-nextest`: https://nexte.st/
