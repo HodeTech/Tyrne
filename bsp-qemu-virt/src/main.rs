@@ -21,6 +21,11 @@
 
 #![no_std]
 #![no_main]
+// Trap and MMU paths must not acquire accidental panic-family calls. Deliberate
+// fatal aborts and trusted boot/demo invariants have function-scoped exceptions.
+#![deny(clippy::panic)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
 // Binary crate: `pub` items serve the linker (`#[no_mangle]`) rather than
 // external consumers; `unreachable_pub` is therefore expected throughout.
 #![allow(unreachable_pub, reason = "binary crate; pub items are for the linker")]
@@ -514,6 +519,10 @@ static TASK_ARENA: StaticCell<TaskArena> = StaticCell::new();
 ///
 /// [ADR-0022]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md
 /// [ADR-0026]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0026-idle-dispatch-fallback.md
+#[allow(
+    clippy::expect_used,
+    reason = "trusted idle task runs only after scheduler start; NoCurrentTask is a BSP invariant violation"
+)]
 fn idle_entry() -> ! {
     // SAFETY: CPU is fully initialised in `kernel_entry` before `start()`;
     // single-core cooperative scheduling prevents concurrent access.
@@ -556,6 +565,11 @@ fn idle_entry() -> ! {
 /// own spin loop. The tail-end `loop { spin_loop() }` therefore satisfies the
 /// `fn() -> !` return type but is structurally unreachable.
 #[cfg(not(feature = "perf-bench"))]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "trusted one-round IPC demo aborts on violated static capability/scheduler setup or protocol invariants"
+)]
 fn task_b() -> ! {
     // SAFETY: CONSOLE is fully initialised in `kernel_entry` before `start()`;
     // single-core cooperative scheduling prevents concurrent access.
@@ -657,6 +671,11 @@ fn task_b() -> ! {
 /// IPC demo — initiator side. Sends a message to Task B, then waits for
 /// the reply. On receiving the reply, prints the Phase A completion banner.
 #[cfg(not(feature = "perf-bench"))]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "trusted one-round IPC demo aborts on violated static capability/scheduler setup or protocol invariants"
+)]
 fn task_a() -> ! {
     // SAFETY: CONSOLE initialised in kernel_entry; single-core cooperative.
     // Audit: UNSAFE-2026-0010.
@@ -973,6 +992,11 @@ pub extern "C" fn kernel_entry() -> ! {
 #[allow(
     clippy::too_many_lines,
     reason = "BSP boot sequence is intentionally linear top-to-bottom for auditability — splitting into helpers obscures the order each phase depends on (per docs/standards/bsp-boot-checklist.md)"
+)]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "one-shot BSP boot aborts if trusted static image, capacity, or kernel-object setup invariants fail"
 )]
 extern "C" fn kernel_main_high() -> ! {
     // ── Free TTBR0 — the low identity — T-022 / ADR-0033 §Simulation row 3 ────

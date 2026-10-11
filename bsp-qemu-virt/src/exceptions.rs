@@ -184,6 +184,10 @@ impl PanicClass {
 // so the compiler does not warn while the parameter remains live in
 // the signature for the trampoline's calling-convention contract.
 #[unsafe(no_mangle)]
+#[allow(
+    clippy::panic,
+    reason = "deliberate fatal abort after EOI for an unhandled IRQ; not a recoverable syscall error"
+)]
 pub unsafe extern "C" fn irq_entry(_frame: *mut TrapFrame) {
     // SAFETY: producing a stable `&QemuVirtGic` from the static
     // `MaybeUninit<QemuVirtGic>` in `GIC` requires `unsafe` because Rust
@@ -301,6 +305,10 @@ pub unsafe extern "C" fn irq_entry(_frame: *mut TrapFrame) {
 ///
 /// Audit: UNSAFE-2026-0020.
 #[unsafe(no_mangle)]
+#[allow(
+    clippy::panic,
+    reason = "deliberate fatal abort for an unhandled exception class; existing BSP fault policy"
+)]
 pub unsafe extern "C" fn panic_entry(class: u64, esr: u64) -> ! {
     let class_str = PanicClass::from_u64(class).as_str();
     panic!("tyrne: {class_str}; ESR_EL1 = {esr:#018x}; class id = {class}",);

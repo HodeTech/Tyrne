@@ -41,6 +41,7 @@ The CI matrix mirrors what a contributor should run locally before opening a PR:
 |---|---|
 | `cargo fmt --all -- --check` | `lint-and-host-test` |
 | `cargo host-clippy` | `lint-and-host-test` |
+| `tools/test-ci-gates.sh --hal` (panic-family rejection in a disposable copy) | `lint-and-host-test`, after host clippy |
 | `cargo host-test` | `lint-and-host-test` |
 | `cargo test --release` | `lint-and-host-test` |
 | `tools/check-release-tests.sh` (both named release tests must pass) | `lint-and-host-test` |
@@ -50,6 +51,7 @@ The CI matrix mirrors what a contributor should run locally before opening a PR:
 | `tools/test-qemu-tooling.sh` (stubbed QEMU arguments) | `lint-and-host-test` |
 | `cargo kernel-build` | `kernel-build` |
 | `cargo kernel-clippy` | `kernel-build` |
+| `tools/test-ci-gates.sh --bsp` (panic-family rejection in a disposable copy) | `kernel-build`, after debug kernel clippy |
 | `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` | `kernel-build`, after debug userland build |
 | `tools/test-ci-gates.sh --userland` (expected failure in a disposable copy) | `kernel-build` |
 | `tools/build-userland.sh --release` + `cargo kernel-build-release` | `kernel-build`, after debug steps |
@@ -67,6 +69,8 @@ If you pass these locally, CI should pass too. Your local `cargo` runs the pinne
 The real ShellCheck and bare-metal userland clippy steps must pass first. `tools/test-ci-gates.sh` then copies the current tracked worktree into a temporary directory, uses a separate Cargo target directory, injects a shell quoting error or a clone-on-Copy lint, and asserts that the exact matching command fails with its expected diagnostic. A passing probe means the deliberate regression was rejected; it is not a red production workflow. The copy is removed on exit, with no source, branch or shared image change. ShellCheck's installed version is printed in CI; measured local and hosted versions are recorded in [T-031](../analysis/tasks/phase-b2/T-031-ci-userland-clippy-and-shellcheck.md).
 
 The release guard runs `cargo test --release -p tyrne-kernel --lib -- console_write_is_absent_in_release_builds console_write_number_is_bad_syscall_in_release_build` and requires both exact test names to pass plus a two-pass summary. Cargo's success alone is insufficient: setting release `debug-assertions = true` compiles both tests out, returns success with zero tests and exposes `console_write`. The `--release` probe makes that profile change only in its disposable copy and requires the guard to reject it. [T-030](../analysis/tasks/phase-b2/T-030-ci-release-profile-gate.md) records local and hosted evidence separately.
+
+The HAL and BSP deny `clippy::panic`, `clippy::unwrap_used` and `clippy::expect_used` at their crate roots. The `--hal` and `--bsp` probes inject a non-test `None` unwrap outside any allowed function, then require the exact `cargo host-clippy` / `cargo kernel-clippy` command to fail with `clippy::unwrap_used`. The BSP probe first builds its matching debug userland image inside the disposable copy; it never overwrites the checkout's shared image. Existing boot/demo/benchmark invariants and deliberate fatal aborts have narrow function-scoped exceptions with reasons, catalogued in [T-032](../analysis/tasks/phase-b2/T-032-panic-family-denies-hal-bsp.md). These three lints do not prohibit `assert!` or prove a panic-free kernel.
 
 The kernel job builds debug first, then release with its matching userland image, then restores the debug userland immediately before debug perf-bench build/lint. Release EL0 QEMU execution is still owned by [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md); these compile/test gates do not claim hosted release runtime coverage.
 

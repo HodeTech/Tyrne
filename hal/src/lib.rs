@@ -31,6 +31,10 @@
 //! that any BSP implementing the corresponding trait can reuse.
 
 #![no_std]
+// HAL failures must use typed errors; panic-family calls require a scoped reason.
+#![deny(clippy::panic)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
 
 mod console;
 mod context_switch;

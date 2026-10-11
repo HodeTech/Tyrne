@@ -144,6 +144,11 @@ static EL0_ACCUM_NS: AtomicU64 = AtomicU64::new(0);
     clippy::too_many_lines,
     reason = "linear measurement-build setup top-to-bottom for auditability — mirrors `kernel_main_high`; splitting into helpers would scatter the load→create→publish→schedule order each step depends on"
 )]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "one-shot measurement-build setup aborts if trusted static image, capacity, or object invariants fail"
+)]
 pub fn run(cpu: &QemuVirtCpu, console: &Pl011Uart) -> ! {
     {
         let mut w = FmtWriter(console);
@@ -431,6 +436,10 @@ fn bench_partner() -> ! {
 
 /// One cooperative `yield_now` (used by both tasks for the ctx-switch bench).
 #[inline]
+#[allow(
+    clippy::expect_used,
+    reason = "trusted benchmark tasks yield only after scheduler start; NoCurrentTask is an invariant violation"
+)]
 fn driver_yield(cpu: &QemuVirtCpu) {
     // SAFETY: per [ADR-0021] — `SCHED.as_mut_ptr()` is a pure pointer cast
     // (UNSAFE-2026-0013); no `&mut` to shared kernel state is live across the
@@ -448,6 +457,10 @@ fn driver_yield(cpu: &QemuVirtCpu) {
 
 /// One driver send (Delivered to the waiting partner, then yields to it).
 #[inline]
+#[allow(
+    clippy::expect_used,
+    reason = "trusted benchmark driver uses a statically provisioned SEND cap and a fixed ping-pong protocol"
+)]
 fn driver_send(cpu: &QemuVirtCpu) {
     let msg = Message {
         label: 0xBE0C,
@@ -477,6 +490,10 @@ fn driver_send(cpu: &QemuVirtCpu) {
 
 /// One partner receive (blocks → yields to driver when no message is pending).
 #[inline]
+#[allow(
+    clippy::expect_used,
+    reason = "trusted benchmark partner uses a statically provisioned RECV cap and a fixed ping-pong protocol"
+)]
 fn partner_recv(cpu: &QemuVirtCpu) {
     // SAFETY: per [ADR-0021] — same raw-pointer discipline as `driver_send`;
     // `TABLE_B` is the partner's own table. Audit: UNSAFE-2026-0014.

@@ -107,6 +107,8 @@ jobs:
         run: tools/test-ci-gates.sh --shell
       - name: cargo host-clippy
         run: cargo +"$NIGHTLY_PIN" host-clippy
+      - name: HAL panic-family negative regression probe (isolated)
+        run: tools/test-ci-gates.sh --hal
       - name: cargo host-test
         run: cargo +"$NIGHTLY_PIN" host-test
       - name: cargo test --release (host crates)
@@ -159,6 +161,8 @@ jobs:
         run: cargo +"$NIGHTLY_PIN" kernel-build
       - name: cargo kernel-clippy
         run: cargo +"$NIGHTLY_PIN" kernel-clippy
+      - name: BSP panic-family negative regression probe (isolated)
+        run: tools/test-ci-gates.sh --bsp
       - name: Bare-metal userland clippy
         run: cargo +"$NIGHTLY_PIN" clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings
       - name: Userland clippy negative regression probe (isolated)

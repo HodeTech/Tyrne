@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Assert that deliberate regressions fail the real CI commands in a disposable
 # copy of the tracked worktree. Never alters repository source or branches.
-# Usage: tools/test-ci-gates.sh --shell | --userland | --release
+# Usage: tools/test-ci-gates.sh --shell | --userland | --release | --hal | --bsp
 set -euo pipefail
 
 usage() {
-    echo "Usage: tools/test-ci-gates.sh --shell | --userland | --release" >&2
+    echo "Usage: tools/test-ci-gates.sh --shell | --userland | --release | --hal | --bsp" >&2
 }
 
 [[ $# -eq 1 ]] || { usage; exit 2; }
 MODE="$1"
 case "$MODE" in
-    --shell|--userland|--release) ;;
+    --shell|--userland|--release|--hal|--bsp) ;;
     -h|--help) usage; exit 0 ;;
     *) usage; exit 2 ;;
 esac
@@ -74,5 +74,27 @@ PROBE
         awk '{ print } $0 == "[profile.release]" { print "debug-assertions = true" }' Cargo.toml > Cargo.toml.probe
         mv Cargo.toml.probe Cargo.toml
         run_negative 'FAIL: release syscall gate requires both named tests to pass' tools/check-release-tests.sh
+        ;;
+    --hal|--bsp)
+        if [[ "$MODE" == "--hal" ]]; then
+            ROOT="hal/src/lib.rs"
+        else
+            ROOT="bsp-qemu-virt/src/main.rs"
+            # The tracked copy excludes hello.bin. Build it only in this
+            # disposable tree, so a missing image cannot mask the lint probe.
+            tools/build-userland.sh
+        fi
+        cat >> "$ROOT" <<'PROBE'
+
+#[allow(dead_code, reason = "disposable CI panic-family regression probe")]
+fn ci_panic_family_probe() -> u64 {
+    core::hint::black_box(None::<u64>).unwrap()
+}
+PROBE
+        if [[ "$MODE" == "--hal" ]]; then
+            run_negative clippy::unwrap_used cargo host-clippy
+        else
+            run_negative clippy::unwrap_used cargo kernel-clippy
+        fi
         ;;
 esac
