@@ -14,6 +14,7 @@
 #   tools/smoke.sh --smp N               — positive core count
 #   tools/smoke.sh --timeout 30          — override the wall-clock budget (s)
 #   tools/smoke.sh <path/to/elf>         — explicit ELF
+#   tools/smoke.sh --release <elf>       — explicit ELF, release expectations
 #
 # Core count precedence: --smp N, then QEMU_SMP, then 1.
 # N > 1 is a tooling affordance; the current kernel has no SMP bring-up.
@@ -127,18 +128,29 @@ grep -nE "Taking exception|Translation fault|Permission fault|Data Abort|Prefetc
 # ── Gate (usable as a CI / regression check) ──────────────────────────────────
 # The demo keeps spinning after completion and is SIGTERM'd, so a non-zero QEMU
 # exit is expected and ignored above (|| true). Pass/fail is decided by the
-# trace contents, not QEMU's exit code: the completion marker must appear, and
-# there must be no panic or CPU fault. `--int` uses `-d int,unimp` (no
+# trace contents, not QEMU's exit code. Debug requires greeting, task exit and
+# completion; release requires exit/completion and forbids the greeting.
+# Explicit ELFs still need --release to select release expectations.
+# There must be no panic or CPU fault. `--int` uses `-d int,unimp` (no
 # `guest_errors`), so the pre-existing PL011 "data written to disabled UART"
 # noise does not interleave with the serial markers or the fault grep.
 rc=0
-if ! grep -q "all tasks complete" "$LOG"; then
-    echo "FAIL: 'tyrne: all tasks complete' marker missing (boot did not finish)" >&2
+REQUIRED_MARKERS=('tyrne: userspace task exited' 'tyrne: all tasks complete')
+if [[ "$PROFILE" == "debug" ]]; then
+    REQUIRED_MARKERS=('hello from userspace' "${REQUIRED_MARKERS[@]}")
+elif grep -Fq 'hello from userspace' "$LOG"; then
+    echo "FAIL: release trace contains forbidden userspace greeting" >&2
     rc=1
 fi
+for marker in "${REQUIRED_MARKERS[@]}"; do
+    if ! grep -Fxq "$marker" "$LOG"; then
+        echo "FAIL: '$marker' marker missing ($PROFILE EL0 smoke did not finish)" >&2
+        rc=1
+    fi
+done
 if grep -qE "tyrne panic|Translation fault|Permission fault|Data Abort|Prefetch Abort|Unallocated Instruction" "$LOG"; then
     echo "FAIL: a panic / CPU-fault class appeared in the trace" >&2
     rc=1
 fi
-[[ $rc -eq 0 ]] && echo "PASS: boot reached 'all tasks complete' with no panic/fault" >&2
+[[ $rc -eq 0 ]] && echo "PASS: $PROFILE EL0 exit/completion and console contract; no panic/fault" >&2
 exit $rc

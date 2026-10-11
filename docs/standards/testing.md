@@ -109,9 +109,10 @@ Enforced in CI today (block merge):
 - Host crates on stable Rust (`host-stable-check`) — must build/lint/test clean.
 - Miri (Stacked Borrows) over the host-test suite — must pass.
 
+- Debug/release single-core QEMU EL0 smoke (`qemu-smoke`) with matching images, required profile markers and panic/CPU-fault rejection. Synthetic trace fixtures and three actual private kernel mutations verify rejection; production/probe traces and provenance are uploaded even on failure. Exact SVC counting and adversarial EL0 images remain separate scope.
+
 Not yet enforced in CI:
 
-- QEMU smoke tests — run by the maintainer before merge on the primary target; there is **no QEMU-smoke CI job yet** (tracked as a B2-or-later follow-up per [infrastructure.md](infrastructure.md) §"Planned gates"). A failing smoke test does not currently turn CI red — it is caught at maintainer review.
 - Hardware smoke tests — run periodically, not per-PR.
 
 A red CI is never ignored. Flaky tests are bugs, not facts of life.

@@ -84,7 +84,7 @@ cargo kernel-run-release
 
 The release ELF is `target/aarch64-unknown-none/release/tyrne-bsp-qemu-virt`. Restore the debug userland with `tools/build-userland.sh` before returning to a debug kernel or perf-bench build.
 
-For a bounded run that builds both images first, captures the trace and checks completion and fault classes:
+For a bounded run that builds both images first, captures the trace and checks the debug EL0 markers and fault classes:
 
 ```sh
 tools/smoke.sh --int --timeout 5
@@ -137,7 +137,7 @@ tyrne: userspace task exited
 tyrne: all tasks complete
 ```
 
-The real EL0 task makes two expected SVC exceptions (console and exit); these are not CPU faults. No panic, translation/permission fault, data/prefetch abort or unallocated instruction should appear. The smoke script currently enforces completion and fault checks; the dedicated debug/release EL0 CI gate is tracked by [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
+The real EL0 task makes two expected SVC exceptions (console and exit); these are not CPU faults. No panic, translation/permission fault, data/prefetch abort or unallocated instruction should appear. The smoke script requires all three exact debug marker lines and rejects panic/fault patterns. Release requires exit/completion and forbids the greeting; an explicit release ELF needs `--release` to select that contract. The `QEMU debug + release smoke (nightly)` CI job runs both profiles with `--int` and uploads traces, including failures; see [CI guide](ci.md#guest-smoke-and-diagnostic-artifacts). It does not assert an exact SVC count or exit code.
 
 Run the argument regression checks without QEMU or a build:
 
@@ -145,7 +145,7 @@ Run the argument regression checks without QEMU or a build:
 tools/test-qemu-tooling.sh
 ```
 
-They use a stub to verify argument handling, not guest runtime or SMP support.
+They use a stub to verify argument handling, not guest runtime or SMP support. Run `tools/test-smoke-gates.sh` for profile/fault trace fixtures, or add `--real` for three private kernel rejection probes; see the [CI guide](ci.md#guest-smoke-and-diagnostic-artifacts) for prerequisites and retained evidence.
 
 ## Troubleshooting
 

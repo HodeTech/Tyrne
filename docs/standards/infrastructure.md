@@ -79,11 +79,12 @@ These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.git
 - Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
 - Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
 
+- Single-core debug/release QEMU EL0 smoke (`qemu-smoke`, display `QEMU debug + release smoke (nightly)`) after matching userland/kernel builds, with `--int`. Debug requires greeting/exit/completion; release requires exit/completion and forbids greeting. Both reject panic/CPU-fault traces. Synthetic trace fixtures and three isolated real kernel mutations must demonstrate intended rejection. Always-uploaded diagnostic artifacts retain production/probe traces and metadata for 14 days. Live required-check registration follows the first remote green run, recorded in [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
+
 ### Planned gates (not yet enforced)
 
 These appear in the release/standards prose but have **no CI job yet**; do not assume a green CI exercised them.
 
-- QEMU smoke — kernel boots under `qemu-system-aarch64 -machine virt` and reaches the success marker. *(As of 2026-05: maintainer-launched only; no `qemu-smoke` CI job yet — tracked as a B2-or-later roadmap follow-up. A behavioural gate, not a no-op — its absence means boot behaviour is verified by the maintainer, not by CI.)*
 - `cargo audit` — fails on known advisories; `cargo-audit` database refreshed weekly in CI. *(Currently dormant: `Cargo.lock` carries zero external dependencies, so the gate would be a no-op today. Wired in once the first external dependency lands per [add-dependency](../../.agents/skills/add-dependency/SKILL.md).)*
 - `cargo vet check` — fails if any dependency is not audited. *(Same dormant conditional as `cargo audit` above — zero external deps today.)*
 
@@ -103,19 +104,19 @@ The `miri` job runs the host-test suite under Stacked Borrows on the pinned nigh
 
 - GitHub Actions is the default. Workflows live under `.github/workflows/`.
 - Jobs are reusable — shared setup (install toolchain, cache cargo registry) is a composite action.
-- A top-level `permissions: contents: read` block applies least privilege to the auto-provisioned `GITHUB_TOKEN`: the pipeline only reads the repo and runs builds, so it gets read scope and nothing more. Any future job that genuinely needs a wider scope (e.g. publishing artifacts) declares its own `permissions:` block at the job level rather than widening the workflow default.
+- A top-level `permissions: contents: read` block applies least privilege to the auto-provisioned `GITHUB_TOKEN`: the pipeline reads the repo, runs checks and uploads diagnostic artifacts through runtime artifact credentials without widening token scope. A future job that genuinely needs wider GITHUB_TOKEN permissions must declare them at the job level rather than widen the workflow default.
 - CI caches `~/.cargo/registry` and `target/` keyed by the toolchain hash.
 - Secrets never enter CI. If a future workflow needs a secret (e.g. publishing artifacts), it is scoped and rotated.
 
 ### Runners
 
 - `ubuntu-latest` for the standard toolchain matrix.
-- `qemu-system-aarch64` on the Linux runner for smoke tests.
+- `qemu-system-aarch64` from `qemu-system-arm` on the `ubuntu-latest` smoke runner; the job records its version and has a 10-minute bound. Debug/release use one core, with no SMP claim.
 - Real-hardware jobs (Raspberry Pi lab, when it exists) are self-hosted runners, off the PR hot path, running on release cadence.
 
 ## Performance harness
 
-`tools/perf-harness.sh` is the canonical source for boot-to-end timing claims. It wraps `tools/run-qemu.sh` in an iteration loop with a per-run watchdog, parses the kernel's `boot-to-end elapsed = X ns` emission out of each run's serial output, and prints `min / p10 / p50 / p90 / p99 / max / mean / stddev` in both ns and ms. Maintainer-launched only; not yet wired into CI (matches the QEMU smoke convention above — promotion to a CI gate is a B2-or-later follow-up alongside the smoke job).
+`tools/perf-harness.sh` is the canonical source for boot-to-end timing claims. It wraps `tools/run-qemu.sh` in an iteration loop with a per-run watchdog, parses the kernel's `boot-to-end elapsed = X ns` emission out of each run's serial output, and prints `min / p10 / p50 / p90 / p99 / max / mean / stddev` in both ns and ms. Maintainer-launched only; not yet wired into CI (weekly informational scheduling is owned by T-035; this is separate from the required guest smoke job).
 
 ### Usage
 
@@ -187,7 +188,7 @@ When the project moves out of solo phase:
 
 - `main` is protected.
 - PRs to `main` require at least one approval (two for security-sensitive changes — see [security-review.md](security-review.md)).
-- Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), and `miri (Stacked Borrows)` (job `miri`). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
+- Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), `miri (Stacked Borrows)` (job `miri`), and `QEMU debug + release smoke (nightly)` (job `qemu-smoke`, registered after first remote green). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
 - Force-push to `main` disabled.
 - Force-push to protected `release/*` branches disabled.
 
@@ -210,7 +211,7 @@ The lint set is canonical at [`code-style.md` §Lints](code-style.md#lints); eve
 | `rustfmt.toml` | Formatter config. |
 | `clippy.toml` | Linter thresholds and allowed lints. |
 | `.cargo/config.toml` | Target triples, linker flags per target. |
-| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `host-stable-check`, `miri`, `coverage`. Third-party actions are SHA-pinned (see §"GitHub Actions pinning"). |
+| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `qemu-smoke`, `host-stable-check`, `miri`, `coverage`. Third-party actions are SHA-pinned (see §"GitHub Actions pinning"). |
 
 ### Planned (when first external dependency lands)
 

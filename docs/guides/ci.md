@@ -8,6 +8,7 @@ This guide describes the GitHub Actions pipeline configured in [`.github/workflo
 |-----|-----------|----------------------|----------|
 | `lint-and-host-test` | pinned nightly + `rustfmt` + `clippy` | ~2 min | `cargo fmt --check` diff, clippy warning, debug/release host test failure, absent release-only syscall tests, tooling ShellCheck finding, expected-failure probe mismatch or stubbed QEMU argument regression |
 | `kernel-build` | pinned nightly + `aarch64-unknown-none` + `clippy` | ~1 min | Debug/release kernel or debug perf-bench build error, kernel/userland/perf-bench clippy warning or expected-failure probe mismatch |
+| `qemu-smoke` | pinned nightly + `llvm-tools-preview` + QEMU | ~2–4 min; 10 min bound | Missing debug/release EL0 markers, release greeting, panic/CPU-fault trace, build failure or expected-failure probe mismatch |
 | `host-stable-check` | stable (no extra components) | ~2 min | host crates failing to build or test on stable Rust |
 | `miri` | pinned nightly + `miri` component | ~10–15 min | Any Stacked Borrows violation in `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` |
 | `coverage` | pinned nightly + `llvm-tools-preview` + `cargo-llvm-cov` | ~3–5 min | **Never** (informational only, `continue-on-error: true`) |
@@ -16,7 +17,7 @@ All jobs run on `ubuntu-latest`. Each caches cargo registry + build artefacts ke
 
 ### Why do the kernel jobs run on the pinned nightly, not stable?
 
-The kernel needs nightly to build (inline asm intrinsics / lang items — see `rust-toolchain.toml` and ADR-0002). `rust-toolchain.toml` pins `nightly-2026-01-15` at the repo root, and rustup's override precedence means that file selects the pinned nightly for **every** in-repo `cargo` invocation regardless of `rustup default`. So `lint-and-host-test`, `kernel-build`, `miri`, and `coverage` all select the pin explicitly (`cargo +$NIGHTLY_PIN …`) — the same toolchain a contributor's local `cargo` uses.
+The kernel needs nightly to build (inline asm intrinsics / lang items — see `rust-toolchain.toml` and ADR-0002). `rust-toolchain.toml` pins `nightly-2026-01-15` at the repo root, and rustup's override precedence means that file selects the pinned nightly for **every** in-repo `cargo` invocation regardless of `rustup default`. So `lint-and-host-test`, `kernel-build`, `qemu-smoke`, `miri`, and `coverage` all select the pin explicitly (`cargo +$NIGHTLY_PIN …`) — the same toolchain a contributor's local `cargo` uses.
 
 ### What does `host-stable-check` give us, then?
 
@@ -58,6 +59,9 @@ The CI matrix mirrors what a contributor should run locally before opening a PR:
 | `cargo clippy --release --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings` | `kernel-build`, after release image build |
 | `tools/build-userland.sh` + `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench` | `kernel-build`, restore debug image immediately before perf build |
 | `cargo clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings` | `kernel-build`, last variant lint |
+| `tools/smoke.sh --int` + `tools/smoke.sh --release --int` (matching images) | `qemu-smoke` |
+| `tools/test-smoke-gates.sh` (synthetic traces) | `lint-and-host-test` and `qemu-smoke` |
+| `tools/test-smoke-gates.sh --real` (also private kernel variants) | `qemu-smoke` |
 | `cargo +stable build` + `cargo +stable host-test` (host crates) | `host-stable-check` |
 | `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` | `miri` |
 | `cargo llvm-cov --workspace --exclude tyrne-bsp-qemu-virt --summary-only` | `coverage` |
@@ -72,11 +76,34 @@ The release guard runs `cargo test --release -p tyrne-kernel --lib -- console_wr
 
 The HAL and BSP deny `clippy::panic`, `clippy::unwrap_used` and `clippy::expect_used` at their crate roots. The `--hal` and `--bsp` probes inject a non-test `None` unwrap outside any allowed function, then require the exact `cargo host-clippy` / `cargo kernel-clippy` command to fail with `clippy::unwrap_used`. The BSP probe first builds its matching debug userland image inside the disposable copy; it never overwrites the checkout's shared image. Existing boot/demo/benchmark invariants and deliberate fatal aborts have narrow function-scoped exceptions with reasons, catalogued in [T-032](../analysis/tasks/phase-b2/T-032-panic-family-denies-hal-bsp.md). These three lints do not prohibit `assert!` or prove a panic-free kernel.
 
-The kernel job builds debug first, then release with its matching userland image, then restores the debug userland immediately before debug perf-bench build/lint. Release EL0 QEMU execution is still owned by [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md); these compile/test gates do not claim hosted release runtime coverage.
+The kernel job builds debug first, then release with its matching userland image, then restores the debug userland immediately before debug perf-bench build/lint. The separate `qemu-smoke` job boots matching debug and release ELFs; compilation alone does not establish guest behavior.
+
+### Guest smoke and diagnostic artifacts
+
+`qemu-smoke` (display name `QEMU debug + release smoke (nightly)`) builds each matching userland/kernel profile explicitly before booting it with `--int`. Debug requires exact serial lines `hello from userspace`, `tyrne: userspace task exited` and `tyrne: all tasks complete`. Release requires exit/completion and forbids any userspace greeting. Both reject panic/CPU-fault patterns. An explicit ELF skips compilation; pass `--release` for release expectations. These are marker checks, not an exact SVC count or proof of exit code zero.
+
+```sh
+tools/build-userland.sh
+cargo kernel-build
+tools/smoke.sh --int target/aarch64-unknown-none/debug/tyrne-bsp-qemu-virt
+tools/build-userland.sh --release
+cargo kernel-build-release
+tools/smoke.sh --release --int target/aarch64-unknown-none/release/tyrne-bsp-qemu-virt
+tools/build-userland.sh
+```
+
+The 20 synthetic trace fixtures cover both positive profiles, each missing required marker, all six panic/fault patterns in both profiles and the forbidden release greeting. With `--real`, three additional disposable kernels omit EL0 publication, omit completion or add a release greeting. Each actual negative must have the intended marker shape, no unrelated fault and the expected smoke rejection. The host-only harness requires Python 3; actual variants additionally need the same Rust/LLVM/QEMU prerequisites as the production guest. It copies current tracked source, uses private build/image paths and removes the copy on exit; no broken source commit or branch is needed.
+
+```sh
+tools/test-smoke-gates.sh
+tools/test-smoke-gates.sh --real --artifact-dir /tmp/tyrne-smoke-review-evidence
+```
+
+The artifact directory must be new; existing paths are refused. `results.json` binds probes to HEAD, a dirty-tracked-worktree flag and the smoke-script hash, and labels synthetic fixtures separately from actual private kernel traces. CI uploads `qemu-smoke-<sha>-<attempt>` on success and failure, retaining it for 14 days. It contains production PID-suffixed raw traces, combined output, probe traces/results/build logs, source/run identity, QEMU/Rust versions and diagnostic wall time. On early failures it contains the evidence available so far. Artifact upload uses runtime credentials with `contents: read`; no token permission is widened.
 
 ## Why is `tyrne-bsp-qemu-virt` excluded from Miri and coverage?
 
-The BSP is a bare-metal `no_std` + `no_main` binary whose panic handler conflicts with `std`'s `panic_impl` lang item when built for the host target (which Miri and llvm-cov both require). BSP code is exercised indirectly via the QEMU smoke test; automating that runs under CI is a T-009 follow-up (the timer init task) — once the kernel can produce a finish-signal, QEMU can exit non-zero on mismatch and CI can assert the trace.
+The BSP is a bare-metal `no_std` + `no_main` binary whose panic handler conflicts with `std`'s `panic_impl` lang item when built for the host target (which Miri and llvm-cov both require). The `qemu-smoke` job exercises the BSP under actual single-core QEMU. The completed demo spins, so QEMU is stopped by a watchdog; the smoke verdict comes from the trace, not the expected timeout exit status.
 
 ## When does the coverage job start gating?
 
@@ -111,5 +138,5 @@ To bump either pin:
 The `coverage` job is marked `continue-on-error: true`. GitHub's UI renders this as a **neutral / yellow** verdict rather than green or red. Be deliberate when configuring branch-protection rules:
 
 - **Do not add `coverage` to the required-checks list** while it is informational; the neutral result does not satisfy `required == passing`, so every push would be blocked even when coverage is fine.
-- **Do add the four real gates** to required checks. GitHub matches each job's display **name**, not its id, so add these exact strings: `fmt + clippy + host tests (nightly)`, `aarch64-unknown-none kernel build (nightly)`, `host crates on stable`, and `miri (Stacked Borrows)`.
+- **Do add the five real gates** to required checks. GitHub matches each job's display **name**, not its id, so add these exact strings: `fmt + clippy + host tests (nightly)`, `aarch64-unknown-none kernel build (nightly)`, `host crates on stable`, `miri (Stacked Borrows)`, and `QEMU debug + release smoke (nightly)`. The smoke check is registered after its first remote green run; [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md) records live read-back evidence.
 - When coverage flips from informational to enforcing (planned post-T-011), remove `continue-on-error: true` first, confirm a full run is green, then add the job to branch-protection.

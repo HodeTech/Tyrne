@@ -7,6 +7,7 @@
 # What actually gates merge (configured in GitHub branch protection):
 #   - lint-and-host-test, kernel-build, host-stable-check  (fast lane)
 #   - miri                                                 (required, slow)
+#   - qemu-smoke                                           (debug + release)
 # Fast lane includes ShellCheck and bare-metal userland clippy, with isolated
 # expected-failure regression probes; no extra required-check names.
 # Host release tests and the two-test release syscall guard run in the fast
@@ -43,9 +44,9 @@ concurrency:
   cancel-in-progress: true
 
 # Least-privilege for the auto-provisioned GITHUB_TOKEN. This pipeline
-# only reads the repository and runs builds; it never writes refs,
-# publishes artifacts, or touches issues/PRs. Override per-job only if a
-# future job genuinely needs more — none do today.
+# reads the repository, runs checks and uploads diagnostic artifacts using
+# the runtime artifact credentials. It never writes refs or issues/PRs;
+# artifact upload needs no wider GITHUB_TOKEN permission.
 permissions:
   contents: read
 
@@ -119,6 +120,8 @@ jobs:
         run: tools/test-ci-gates.sh --release
       - name: QEMU tooling argument regression checks (stubbed)
         run: tools/test-qemu-tooling.sh
+      - name: Smoke gate trace fixtures (synthetic, no guest)
+        run: tools/test-smoke-gates.sh
 
   # ─── Kernel build: aarch64-unknown-none ─────────────────────────────────
   # The bare-metal BSP cannot be built as part of the default workspace
@@ -181,6 +184,80 @@ jobs:
         run: cargo +"$NIGHTLY_PIN" build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench
       - name: Lint debug perf-bench variant
         run: cargo +"$NIGHTLY_PIN" clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings
+
+  # ─── Actual guest smoke: single-core debug and release ─────────────────
+  qemu-smoke:
+    name: QEMU debug + release smoke (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Initialize diagnostic evidence
+        run: |
+          SMOKE_EVIDENCE="$RUNNER_TEMP/qemu-smoke-evidence"
+          echo "SMOKE_EVIDENCE=$SMOKE_EVIDENCE" >> "$GITHUB_ENV"
+          mkdir -p "$SMOKE_EVIDENCE/debug" "$SMOKE_EVIDENCE/release"
+          date +%s > "$SMOKE_EVIDENCE/started-seconds"
+          {
+            echo "source_sha=$(git rev-parse HEAD)"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "started_utc=$(date -u +%FT%TZ)"
+            echo "Production traces: debug/ and release/; isolated probes: probes/."
+            echo "Probe results label synthetic fixtures versus actual private kernels."
+          } > "$SMOKE_EVIDENCE/metadata.txt"
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm
+          qemu-system-aarch64 --version | tee "$SMOKE_EVIDENCE/qemu-version.txt"
+      - name: Install pinned nightly + aarch64 target
+        run: |
+          rustup toolchain install "$NIGHTLY_PIN" --component llvm-tools-preview --no-self-update
+          rustup override set "$NIGHTLY_PIN"
+          rustup target add aarch64-unknown-none --toolchain "$NIGHTLY_PIN"
+          rustc -Vv > "$SMOKE_EVIDENCE/rustc-version.txt"
+      - name: Cache cargo registry and smoke build
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-qemu-smoke-${{ env.NIGHTLY_PIN }}-
+      - name: Build matching debug userland and kernel
+        run: |
+          tools/build-userland.sh
+          cargo +"$NIGHTLY_PIN" kernel-build
+      - name: Debug EL0 smoke (actual guest)
+        run: TMPDIR="$SMOKE_EVIDENCE/debug" tools/smoke.sh --int target/aarch64-unknown-none/debug/tyrne-bsp-qemu-virt 2>&1 | tee "$SMOKE_EVIDENCE/debug.output.log"
+      - name: Build matching release userland and kernel
+        run: |
+          tools/build-userland.sh --release
+          cargo +"$NIGHTLY_PIN" kernel-build-release
+      - name: Release EL0 smoke (actual guest)
+        run: TMPDIR="$SMOKE_EVIDENCE/release" tools/smoke.sh --release --int target/aarch64-unknown-none/release/tyrne-bsp-qemu-virt 2>&1 | tee "$SMOKE_EVIDENCE/release.output.log"
+      - name: Expected-failure smoke probes (isolated actual guests + fixtures)
+        run: tools/test-smoke-gates.sh --real --artifact-dir "$SMOKE_EVIDENCE/probes"
+      - name: Record wall time
+        if: always()
+        run: |
+          if [[ -f "$SMOKE_EVIDENCE/started-seconds" ]]; then
+            echo "finished_utc=$(date -u +%FT%TZ)" >> "$SMOKE_EVIDENCE/metadata.txt"
+            echo "wall_seconds=$(( $(date +%s) - $(cat "$SMOKE_EVIDENCE/started-seconds") ))" >> "$SMOKE_EVIDENCE/metadata.txt"
+          fi
+      - name: Upload smoke diagnostics (including failures)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qemu-smoke-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ env.SMOKE_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
 
   # ─── Host stable check: host crates compile + test on stable ────────────
   # A genuine "the host-buildable crates compile and pass tests on stable
