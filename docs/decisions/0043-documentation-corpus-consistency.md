@@ -9,6 +9,8 @@
 [Track B.2-2](../roadmap/phases/phase-b2.md#track-b2-2--documentation-cascade-phase-b-closure) owns the post-Phase-B documentation cascade under [ADR-0040](0040-phase-b2-consolidation-bridge.md).
 At source `7d48f50603fa0d30464ea7b032f4f0fb82c3964c`, its tasks reproduce repeated task/review index drift, stale live roadmap pointers and collisions between tentative ADR numbers in different phase ledgers.
 There are 32 numbered planned-decision rows across Phases C–I, including two separate F2 decisions; three numbers collide between C and D, and C's tentative 0040 collides with the filed governance ADR.
+Filing this proposal package also occupies 0041–0043, even while Proposed: C2/C3/C4's tentative 0041/0042/0043 and D1/D2's tentative 0042/0043 now collide with filed records.
+D3's tentative 0044 still collides with C5 but has no filed ADR at this checkpoint.
 [T-054](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md) explicitly offers stable purpose identifiers as an alternative to another numeric cascade.
 [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) offers local, advisory or required automation, with an Accepted decision required before either CI option.
 
@@ -18,7 +20,8 @@ The corpus contains historical snapshots and quoted defects, so a checker must d
 
 This proposal adds a documentation-maintenance policy and chooses T-054's existing stable-identifier option.
 It does not narrow the whole-phase scope, open Phase C/D, or change ADR-0040's outcome.
-ADR-0040's historical numeric-cascade wording will receive an append-only clarification after Acceptance; its body and filed number remain intact.
+In the same commit that accepts this ADR, append a dated rider to ADR-0040 covering both Decision outcome rule 7's historical numeric-cascade wording and Track B.2-1 implementation policy rule 4's explicitly limited stacked-execution exception.
+The rider points to this ADR's purpose-identity choice and Track B.2-2-only execution extension; ADR-0040's original body, filed number, status and whole-phase outcome remain intact.
 
 ## Decision drivers
 
@@ -34,7 +37,8 @@ ADR-0040's historical numeric-cascade wording will receive an append-only clarif
 1. **Stable planned-decision identifiers plus a required offline Python check in the existing lint job.** Eliminate numeric placeholders and gate bounded mechanical consistency.
 2. **Another numeric cascade plus local-only checking.** Keep tentative numbers and let contributors run an optional tool.
 3. **Stable identifiers plus advisory CI checking.** Report drift remotely without failing a required job.
-4. **A shell implementation or a third-party Markdown parser.** Choose a different implementation trade-off for the same check.
+4. **A shell implementation.** Keep the command in shell while implementing the same bounded parsing and index contracts.
+5. **A third-party Markdown parser.** Reuse a packaged parser while retaining the same consistency policy.
 
 ## Decision outcome
 
@@ -86,12 +90,16 @@ This is not a new commitlint policy.
 
 T-048 repairs the known Phase-A/B task links; T-049 owns review-index synchronization and a bounded mechanical repair of additional broken review links found by the full-corpus scan.
 Repair live navigation to current targets.
-For historically removed source/skill targets, prefer a verified immutable historical commit permalink when pointing at the current file would change the evidence.
+Review-archive Markdown links into the retired `.claude/skills/` tree must use verified immutable historical commit permalinks that contain the cited target.
+T-049's original note-only alternative is incompatible with this gate and is removed during its pre-implementation contract reconciliation; a history note does not resolve a dead destination.
+For other historically removed source targets, prefer a verified immutable historical commit permalink when pointing at the current file would change the evidence.
 Quoted old paths remain quoted data, and review findings, verdicts, measurements and provenance are not rewritten.
 Any unavoidable exception must identify the exact document, destination and reason, be reviewable and have a fixture; no archive-wide exclusion is permitted.
 The intended initial release has no unreviewed broken-link exception.
 
 T-055 also reconciles the ADR index's existing descriptive-title and metadata conventions against actual headers, reporting the baseline anomalies explicitly rather than claiming a strict clean comparison prematurely.
+Before T-055 implementation, replace its unconditional “index needs no edit / no anomalies” AC with source-based index reconciliation and an explicit anomaly/disposition report, and add `docs/decisions/README.md` and the sync skill to its allowed scope.
+Report title/filename-slug differences, including 0040–0043, without renaming filed records or claiming that a matching index/header removes those differences.
 Support the template's existing Deferred vocabulary and the historical partial-supersession status without changing the meaning of either record.
 Syntax compilation and fixture execution are required for the Python tool; independent review checks formatting and maintainability against the existing Python tools.
 There is no claimed standard-library Python formatter or linter and no package installation hidden behind this choice.
@@ -110,7 +118,7 @@ Not applicable — this ADR settles documentation and CI policy; there is no ker
 
 ### Dependency chain
 
-1. Explicit maintainer Acceptance after the [write-adr](../../.agents/skills/write-adr/SKILL.md) careful re-read.
+1. Explicit maintainer Acceptance after the [write-adr](../../.agents/skills/write-adr/SKILL.md) careful re-read; in that same commit, append the ADR-0040 rider for Decision outcome rule 7 and Track B.2-1 implementation policy rule 4. Reconcile the affected task contracts before their implementation, as specified in the approved plan.
 2. [T-048](../analysis/tasks/phase-b2/T-048-phase-b-task-corpus-sync.md) and [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) reconcile task/review indexes and baseline links.
 3. [T-055](../analysis/tasks/phase-b2/T-055-adr-append-only-corrections.md) reconciles the existing ADR metadata anomalies with append-only record corrections.
 4. [T-052](../analysis/tasks/phase-b2/T-052-standards-docs-reality-sync.md) and [T-053](../analysis/tasks/phase-b2/T-053-standards-docs-mechanical-fixes.md) make standards truthful and opening fences tagged.
@@ -118,7 +126,10 @@ Not applicable — this ADR settles documentation and CI policy; there is no ker
 6. [T-047](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md) separates live roadmap state from historical snapshots.
 7. [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) implements the checker, isolated fixtures, usage documentation and required CI step after the corpus starts green. Verify it on macOS locally and Linux in hosted CI.
 
-The decision takes effect on Acceptance; the operational gate is delivered and verified by T-056, not by filing this proposal.
+The decision takes effect on Acceptance; the operational gate is delivered and verified by T-056, not by filing or accepting this record alone.
+It is required on source revisions containing the delivered CI wiring; default-branch enforcement follows that wiring's merge.
+This does not change ADR-0040 Decision outcome rule 3: T-056 remains optional for phase-exit accounting in general.
+This requested sequence selects implementation, including all T-056 verification, and does not select a carry-forward or permit a decision-only completion.
 
 ## Consequences
 
@@ -142,6 +153,7 @@ The decision takes effect on Acceptance; the operational gate is delivered and v
 - Kernel/userland behavior, unsafe code, performance policy and classic branch-protection settings are unaffected by this policy.
 - Correctness work outside this track, including HIGH T-038 and ADR-0040's later scope checkpoint, retains its own ownership.
 - Optional T-056 is deliberately included in this requested implementation, without making all Phase-B.2 polish items mandatory.
+- Filing the proposal package temporarily increases filed-number collisions in the untouched tentative ledgers; T-054 migrates every affected live definition/reference before the consistency gate is enabled.
 
 ## Pros and cons of the options
 
@@ -161,15 +173,20 @@ The decision takes effect on Acceptance; the operational gate is delivered and v
 - Pro: removes number collisions and makes consistency reports visible without blocking work.
 - Con: a green required suite could still merge the exact drift this track is intended to prevent.
 
-### Option 4 — Shell or third-party parser
+### Option 4 — Shell implementation
 
-- Pro: shell is already ubiquitous; a mature parser can supply a larger Markdown grammar.
-- Con: shell is poorly suited to balanced links, Unicode anchors and structured indexes; a third-party parser adds packaging, versioning and dependency-review cost. Reconsider a parser dependency only if concrete unsupported corpus forms make the bounded implementation inadequate, with a new explicit decision before adoption.
+- Pro: shell already runs the repository's build and smoke commands and needs no Python-specific command entry point.
+- Con: balanced links, Unicode anchors and structured indexes would require substantial custom parsing or reliance on platform-specific utilities, making the same portable fixture contract harder to maintain.
+
+### Option 5 — Third-party Markdown parser
+
+- Pro: a mature parser can supply a larger tested Markdown grammar and reduce custom tokenization work.
+- Con: adds packaging, versioning and dependency-review cost beyond the existing standard-library tool environment. Reconsider only if concrete unsupported corpus forms make the bounded implementation inadequate, with a new explicit decision before adoption.
 
 ## References
 
 - [ADR-0013 — Roadmap and planning](0013-roadmap-and-planning.md).
-- [ADR-0025 — Forward-reference and append-only rules](0025-adr-governance-amendments.md).
+- [ADR-0025 — ADR governance amendments: forward-reference contract, rider hygiene](0025-adr-governance-amendments.md).
 - [ADR-0040 — Phase B.2 governance](0040-phase-b2-consolidation-bridge.md).
 - [T-054 — Planned ADR identities](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md).
 - [T-056 — Consistency automation](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md).

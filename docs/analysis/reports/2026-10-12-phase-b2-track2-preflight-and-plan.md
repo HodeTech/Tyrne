@@ -50,9 +50,9 @@ All recommendations below are proposals. Acceptance of the referenced ADRs and a
 | Decision | Recommendation | Approval / implementation boundary |
 |----------|----------------|-------------------------------------|
 | Historical naming rule | File [ADR-0041](../../decisions/0041-test-name-prefix-policy-recovery.md), then explicitly accept the recovered historical rule before superseding it. | Do not imply an earlier ADR approval or rename tests during recovery. |
-| Current test naming | Accept [ADR-0042](../../decisions/0042-descriptive-test-names.md): descriptive names without mandatory `test_`, real examples, review-enforced clarity. | Separate Accept/supersession commit; then T-052 changes the standard. |
-| Planned ADR identity | Accept [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md): unique milestone-plus-purpose slugs; numeric IDs assigned at filing. | T-054 migrates live rows/references; 0034 and filed numbers stay intact; ADR-0040 gets an additive clarification. |
-| T-056 tool/gate | Include optional T-056; Python 3.9+ stdlib, offline deterministic command and isolated fixtures, failing step inside existing required lint job. | Accept ADR-0043 before any CI/policy implementation. No seventh required context or third-party package. |
+| Current test naming | Accept [ADR-0042](../../decisions/0042-descriptive-test-names.md): descriptive names without mandatory `test_`, real examples, review-enforced clarity. | Atomically accept 0042 and supersede 0041 in one commit; then T-052 changes the standard and adds its ADR-0042 reference. |
+| Planned ADR identity | Accept [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md): unique milestone-plus-purpose slugs; numeric IDs assigned at filing. | T-054 migrates live rows/references; 0034 and filed numbers stay intact; 0043's Acceptance commit adds the ADR-0040 rider covering numbering and the execution exception. |
+| T-056 tool/gate | Include optional-for-phase-exit T-056 in this implementation; Python 3.9+ stdlib, offline deterministic command and isolated fixtures, failing step inside existing required lint job. | Accept ADR-0043 before implementation. The gate is required on revisions with delivered CI wiring; Acceptance alone is not delivery. No seventh context, third-party package or change to the phase-wide optional status. |
 | Panic documentation | Describe banner + PanicInfo message/location + spin/halt, distinguish saved exception diagnostics from generic panic-time registers. Approve removing T-052's automatic register-dump follow-up obligation. | This closes a false current-state claim; no new register-dump feature or ungrounded implementation promise is made. Choosing a feature instead needs a separately scoped task/design before proceeding. |
 | `unimplemented!` and lint scope | State that `todo` is workspace-denied, `unimplemented!` relies on review, and panic-family per-crate denies apply to kernel/HAL/BSP with scoped allowances. | Preserve host stubs and avoid expanding runtime/lint policy in a documentation correction. |
 | Copyright identity | Maintainer supplied `HodeTech, Cemil ILIK and Tyrne Contributors` on 2026-10-12. Use the common line `Copyright 2026 HodeTech, Cemil ILIK and Tyrne Contributors`, preserving that spelling and capitalization. | This identity choice is resolved. T-050 applies it after the ADR/plan approval gate; the reply does not accept the ADR package. |
@@ -64,14 +64,24 @@ All recommendations below are proposals. Acceptance of the referenced ADRs and a
 
 The initial proposal commit contains ADR-0041 and ADR-0042 together so their cross-links resolve at every committed checkpoint.
 After approval: accept the historical recovery separately, then accept ADR-0042 and supersede ADR-0041 with both index/callout directions intact.
-Accept ADR-0043 separately and append its dated ADR-0040 clarification before applying its standard/CI changes.
+The 0042 Acceptance, 0041 status/callout and both index rows change in one atomic commit; no committed checkpoint leaves both contradictory records Accepted.
+Accept ADR-0043 separately and append its dated ADR-0040 rider in that same commit, covering Decision outcome rule 7 and Track B.2-1 implementation policy rule 4 before applying its standard/CI changes.
 The standard-change skill's proposal cross-links are staged through task/plan/index references here; the standards themselves are edited only after Acceptance.
+
+**Draft Acceptance-time rider for ADR-0040 (not yet applied):**
+
+> **2026-10-12 — Track B.2-2 clarification and limited execution extension (ADR-0043).** Decision outcome rule 7's numeric re-sequencing is implemented by T-054 through stable milestone-plus-purpose identifiers; filed ADR numbers and reserved 0034 remain intact. Track B.2-1 implementation policy rule 4's reviewed stacked-execution exception is extended by ADR-0043 to the maintainer-requested Track B.2-2 sequence only: prerequisite implementation, applicable gates and both fresh review rounds must pass on development before dependent work starts, and new tasks remain In Review until maintainer approval/merge. Decision outcome rule 3's optional-for-exit status for T-056 and the whole-phase C/D gate are unchanged; the selected sequence implements T-056, and its required CI enforcement begins on revisions containing the delivered wiring. The original decision body remains preserved; ADR-0043 supplies the current clarification and limited extension.
+
+At Acceptance, this appended rider links ADR-0043 and the existing T-054/T-056 task files using sibling/task-relative destinations; it does not rewrite ADR-0040's original body or status.
+The date above is the proposal date; use the actual maintainer Acceptance date if it differs.
 
 ## Task-contract reconciliation
 
 After approval, each affected task receives a dated reconciliation entry linking this plan and its applicable ADR, then its literal AC/DoD text is corrected before the task is implemented.
 Its original opening history remains intact.
 Task “Ready” at baseline is not authority to bypass a newly identified ADR precondition.
+The three clauses below are mandatory proposed replacements, not merely advisory implementation notes; Step 0 applies them and reconciles the corresponding ADR-required metadata after explicit package approval.
+Until that approval, the original task files remain unchanged and are not executable under this proposed policy.
 
 | Task | Reconciled scope and acceptance evidence |
 |------|------------------------------------------|
@@ -79,18 +89,29 @@ Task “Ready” at baseline is not authority to bypass a newly identified ADR p
 | [T-046](../tasks/phase-b2/T-046-docs-subsystem-chapters-refresh.md) | Whole seven-chapter factual sweep, including fault/lifecycle, IPC bridge, high-half and HAL contract corrections. Exact SVC count is inspected trace evidence; add independent security review of boundary claims. |
 | [T-047](../tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md) | Correct all live bullets, preserve and archive dated history, record T-029 as historical completion and T-030–T-037 as the latest completed wave. Add the three seam-review carry-forwards with their actual triggers. |
 | [T-048](../tasks/phase-b2/T-048-phase-b-task-corpus-sync.md) | Existing ten merged task closures, 23-row index and three link repairs. Formalize date_done in template and lifecycle; do not re-author old task implementation evidence. |
-| [T-049](../tasks/phase-b2/T-049-review-indices-sync.md) | Five missing canonical reviews; explicit companion/master-review discovery; dated B6 structural repair; fresh coverage/Miri; bounded archive/master-plan link repairs discovered by T-056 baseline scan. Preserve quoted defect provenance. |
+| [T-049](../tasks/phase-b2/T-049-review-indices-sync.md) | Five missing canonical reviews; explicit companion/master-review discovery; dated B6 structural repair; fresh coverage/Miri; bounded archive/master-plan link repairs discovered by T-056 baseline scan. Retired skill navigation uses verified immutable historical permalinks; remove the note-only option. Preserve quoted defect provenance. |
 | [T-050](../tasks/phase-b2/T-050-entry-docs-and-glossary-sync.md) | Four terms and stable anchors, existing glossary factual corrections, build prerequisites, README current/target labels, two-task/first-userspace guide corrections and safe add-bsp template. Use the exact maintainer-supplied copyright identity recorded above. |
 | [T-051](../tasks/phase-b2/T-051-contributing-and-security-status.md) | Current five-syscall/security-limit description and present contribution workflow, including the stale “when implementation begins” section. Maintainer reviews SECURITY wording before merge; disclosure policy is untouched. |
-| [T-052](../tasks/phase-b2/T-052-standards-docs-reality-sync.md) | Accepted naming change; approved panic-claim correction without promised register-dump task; truthful lint/logging scope, planned fault/supervision status and downstream-effects search. |
+| [T-052](../tasks/phase-b2/T-052-standards-docs-reality-sync.md) | Accepted naming change and testing.md References entry for ADR-0042; approved panic-claim correction without promised register-dump task; truthful lint/logging scope, planned fault/supervision status and downstream-effects search. |
 | [T-053](../tasks/phase-b2/T-053-standards-docs-mechanical-fixes.md) | Original eight corrections plus adjacent false tooling-status claims (missing_docs under -D warnings, planned audit/vet, live smoke runner). panic=abort target flags also cover userland built for that same triple. No lint-level change. |
 | [T-054](../tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md) | Purpose identities, semantic cross-phase mapping and live-definition duplicate check; preserve real ADR-0040 references, historical aliases and unnumbered decisions. |
-| [T-055](../tasks/phase-b2/T-055-adr-append-only-corrections.md) | Five dated append-only ADR corrections and IrqGuard comment; source-based ADR-index normalization with anomalies reported/resolved; align sync procedure vocabulary to existing template/partial-supersession precedent. |
+| [T-055](../tasks/phase-b2/T-055-adr-append-only-corrections.md) | Five dated append-only ADR corrections and IrqGuard comment; replace the unconditional index/no-anomalies AC; allow index/sync-skill/report edits and report all metadata/title-slug anomalies with dispositions. Align sync vocabulary to Deferred/partial-supersession precedent. |
 | [T-056](../tasks/phase-b2/T-056-docs-consistency-automation.md) | Approved Python/gate/slug/index/history/audit contracts from ADR-0043; real syntax + fixture verification and independent style review replace the stale generic formatter/linter requirement. Run whole-corpus green before enabling CI. |
 
 Each step's allowed diff consists of its named task content plus the necessary task/current/track index updates, governing decision references, review artifacts and review index entries.
 Assess the allowlist on that step's commit range, not the entire stacked development diff.
 Extra file changes require a demonstrated existing-scope reason and a recorded review disposition; this is not authority for unrelated cleanup.
+
+### Mandatory literal contract edits at Step 0
+
+**T-049 — history and link gate (M3).** Replace the `.claude/skills/` AC and its Approach/Design-notes alternatives with: retired skill navigation targets resolve to verified immutable historical commit permalinks containing the cited file; preserve old paths quoted as defect evidence and all historical verdicts/measurements. A migration note may explain history but cannot satisfy link validity. Remove the note-only alternative and do not substitute current skills where that changes the evidence. Any genuinely unavoidable exception follows ADR-0043's exact-destination, reason, review and fixture contract. Remove the Out-of-scope exclusion for other broken review-archive links: bounded navigation repair in touched historical/master-plan documents is owned by T-049 before gate enablement. Amend its DoD scope to include those repaired files, affected discovery indexes/companions and associated evidence/review artifacts. The full baseline gate must pass; no archive-wide exclusion is allowed.
+
+**T-055 — index and anomalies (M2/L4).** Replace the sixth AC's “index needs no edit / record no anomalies” clause with: compare and reconcile canonical index membership plus title/status/date against actual record headers; explicitly report each anomaly and its disposition. Preserve the existing additions-only/ADR-0012-strikethrough exception and no-status-change requirement for the five Accepted-ADR corrections. Report title/filename-slug differences, including 0040–0043, separately from index/header mismatches; a descriptive short slug does not justify renaming a filed ADR or concealing that report. Handle Deferred, prose-extended dates, partial supersession and reserved 0034 from existing records without inventing metadata. Expand the DoD file list by `docs/decisions/README.md`, `.agents/skills/sync-adr-index/SKILL.md` and the anomaly/review report artifacts, in addition to the existing files and necessary task/track indexes. Reconcile the sync procedure's vocabulary/reporting with those existing forms; do not silently redefine its anomaly report away.
+
+**T-052 — motivating reference (L5).** Add to the naming AC: after ADR-0042 is Accepted and ADR-0041 is atomically superseded, testing.md's References links ADR-0042; verify the link and record the downstream-effects search. The already-proposed panic AC correction removes the automatic register-dump follow-up obligation only upon package approval, and the chosen lint option changes no lint level.
+
+Step 0 records each old clause and its approved replacement in the task review history before implementation; task opening provenance remains intact.
+This step is a preparation/contract boundary and does not report any task delivery.
 
 ## Execution steps after approval
 

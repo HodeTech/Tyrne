@@ -7,6 +7,8 @@
 - **Security-review cross-reference:** Not applicable to this proposal-only delta. The implementation plan requires distinct security reviews of architecture/security-boundary descriptions; this artifact supplies no runtime security verdict.
 - **Description:** [Preflight and 13-step implementation plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md), Proposed ADRs [0041](../../../decisions/0041-test-name-prefix-policy-recovery.md), [0042](../../../decisions/0042-descriptive-test-names.md) and [0043](../../../decisions/0043-documentation-corpus-consistency.md), their index rows and the current-focus preparation notice.
 
+**Subsequent supplied-review follow-up:** The maintainer supplied M1–M3, L1–L6 and O1–O3 after the original review. Their [source-verified reconciliation](../../reports/2026-10-12-adr-0041-0043-supplied-review-reconciliation.md) and revised proposals are awaiting new independent follow-up rounds and explicit maintainer approval. The original rounds/verdict below remain tied to their recorded source, not to these later edits.
+
 The initial range contains six Markdown files and 528 additions. Both broad rounds reviewed that same cumulative proposal, rather than only the last commit. The three earlier read-only preflight agents informed the writing brief; they are not counted as either review round. The coordinator read all four reviewer reports, validated the sole finding against the ADR template, and merged their five-role results here under the [code-review master plan](master-plan.md).
 
 | Round | Independent context | Model / effort | Original result | Follow-up disposition |

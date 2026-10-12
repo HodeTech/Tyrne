@@ -14,6 +14,7 @@ The rule has no identified motivating ADR, and the implemented tests use descrip
 The [standard-change procedure](../../.agents/skills/propose-standard-change/SKILL.md) requires recovering an implicit decision before superseding it.
 This record captures only the historical prefix rule; [ADR-0042](0042-descriptive-test-names.md) proposes its replacement.
 Both records remain Proposed pending explicit maintainer approval.
+Proposed describes this ADR record's approval state; it does not suspend the existing written rule in testing.md, which continues to apply while the replacement remains Proposed.
 Neither this proposal nor its historical framing authorizes a mass rename or a change to the standard.
 
 ## Decision drivers
@@ -37,7 +38,9 @@ The recovered rule is: test names follow `test_<subject>_<condition>_<expected_o
 There is no recovered claim of automated naming enforcement or demonstrated adoption.
 This record does not recover unrelated testing requirements.
 
-If the maintainer approves the proposed replacement, record this recovery as Accepted in a separate commit from its initial proposal, then accept ADR-0042 and mark this record `Superseded by 0042`, preserving this body.
+If the maintainer approves the proposed replacement, record this recovery as Accepted in a separate commit from its initial proposal.
+In the next transition commit, atomically accept ADR-0042, mark this record `Superseded by 0042`, add its forward callout and update both index rows, preserving this body.
+There must be no committed checkpoint with both contradictory records Accepted.
 The replacement becomes effective before T-052 edits the standard.
 If the replacement is rejected, do not silently implement it or claim this recovery resolved the adoption gap.
 
@@ -94,5 +97,5 @@ Not applicable — this ADR recovers a process rule; there is no runtime state m
 - [Testing standard — Test naming](../standards/testing.md#test-naming).
 - [Propose standard change](../../.agents/skills/propose-standard-change/SKILL.md).
 - [Supersede ADR](../../.agents/skills/supersede-adr/SKILL.md).
-- [ADR-0025 — Forward-reference and append-only discipline](0025-adr-governance-amendments.md).
+- [ADR-0025 — ADR governance amendments: forward-reference contract, rider hygiene](0025-adr-governance-amendments.md).
 - [ADR-0042 — Proposed descriptive naming policy](0042-descriptive-test-names.md).

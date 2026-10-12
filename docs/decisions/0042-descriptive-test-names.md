@@ -38,8 +38,11 @@ The three descriptive components are guidance, not a requirement for a mechanica
 Review checks whether the name explains the behavior.
 No naming-prefix lint, mass rename, or retrospective rejection of historical prefixed names is introduced.
 
-After explicit maintainer approval, first accept ADR-0041's historical recovery in its own commit; then accept this ADR and update ADR-0041's status, forward callout and index row in a separate supersession commit.
+After explicit maintainer approval, first accept ADR-0041's historical recovery in its own commit.
+Then, in one atomic supersession commit, accept this ADR, change ADR-0041 to `Superseded by 0042`, add its forward callout and update both index rows.
+Do not commit this ADR as Accepted while ADR-0041 remains Accepted.
 Only after that transition may T-052 replace the standard's pattern and examples.
+That standard edit must also add a References entry linking this ADR, as required by the standard-change procedure.
 
 ### Simulation
 
@@ -49,7 +52,7 @@ Not applicable — this ADR settles a naming convention; there is no runtime sta
 
 1. [ADR-0041](0041-test-name-prefix-policy-recovery.md) records the implicit historical rule and must be Accepted before its supersession.
 2. Explicit maintainer approval and the [write-adr](../../.agents/skills/write-adr/SKILL.md) careful re-read precede this ADR's Acceptance.
-3. [T-052](../analysis/tasks/phase-b2/T-052-standards-docs-reality-sync.md) changes the test-naming section and searches downstream standards, skills and architecture documents.
+3. [T-052](../analysis/tasks/phase-b2/T-052-standards-docs-reality-sync.md) changes the test-naming section, adds this ADR to the standard's References and searches downstream standards, skills and architecture documents.
 4. [T-053](../analysis/tasks/phase-b2/T-053-standards-docs-mechanical-fixes.md) reconciles tagged fences in the same standard; the two tasks coordinate the shared file.
 
 ## Consequences
