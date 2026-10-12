@@ -16,19 +16,20 @@
 //! [adr-0029]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0029-initial-userspace-image-format.md
 //! [adr-0039]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0039-userland-build-pipeline.md
 
-// `no_std` / `no_main` apply on the real (aarch64 EL0) target. The crate is a
+// `no_std` / `no_main` apply on the bare-metal aarch64 EL0 target. The crate is a
 // `--workspace` member, so host tooling (`cargo check --workspace`, Miri)
 // compiles it for the host; there it is an ordinary `std` binary with an empty
 // `main` (see the host stub below) so it builds (it is never run on the host).
-#![cfg_attr(target_arch = "aarch64", no_std, no_main)]
+// Keep in sync with ../build.rs, ../../tyrne-user/src/lib.rs and bsp-qemu-virt/src/main.rs's bare-metal gate.
+#![cfg_attr(all(target_arch = "aarch64", target_os = "none"), no_std, no_main)]
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 use tyrne_user::{console_write, task_exit, HELLO_CONSOLE_CAP};
 
 /// The greeting emitted via `console_write`. A read-only `.rodata` literal that
 /// lives inside the mapped image region (`USER | EXECUTE`) — gate #1 admits a
 /// read of a `USER` page, so the buffer pointer translates and the bytes copy.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 static GREETING: &[u8] = b"hello from userspace\n";
 
 /// Userspace entry point. Placed at **offset 0** of the raw-flat image (the
@@ -38,7 +39,7 @@ static GREETING: &[u8] = b"hello from userspace\n";
 /// `#[no_mangle]` gives the linker the bare `_start` symbol (the `hello.ld`
 /// `ENTRY`); `#[link_section = ".text._start"]` + the script's `KEEP` place it
 /// first in `.text` so offset 0 is the entry.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 #[no_mangle]
 #[link_section = ".text._start"]
 pub extern "C" fn _start() -> ! {
@@ -51,7 +52,7 @@ pub extern "C" fn _start() -> ! {
 /// Panic handler (required for `#![no_std]`). Unwinding is disabled
 /// (`panic=abort` for the bare-metal target), so this just exits the task with
 /// a distinct non-zero code rather than attempting to unwind.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     task_exit(101)
@@ -60,5 +61,5 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 // Host stub: this program targets aarch64 EL0; the host build exists only so
 // `cargo check --workspace` / Miri can include the crate (it is never run on
 // the host — the real entry is `_start`, above).
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
 fn main() {}

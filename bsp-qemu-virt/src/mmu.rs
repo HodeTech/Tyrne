@@ -309,12 +309,17 @@ impl Mmu for QemuVirtMmu {
         // clear the descriptor (zero invalidates the entry per ARM ARM
         // §D5.3 — bit 0 = 0 = invalid). No intermediate-table
         // allocation; `frames` is unused on the unmap path. Per-VA
-        // TLB invalidate via `MapperFlush`. Audit: UNSAFE-2026-0025.
+        // TLB invalidate via `MapperFlush`. With `unmap = true`, the
+        // walker never reads its `pa` argument: reuse the already-valid
+        // root frame instead of constructing and unwrapping a dummy zero
+        // frame. Allowing unwrap here would weaken this non-init path for
+        // no benefit. Root/table ownership and lifetime remain unchanged.
+        // Audit: UNSAFE-2026-0025.
         let pa = unsafe {
             walk_and_install_leaf(
                 as_.root,
                 va,
-                /* pa: ignored on unmap */ PhysFrame::from_aligned(PhysAddr(0)).unwrap(),
+                /* pa: ignored on unmap */ as_.root,
                 MappingFlags::empty(),
                 &mut NullFrameProvider,
                 /* unmap */ true,

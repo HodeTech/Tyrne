@@ -4,9 +4,13 @@
 # Usage:
 #   tools/run-qemu.sh                                         — debug build
 #   tools/run-qemu.sh --release                               — release build
+#   tools/run-qemu.sh --smp N                                 — positive core count
 #   tools/run-qemu.sh --int-log                               — log exceptions (PID-suffixed temp file)
 #   tools/run-qemu.sh <path/to/elf>                           — explicit ELF path
 #   tools/run-qemu.sh -h | --help                             — show this usage
+#
+# Core count precedence: --smp N, then QEMU_SMP, then 1.
+# N > 1 is a tooling affordance; the current kernel has no SMP bring-up.
 #
 # --int-log adds `-d int -D <logfile>` to the QEMU invocation, where
 # <logfile> is ${TMPDIR:-/tmp}/qemu_int.<pid>.log (printed at startup).
@@ -22,6 +26,7 @@ set -euo pipefail
 BUILD_PROFILE="debug"
 KERNEL=""
 INT_LOG=""
+SMP="${QEMU_SMP-1}"
 
 usage() {
     # Echo the usage block above (lines after the shebang up to the first
@@ -29,34 +34,52 @@ usage() {
     sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2
 }
 
-for arg in "$@"; do
-    case "$arg" in
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --release)
             BUILD_PROFILE="release"
+            shift
             ;;
         --int-log)
             INT_LOG="yes"
+            shift
+            ;;
+        --smp)
+            if [[ $# -lt 2 ]]; then
+                echo "error: --smp requires a value" >&2
+                usage
+                exit 2
+            fi
+            SMP="$2"
+            shift 2
             ;;
         -h|--help)
             usage
             exit 0
             ;;
         --*)
-            echo "error: unknown flag: $arg" >&2
+            echo "error: unknown flag: $1" >&2
             usage
             exit 2
             ;;
         *)
             if [[ -n "$KERNEL" ]]; then
-                echo "error: unexpected extra argument: $arg" >&2
+                echo "error: unexpected extra argument: $1" >&2
                 echo "       (the kernel path was already set to: $KERNEL)" >&2
                 usage
                 exit 2
             fi
-            KERNEL="$arg"
+            KERNEL="$1"
+            shift
             ;;
     esac
 done
+
+if ! [[ "$SMP" =~ ^[1-9][0-9]*$ ]]; then
+    echo "error: --smp / QEMU_SMP must be a positive integer; got '$SMP'" >&2
+    usage
+    exit 2
+fi
 
 if [[ -z "$KERNEL" ]]; then
     KERNEL="target/aarch64-unknown-none/${BUILD_PROFILE}/tyrne-bsp-qemu-virt"
@@ -89,7 +112,7 @@ exec qemu-system-aarch64 \
     -M virt \
     -cpu cortex-a72 \
     -m 128M \
-    -smp 1 \
+    -smp "$SMP" \
     -nographic \
     -serial mon:stdio \
     ${INT_LOG_FLAGS[@]+"${INT_LOG_FLAGS[@]}"} \

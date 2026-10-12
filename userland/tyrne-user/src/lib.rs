@@ -20,19 +20,18 @@
 
 #![no_std]
 
-// The `svc` shims are aarch64-only. The crate is a `--workspace` member, so
-// host tooling (`cargo check --workspace`, Miri) compiles it for the host —
-// where aarch64 inline asm does not assemble. Gate the asm to aarch64 and give
-// the host degenerate stubs (never run; the crate only executes in EL0 on
-// aarch64). Mirrors the kernel's `cfg_attr(not(test), no_std)` discipline.
-#[cfg(target_arch = "aarch64")]
+// The `svc` shims run only at Tyrne EL0 on bare-metal aarch64. Host tooling
+// (`cargo check --workspace`, Miri) must select the stubs even on ARM hosts:
+// their OS syscall ABI is not Tyrne's. The host stubs are never executed here.
+// Keep in sync with ../hello/build.rs, ../hello/src/main.rs and bsp-qemu-virt/src/main.rs's bare-metal gate.
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 use core::arch::asm;
 
 /// `task_exit` syscall number (`x8`), per [ADR-0031][adr-0031]. Restated
 /// userspace-side; the kernel authority is `SyscallNumber::TaskExit as 4`.
 ///
 /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 const SYS_TASK_EXIT: u64 = 4;
 
 /// `console_write` syscall number (`x8`), per [ADR-0031][adr-0031]. **Debug-gated**
@@ -41,7 +40,7 @@ const SYS_TASK_EXIT: u64 = 4;
 /// userspace-side; the kernel authority is `SyscallNumber::ConsoleWrite as 5`.
 ///
 /// [adr-0031]: https://github.com/HodeTech/Tyrne/blob/main/docs/decisions/0031-initial-syscall-set.md
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 const SYS_CONSOLE_WRITE: u64 = 5;
 
 /// The capability word the first userspace task ([`tyrne-userland-hello`]) names
@@ -80,7 +79,7 @@ pub struct SyscallError(
 ///
 /// Returns [`SyscallError`] wrapping the non-zero `x0` status when the kernel
 /// rejects the call.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 #[allow(
     clippy::cast_possible_truncation,
     reason = "the returned byte count is <= buf.len() <= usize::MAX; the u64 -> usize \
@@ -123,7 +122,7 @@ pub fn console_write(cap: u64, buf: &[u8]) -> Result<usize, SyscallError> {
 // Host stub for `console_write` (see the crate-level note): aarch64-EL0-only;
 // the host build exists solely so `cargo check --workspace` / Miri can compile
 // the crate. Never run on the host. `#[doc(hidden)]` keeps it out of rustdoc.
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
 #[doc(hidden)]
 pub fn console_write(_cap: u64, _buf: &[u8]) -> Result<usize, SyscallError> {
     unimplemented!("tyrne-user runs only at aarch64 EL0")
@@ -131,7 +130,7 @@ pub fn console_write(_cap: u64, _buf: &[u8]) -> Result<usize, SyscallError> {
 
 /// Terminate the current task with exit `code`. Does not return — the kernel
 /// removes the task from the scheduler and never re-enters it.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_os = "none"))]
 pub fn task_exit(code: u64) -> ! {
     // SAFETY: `svc #0` with x8 = the task_exit number and x0 = the exit code.
     // task_exit acts on the caller's own task identity (no capability), and the
@@ -149,7 +148,7 @@ pub fn task_exit(code: u64) -> ! {
 }
 
 // Host stub for `task_exit` (see the crate-level note): aarch64-EL0-only.
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(all(target_arch = "aarch64", target_os = "none")))]
 #[doc(hidden)]
 pub fn task_exit(_code: u64) -> ! {
     unimplemented!("tyrne-user runs only at aarch64 EL0")

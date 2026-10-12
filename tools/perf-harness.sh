@@ -23,7 +23,7 @@
 # performance-optimization review master plan.
 #
 # Per-run timeout: each QEMU invocation is wrapped in a watchdog because the
-# Tyrne kernel halts in a WFI loop after the demo finishes — QEMU does not
+# Tyrne demo keeps spinning after completion — QEMU does not
 # exit on its own. The default 5 s gives the demo (~5-10 ms typical wall
 # clock under TCG) plenty of headroom; bump it with --timeout if the build
 # is unusually slow on the host.
@@ -64,6 +64,7 @@ CURRENT_WATCHDOG_PID=""
 # already exited) `kill -KILL` returns ESRCH which `2>/dev/null || true` swallows.
 # Therefore the trap is safe to fire multiple times — EXIT will run after a
 # preceding INT/TERM has already cleaned up the in-flight processes.
+# shellcheck disable=SC2317,SC2329  # 0.9/0.11: invoked indirectly by EXIT, INT and TERM traps
 cleanup_in_flight() {
     if [[ -n "$CURRENT_CMD_PID" ]]; then
         kill -KILL "$CURRENT_CMD_PID" 2>/dev/null || true
@@ -247,13 +248,27 @@ run_with_timeout() {
 
 START_EPOCH=$(date +%s)
 START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-HOST_UNAME=$(uname -a)
+HOST_UNAME=$(uname -srm 2>/dev/null) || HOST_UNAME="(unknown)"
 # `head -n 1` would normally close stdin after one line, sending SIGPIPE to
 # the upstream `qemu-system-aarch64`; `set -o pipefail` then aborts. Use awk
 # with a `; exit` to consume only the first line without provoking SIGPIPE.
-QEMU_VERSION=$(qemu-system-aarch64 --version | awk 'NR==1 { print; exit }')
-GIT_HEAD=$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "(unknown)")
+QEMU_VERSION=$(qemu-system-aarch64 --version 2>/dev/null | awk 'NR==1 { print; exit }') || QEMU_VERSION="(unknown)"
+GIT_HEAD=$(cd "$REPO_ROOT" && git rev-parse HEAD 2>/dev/null || echo "(unknown)")
 GIT_BRANCH=$(cd "$REPO_ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(unknown)")
+RUST_VERSION=$(cd "$REPO_ROOT" && rustc -V 2>/dev/null) || RUST_VERSION="(unknown)"
+RUST_TOOLCHAIN=$(cd "$REPO_ROOT" && rustup show active-toolchain 2>/dev/null) || RUST_TOOLCHAIN="(unknown)"
+# The toolchain identifier retains the version/host triple; rustup's override
+# explanation can contain a private absolute checkout path.
+RUST_TOOLCHAIN=${RUST_TOOLCHAIN%% *}
+[[ -n "$RUST_TOOLCHAIN" ]] || RUST_TOOLCHAIN="(unknown)"
+GIT_TRACKED_STATE="unknown"
+if [[ "$GIT_HEAD" != "(unknown)" ]] && GIT_TRACKED_STATUS=$(cd "$REPO_ROOT" && git status --porcelain --untracked-files=no); then
+    if [[ -n "$GIT_TRACKED_STATUS" ]]; then
+        GIT_TRACKED_STATE="dirty"
+    else
+        GIT_TRACKED_STATE="clean"
+    fi
+fi
 
 # Bash 3.2 has indexed arrays; no associative arrays needed for this script.
 SAMPLES=()
@@ -432,7 +447,10 @@ echo "  build:   $PROFILE_LABEL"
 echo "  timeout: ${TIMEOUT_S}s per run"
 echo "  wall:    ${WALL_S}s total"
 echo "  git:     $GIT_HEAD on $GIT_BRANCH"
+echo "  tracked worktree: $GIT_TRACKED_STATE"
 echo "  qemu:    $QEMU_VERSION"
+echo "  rustc:   $RUST_VERSION"
+echo "  toolchain: $RUST_TOOLCHAIN"
 echo "================================================================"
 printf '  %-7s | %15s | %10s\n' "metric" "ns" "ms"
 printf '  %-7s-+-%15s-+-%10s\n' "-------" "---------------" "----------"
@@ -481,7 +499,7 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
     # merely conventional. (The stats are already on stdout above, so nothing
     # is lost — only the file write is skipped.)
     if [[ -e "$REPORT_PATH" ]]; then
-        echo "error: refusing to overwrite existing report: ${REPORT_PATH#${REPO_ROOT}/}" >&2
+        echo "error: refusing to overwrite existing report: ${REPORT_PATH#"${REPO_ROOT}"/}" >&2
         echo "hint: baseline reports are append-only; pick a fresh --report=CONTEXT slug" >&2
         exit 1
     fi
@@ -516,17 +534,20 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
         echo "| Iterations failed | ${FAIL_COUNT} |"
         echo "| Per-run timeout | ${TIMEOUT_S} s |"
         echo "| Build profile | ${PROFILE_LABEL} |"
-        echo "| Kernel ELF | \`${KERNEL_ELF#${REPO_ROOT}/}\` |"
+        echo "| Kernel ELF | \`${KERNEL_ELF#"${REPO_ROOT}"/}\` |"
         echo "| Git HEAD | \`${GIT_HEAD}\` on \`${GIT_BRANCH}\` |"
+        echo "| Tracked worktree | ${GIT_TRACKED_STATE} |"
+        echo "| Rust compiler | \`${RUST_VERSION}\` |"
+        echo "| Active toolchain | \`${RUST_TOOLCHAIN}\` |"
         echo "| QEMU | \`${QEMU_VERSION}\` |"
-        echo "| Host \`uname -a\` | \`${HOST_UNAME}\` |"
+        echo "| Host OS / release / machine | \`${HOST_UNAME}\` |"
         echo "| Wall-clock (full harness run) | ${WALL_S} s |"
         echo
         echo "## Methodology"
         echo
         echo "Each iteration invokes \`tools/run-qemu.sh\` under a per-run watchdog;"
         echo "QEMU emits the boot trace through to \`tyrne: all tasks complete\` plus"
-        echo "the \`boot-to-end elapsed = X ns\` line, then halts in WFI. The watchdog"
+        echo "the \`boot-to-end elapsed = X ns\` line, then keeps spinning. The watchdog"
         echo "kills the QEMU process after the per-run timeout (the kernel never"
         echo "exits on its own). The integer ns delta is parsed out of stdout."
         echo
@@ -545,8 +566,11 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
         echo "n)]\`; for any \`n < 100\` the index rounds up to \`n\` and \`p99 == max\`"
         echo "by construction. The number is reported as-computed (matching p10 /"
         echo "p50 / p90's convention) but readers should not over-read it as a"
-        echo "tail-latency signal at small \`n\`. p99 becomes statistically"
-        echo "informative when \`n >= 100\`."
+        echo "tail-latency signal at small \`n\`. At \`n = 100\`, rank 99 selects"
+        echo "the second-highest sample. For \`n >= 100\`, the selected rank is"
+        echo "below \`n\`; tied values can still equal the maximum. This rank"
+        echo "transition alone establishes no statistical reliability. Interpret"
+        echo "tail estimates with the sample count and measurement context."
         echo
         echo "## Metric — boot-to-end elapsed (nanoseconds)"
         echo
@@ -594,7 +618,7 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
     } > "$REPORT_PATH"
 
     echo
-    echo "report written: ${REPORT_PATH#${REPO_ROOT}/}"
+    echo "report written: ${REPORT_PATH#"${REPO_ROOT}"/}"
 fi
 
 exit 0

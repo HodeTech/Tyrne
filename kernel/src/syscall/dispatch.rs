@@ -344,7 +344,9 @@ fn validate_debug_console_cap(
               run_console_write threads the SyscallContext pieces"
 )]
 mod tests {
-    use super::{dispatch, SyscallContext, CONSOLE_WRITE_CHUNK};
+    #[cfg(debug_assertions)]
+    use super::CONSOLE_WRITE_CHUNK;
+    use super::{dispatch, SyscallContext};
     use crate::cap::{CapHandle, CapObject, CapRights, Capability, CapabilityTable};
     use crate::ipc::IpcError;
     use crate::ipc::IpcQueues;
@@ -355,8 +357,12 @@ mod tests {
     };
     use crate::syscall::error::SyscallError;
     use crate::syscall::user_access::UserAccessWindow;
-    use tyrne_hal::{MappingFlags, Mmu, PhysAddr, PhysFrame};
-    use tyrne_test_hal::{FakeAddressSpace, FakeConsole, FakeMmu, FakeUserMem};
+    #[cfg(debug_assertions)]
+    use tyrne_hal::MappingFlags;
+    use tyrne_hal::{Mmu, PhysAddr, PhysFrame};
+    #[cfg(debug_assertions)]
+    use tyrne_test_hal::FakeUserMem;
+    use tyrne_test_hal::{FakeAddressSpace, FakeConsole, FakeMmu};
 
     // ── fixtures ─────────────────────────────────────────────────────────────
 

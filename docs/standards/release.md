@@ -32,7 +32,7 @@ A **build metadata** suffix may be appended per [semver §10](https://semver.org
 
 ## Changelog
 
-- Maintained in [`CHANGELOG.md`](../../CHANGELOG.md) at the repository root (to be created with the first release).
+- Maintained in `CHANGELOG.md` at the repository root (to be created with the first release).
 - Follows **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/)** v1.1.0 format.
 - One section per released version, in reverse chronological order.
 - An `[Unreleased]` section at the top accumulates entries between releases; contributors add to it as part of their PRs.
@@ -58,8 +58,9 @@ Before a version is tagged, **every one of these must be true**. A gate failure 
 
 ### Process gates
 
-- [ ] **All enforced CI gates green** on the commit being released: `cargo fmt --check`, clippy (`host-clippy` + `kernel-clippy`), host tests, `kernel-build`, host crates on stable (`host-stable-check`), and Miri.
-- [ ] **Manual verification gates passed** — these are listed in the release standard but are **not yet CI jobs**, so they must be checked manually until they are wired up (see [infrastructure.md](infrastructure.md) §"Planned gates"): QEMU smoke *(maintainer-launched; no CI job yet)*, `cargo-audit` *(dormant until the first external dependency lands)*, `cargo-vet` *(same dormant conditional)*.
+- [ ] **All enforced CI gates green** on the commit being released: `cargo fmt --check`, clippy (`host-clippy`, `kernel-clippy`, and the bare-metal userland command after its image build), `shellcheck tools/*.sh`, isolated shell/userland lint rejection probes, host tests, `kernel-build`, host crates on stable (`host-stable-check`), Miri, and native ARM workspace check/clippy/test/Miri with its arch-only rejection probe. See [infrastructure.md](infrastructure.md) §"Required gates" for the exact target-aware commands.
+- [ ] **Release and variant gates green:** release host tests, the explicit two-test release syscall guard and isolated profile-flip rejection, release kernel build/clippy after matching userland, and debug perf-bench build/clippy after restoring its image. These run in the existing required jobs; the separate `qemu-smoke` job also boots matching debug/release guests and verifies their profile-specific EL0 markers and fault checks.
+- [ ] **Manual verification gates passed** — these are listed in the release standard but are **not yet CI jobs**, so they must be checked manually until they are wired up (see [infrastructure.md](infrastructure.md) §"Planned gates"): `cargo-audit` *(dormant until the first external dependency lands)*, `cargo-vet` *(same dormant conditional)*.
 - [ ] Hardware smoke tests passed on every Tier 2+ target that this release claims to support.
 - [ ] No `#[ignore]`d tests without a tracking issue.
 - [ ] No open `Security` advisories that this release does not fix.
@@ -147,6 +148,7 @@ Security releases follow the normal release flow with modifications:
 
 ## References
 
+- [ADR-0040 — Phase B.2 consolidation bridge](../decisions/0040-phase-b2-consolidation-bridge.md).
 - Semantic Versioning 2.0.0: https://semver.org/
 - Keep a Changelog 1.1.0: https://keepachangelog.com/en/1.1.0/
 - CycloneDX: https://cyclonedx.org/

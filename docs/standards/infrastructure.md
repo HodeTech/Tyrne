@@ -64,54 +64,62 @@ Removing a dependency (replacing with in-tree code or dropping the feature it en
 
 CI was set up in Phase 4 (completed 2026-04-23); the gates below define the bar. The list distinguishes gates that are **enforced today** from gates that are **planned but not yet enforced** so a reader can tell what actually blocks a merge.
 
-### Required gates (enforced today, block merge)
+### Required gates (enforced by the current branch protection)
 
 These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml):
 
 - `cargo fmt --all -- --check` (`lint-and-host-test`).
-- Clippy with `-D warnings`, run as the two aliases CI executes: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates and `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP. The two aliases together cover the whole workspace; their combination is the executed equivalent of `cargo clippy --workspace --all-targets -- -D warnings`.
+- Clippy with `-D warnings`: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates; `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP; and `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` for the bare-metal userland, after its image build in `kernel-build`. These are distinct target-aware commands; the BSP has no host test target.
+- `shellcheck tools/*.sh` at default severity (`lint-and-host-test`), with `shellcheck --version` printed in the log. Suppress only demonstrated false positives with a scoped directive and a reason.
+- Isolated expected-failure lint probes (`tools/test-ci-gates.sh --shell` / `--userland`) assert that the corresponding real commands reject a deliberate regression with the expected diagnostic. Their success confirms rejection, not a failure of the production gate.
 - `cargo test` — host-runnable unit and integration tests over `default-members` (`lint-and-host-test`; re-run on stable by `host-stable-check`).
-- `cargo kernel-build` — the kernel ELF builds clean for `aarch64-unknown-none` (`kernel-build`).
+- `cargo test --release` over `default-members`, plus `tools/check-release-tests.sh` requiring both named release-only `console_write` tests to pass. `tools/test-ci-gates.sh --release` must reject an isolated release `debug-assertions = true` profile flip (`lint-and-host-test`); a zero-test Cargo success is not a passing gate.
+- `cargo kernel-build` and `cargo kernel-build-release` — debug and release kernel ELFs build clean for `aarch64-unknown-none`, each after its matching userland image (`kernel-build`). Release kernel clippy also denies warnings: `cargo clippy --release --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`.
+- Debug `perf-bench` build and clippy: restore the debug image with `tools/build-userland.sh` immediately before `cargo build --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench`, then `cargo clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt --features perf-bench -- -D warnings` (`kernel-build`). Do not append Cargo flags to the existing lint alias after its `--` delimiter.
 - Host crates build and test clean on **stable** Rust (`host-stable-check`); lint/format enforcement is nightly-only (see the job note above).
 - Miri (Stacked Borrows) over the host-test suite (`miri`) — see §"Miri as a blocking gate" below.
+- Native ARM workspace check/clippy/test/Miri on `ubuntu-24.04-arm` (`arm64-host-check`), excluding only the BSP. Verify the actual ARM machine and Rust host; run the isolated arch-only hello clippy rejection probe after positive clippy. All four commands are mandatory; see [ci.md](../guides/ci.md#why-an-arm64-host-job) for exact commands. Its live required-check registration and full-policy read-back completed on 2026-10-12 after hosted green and both fresh rounds.
+
+- Single-core debug/release QEMU EL0 smoke (`qemu-smoke`, display `QEMU debug + release smoke (nightly)`) after matching userland/kernel builds, with `--int`. Debug requires greeting/exit/completion; release requires exit/completion and forbids greeting. Both reject panic/CPU-fault traces; explicit Bash/pipefail preserves smoke failure through `tee`, with an inherited-shell rejection guard. Synthetic trace fixtures and three isolated real kernel mutations must demonstrate intended rejection. Always-uploaded diagnostic artifacts retain production/probe traces and metadata for 14 days. Live required-check registration was completed on 2026-10-12 after corrected remote green and both fresh rounds, recorded in [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md).
 
 ### Planned gates (not yet enforced)
 
 These appear in the release/standards prose but have **no CI job yet**; do not assume a green CI exercised them.
 
-- QEMU smoke — kernel boots under `qemu-system-aarch64 -machine virt` and reaches the success marker. *(As of 2026-05: maintainer-launched only; no `qemu-smoke` CI job yet — tracked as a B2-or-later roadmap follow-up. A behavioural gate, not a no-op — its absence means boot behaviour is verified by the maintainer, not by CI.)*
 - `cargo audit` — fails on known advisories; `cargo-audit` database refreshed weekly in CI. *(Currently dormant: `Cargo.lock` carries zero external dependencies, so the gate would be a no-op today. Wired in once the first external dependency lands per [add-dependency](../../.agents/skills/add-dependency/SKILL.md).)*
 - `cargo vet check` — fails if any dependency is not audited. *(Same dormant conditional as `cargo audit` above — zero external deps today.)*
 
 ### Advisory gates (warn, do not block)
 
 - `cargo-geiger` report — records `unsafe` counts, compared against the audit log.
-- Coverage delta (via `cargo llvm-cov`) — **informational, not a gate.** The `coverage` job runs with `continue-on-error: true`, so a coverage drop never blocks a merge today; the job exists to make trends visible. The plan is to flip it to enforce a floor after T-011 settles the workspace shape — at which point `continue-on-error` is removed first and only then is the job added to branch protection (see [ci.md](../guides/ci.md) §"Branch protection"). Until then it must **not** be in the required-checks list (a `continue-on-error` job reports a neutral verdict that never satisfies `required == passing`).
+- Coverage delta (via `cargo llvm-cov`) — informational and excluded from the versioned required policy. `continue-on-error: true` permits workflow success despite job failure; it does not specify a coverage floor or a particular UI conclusion. T-011 is already complete. An enforcing floor requires a separately reviewed baseline/policy and workflow change; see [ci.md](../guides/ci.md#when-does-the-coverage-job-start-gating).
+- Weekly boot-to-end performance reports — Monday 03:17 UTC plus dispatch and targeted development validation, separate from PR CI. Failed measurements are visible failed workflows; no timing-regression threshold or required check is claimed. See [ci.md](../guides/ci.md#weekly-performance-reports).
 - Binary size delta (`cargo bloat`) — informational; large increases prompt a question.
 
 ### Miri as a blocking gate
 
 The `miri` job runs the host-test suite under Stacked Borrows on the pinned nightly and does **not** set `continue-on-error` — a Miri regression is a hard stop. It is intended as a blocking gate, with particular weight on changes under `kernel/src/sched/**` and `kernel/src/ipc/**`, where aliasing and `unsafe` invariants are densest (see ADR-0021 / UNSAFE-2026-0014). Ideally a lightweight `unsafe`-audit-log reconciliation (every `unsafe` block has a current `SAFETY:` comment, no undocumented `unsafe`) runs alongside it; that reconciliation is not yet a CI job and is performed at review time per [unsafe-policy.md](unsafe-policy.md).
 
-**Required-status enforcement lives in GitHub branch protection (a UI setting), not in this repository.** The in-tree workflow makes the `miri` job correct and gating-by-construction; whether a green Miri is actually *required* to merge is configured in the repository settings and is outside version control. The branch-protection checklist in §"Branch protection and merge rules" below names the jobs that must be marked required.
+**Required-status enforcement lives in GitHub classic branch protection.** Its complete supported definition is versioned in [main.json](../../.github/branch-protection/main.json); read-only export/check and explicit local additive-check apply use [branch-protection.py](../../tools/branch-protection.py). REST policy plus GraphQL-only deployment/review/actor flags and the no-rulesets baseline are captured. Unknown/unrepresentable policy or unexpected drift stops apply, and all app bindings/settings are preserved. CI receives no administrative credentials; offline fixtures validate safety boundaries. The [guide](../guides/ci.md#versioned-classic-branch-protection) documents commands, representability limits and the non-atomic external-administrator race.
 
 ### CI platform
 
 - GitHub Actions is the default. Workflows live under `.github/workflows/`.
-- Jobs are reusable — shared setup (install toolchain, cache cargo registry) is a composite action.
-- A top-level `permissions: contents: read` block applies least privilege to the auto-provisioned `GITHUB_TOKEN`: the pipeline only reads the repo and runs builds, so it gets read scope and nothing more. Any future job that genuinely needs a wider scope (e.g. publishing artifacts) declares its own `permissions:` block at the job level rather than widening the workflow default.
-- CI caches `~/.cargo/registry` and `target/` keyed by the toolchain hash.
+- Jobs currently repeat toolchain installation and cache setup directly in each workflow; no shared composite action exists.
+- A top-level `permissions: contents: read` block applies least privilege to the auto-provisioned `GITHUB_TOKEN`: the pipeline reads the repo, runs checks and uploads diagnostic artifacts through runtime artifact credentials without widening token scope. A future job that genuinely needs wider GITHUB_TOKEN permissions must declare them at the job level rather than widen the workflow default.
+- CI caches cargo data and `target/` keyed by toolchain and lockfile identity; every key and restore prefix includes `runner.os` and `runner.arch`, preventing cross-architecture restoration.
 - Secrets never enter CI. If a future workflow needs a secret (e.g. publishing artifacts), it is scoped and rotated.
 
 ### Runners
 
-- `ubuntu-latest` for the standard toolchain matrix.
-- `qemu-system-aarch64` on the Linux runner for smoke tests.
+- `ubuntu-latest` (x86_64) for the standard toolchain matrix.
+- `ubuntu-24.04-arm` for mandatory native workspace check/clippy/test/Miri, including host-gated userland and excluding only the BSP; the job verifies the native machine/Rust host and has a 15-minute bound.
+- `qemu-system-aarch64` from `qemu-system-arm` on the `ubuntu-latest` smoke runner; the job records its version and has a 10-minute bound. Debug/release use one core, with no SMP claim.
 - Real-hardware jobs (Raspberry Pi lab, when it exists) are self-hosted runners, off the PR hot path, running on release cadence.
 
 ## Performance harness
 
-`tools/perf-harness.sh` is the canonical source for boot-to-end timing claims. It wraps `tools/run-qemu.sh` in an iteration loop with a per-run watchdog, parses the kernel's `boot-to-end elapsed = X ns` emission out of each run's serial output, and prints `min / p10 / p50 / p90 / p99 / max / mean / stddev` in both ns and ms. Maintainer-launched only; not yet wired into CI (matches the QEMU smoke convention above — promotion to a CI gate is a B2-or-later follow-up alongside the smoke job).
+`tools/perf-harness.sh` is the canonical source for boot-to-end timing claims. It wraps `tools/run-qemu.sh` in an iteration loop with a per-run watchdog, parses the kernel's `boot-to-end elapsed = X ns` emission out of each run's serial output, and prints `min / p10 / p50 / p90 / p99 / max / mean / stddev` in both ns and ms. It can be launched locally and by [performance.yml](../../.github/workflows/performance.yml): weekly Monday 03:17 UTC, manual dispatch and targeted development push validation, with 20 debug iterations and 14-day report artifacts. This is informational and separate from the required guest smoke job; measurement failure is visible, timing changes have no merge threshold. Reports include full source SHA, tracked-worktree state, active Rust compiler/toolchain and QEMU/host metadata. Schedule/dispatch and first merged main evidence are verified after maintainer merge; see [ci.md](../guides/ci.md#weekly-performance-reports) for best-effort/inactivity semantics and re-enable commands.
 
 ### Usage
 
@@ -179,13 +187,12 @@ The dependency graph in `Cargo.lock` is the obvious supply-chain surface, but th
 
 ## Branch protection and merge rules
 
-When the project moves out of solo phase:
+Current classic `main` protection is captured in [main.json](../../.github/branch-protection/main.json): six app-bound required checks, strict checking, linear history and conversation resolution; force pushes/deletion remain disabled. The existing solo-phase approving-review count remains 0 and admin enforcement remains false. T-034/T-036 added their checks only after remote green and both review rounds, with complete-policy read-back.
 
-- `main` is protected.
-- PRs to `main` require at least one approval (two for security-sensitive changes — see [security-review.md](security-review.md)).
-- Required status checks — **GitHub matches the job's display `name`, not its id**, so add these exact strings: `fmt + clippy + host tests (nightly)` (job `lint-and-host-test`), `aarch64-unknown-none kernel build (nightly)` (job `kernel-build`), `host crates on stable` (job `host-stable-check`), and `miri (Stacked Borrows)` (job `miri`). The `coverage` job is **not** in this list (it is `continue-on-error`; a neutral verdict would block every push). This is a GitHub branch-protection (UI) setting and is not stored in the repository.
-- Force-push to `main` disabled.
-- Force-push to protected `release/*` branches disabled.
+- Required exact display names and source-app binding 15368 are canonical in that JSON; coverage and performance are excluded. GitHub can accept successful, skipped or neutral required-check conclusions; their exclusion is deliberate informational policy, not a neutral-result restriction.
+- Read-only export/check and explicit local apply commands are documented in [ci.md](../guides/ci.md#versioned-classic-branch-protection). Apply preserves every existing check/binding and non-status policy, rejects drift/unknown fields/rulesets and CI execution, and verifies full read-back. It has no atomic compare-and-swap guarantee.
+- Future multi-contributor policy requires at least one PR approval (two for security-sensitive changes per [security-review.md](security-review.md)); it is not silently applied to the existing solo-phase baseline by this task.
+- Force-push to protected `release/*` branches remains prohibited by policy.
 
 ## Secrets management
 
@@ -206,7 +213,8 @@ The lint set is canonical at [`code-style.md` §Lints](code-style.md#lints); eve
 | `rustfmt.toml` | Formatter config. |
 | `clippy.toml` | Linter thresholds and allowed lints. |
 | `.cargo/config.toml` | Target triples, linker flags per target. |
-| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `host-stable-check`, `miri`, `coverage`. Third-party actions are SHA-pinned (see §"GitHub Actions pinning"). |
+| `.github/branch-protection/main.json` | Full supported classic main policy, checked/exported locally; additive status-check apply only, no CI admin secret. |
+| `.github/workflows/*.yml` | CI pipelines. Active jobs at HEAD: `lint-and-host-test`, `kernel-build`, `qemu-smoke`, `arm64-host-check`, `host-stable-check`, `miri`, `coverage`; separate informational `performance-report`. Third-party actions are SHA-pinned (see §"GitHub Actions pinning"). |
 
 ### Planned (when first external dependency lands)
 
@@ -230,6 +238,7 @@ The `supply-chain/` directory does not exist at HEAD — see [add-dependency](..
 
 ## References
 
+- [ADR-0040: Phase B.2 consolidation and Track B.2-1 execution policy](../decisions/0040-phase-b2-consolidation-bridge.md).
 - `cargo-vet`: https://mozilla.github.io/cargo-vet/
 - RustSec Advisory Database: https://rustsec.org/
 - Reproducible Builds project: https://reproducible-builds.org/

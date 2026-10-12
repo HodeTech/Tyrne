@@ -63,6 +63,8 @@ todo = "deny"
 # the `clippy::arithmetic_side_effects = deny` posture (see
 # docs/standards/code-style.md) — do not drop it to "optimize" the build.
 [profile.release]
+# Keep debug-assertions at Cargo's release default (false): SyscallNumber::decode
+# uses it to remove console_write from the production syscall surface.
 codegen-units = 1
 debug = "line-tables-only"
 lto = "fat"

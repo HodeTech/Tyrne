@@ -7,6 +7,8 @@ The roadmap is **the plan** — what we intend to build and in what order. It an
 
 The plan is separate from the work. Individual tasks and reviews live under [`../analysis/`](../analysis/) and are cross-linked from here. See [ADR-0013](../decisions/0013-roadmap-and-planning.md) for the rationale behind this split.
 
+**Track B.2-1 implementation (2026-10-12):** The [eight-step sequence](../analysis/tasks/phase-b2/README.md) is implemented on `development`, with both fresh review rounds per step, verified fixes and local/hosted evidence. Tasks remain In Review for the final maintainer PR; the [phase file](phases/phase-b2.md) maps all twelve opening findings to their implementation/review records. The whole Phase B.2 exit bar still gates C and D.
+
 ## What lives here
 
 | Path | Purpose |

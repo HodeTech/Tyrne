@@ -17,7 +17,7 @@ As the maintainer, I want Phase B.2 closed with evidence — every finding accou
 
 ## Context
 
-Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md), which defines the B.2 exit bar as the acceptance criteria of Tracks B.2-1…B.2-6 and requires a closure that goes beyond the usual ADR-0013 business review: a verification report covering all 141 items (the source review of 2026-07-15 was static analysis; nothing in it was compiled or run), a security review of the phase's `unsafe`/asm/capability changes, and a regression check. The Phase B closure quartet ([retrospective](../../reviews/business-reviews/2026-06-01-phase-b-closure.md), consolidated security review, performance baseline, guide) is the precedent. The 2026-10-11 baseline the final matrix is compared with: 366 host tests (46 hal, 259 kernel, 58 test-hal, 3 doc), `hello.bin` 117 bytes, smoke boot-to-end ≈ 4.7 ms with exactly 2 SVC exceptions, llvm-cov 96.31 % lines, Miri 0 UB on kernel/hal/test-hal, 33 unsafe-log entries (32 Active, 1 Removed).
+Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md), which defines the B.2 exit bar as the acceptance criteria of Tracks B.2-1…B.2-6 and requires a closure that goes beyond the usual ADR-0013 business review: a verification report covering all 141 items (the source review of 2026-07-15 was static analysis; nothing in it was compiled or run), a security review of the phase's `unsafe`/asm/capability changes, and a regression check. The Phase B closure quartet ([retrospective](../../reviews/business-reviews/2026-06-01-phase-b-closure.md), consolidated security review, performance baseline, guide) is the precedent. The 2026-10-11 baseline the final matrix is compared with: 366 host tests (46 hal, 259 kernel, 58 test-hal, 3 doc), `hello.bin` 117 bytes, smoke boot-to-end ≈ 4.7 ms with exactly 2 SVC exceptions, llvm-cov 96.31 % regions / 95.87 % lines, Miri 0 UB on kernel/hal/test-hal, 33 unsafe-log entries (32 Active, 1 Removed).
 
 ## Acceptance criteria
 
@@ -49,7 +49,7 @@ Run the closure only after all dependencies are `Done` (or recorded as carry-for
 ## Design notes
 
 - The two optional tasks may close as carry-forwards: T-036 (arm64 host check) and T-056 (docs-consistency automation). Recording them is mandatory; completing them is not.
-- Tasks that end in an explicit decision (T-035, T-039, T-040, T-065, T-067, T-073) count as complete when the decision is recorded, as ADR-0040 rule 3 states.
+- For decision-bearing tasks (T-035, T-039, T-040, T-065, T-067, T-073), an evidenced deferral satisfies phase-exit accounting only where that task explicitly permits it. A decision to implement requires the remaining implementation/verification criteria; a recorded "yes" alone does not complete the task. Neither route authorises an agent to mark it `Done` (ADR-0040 rule 3).
 - Status is `Draft` until the dependency set stabilises; promote to `Ready` when the last implementation task is `In Review`.
 
 ## Review history
@@ -57,3 +57,4 @@ Run the closure only after all dependencies are `Done` (or recorded as carry-for
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Draft |
+| 2026-10-11 | Codex (AI agent) | Preflight clarified decision-only exit accounting versus chosen implementation acceptance; no closure/status promotion. |

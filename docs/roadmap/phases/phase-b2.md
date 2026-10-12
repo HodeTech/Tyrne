@@ -22,7 +22,34 @@ To avoid colliding with Phase B's B0–B6 milestone IDs, the work below is organ
 
 ## Track B.2-1 — CI enforcement & merge gates
 
-The project's standards docs (`infrastructure.md`, `code-review.md`, `error-handling.md`) describe a CI posture that is, in several concrete and security-relevant ways, more thorough than what `.github/workflows/ci.yml` actually runs. This track closes that gap: every claimed gate either becomes a real, merge-blocking CI check, or the claim is corrected to match reality (the documentation half of that correction is tracked under Track B.2-2 where it doesn't require a CI change).
+At the opening baseline, the project's standards docs (`infrastructure.md`, `code-review.md`, `error-handling.md`) described a CI posture that was, in several concrete and security-relevant ways, more thorough than what `.github/workflows/ci.yml` actually ran. This track closes that gap: every claimed gate either becomes a real, merge-blocking CI check, or the claim is corrected to match reality (the documentation half of that correction is tracked under Track B.2-2 where it doesn't require a CI change).
+
+### Implementation status (2026-10-12)
+
+The requested eight-step sequence is implemented on `development`, including optional T-036 and the sole cross-track prerequisite T-037. All eight tasks remain **In Review** for the maintainer's final PR review. Each step has two fresh independent review rounds; verified findings were fixed and committed. The late T-036 compiler-diagnostic race was corrected and reviewed in Step 8's combined second round. This completes the requested implementation sequence, without closing Phase B.2 or promoting tasks to Done.
+
+| Step | Task | Delivered scope | Two-round review record |
+|------|------|-----------------|-------------------------|
+| 1 | [T-037](../../analysis/tasks/phase-b2/T-037-userland-bare-metal-cfg-gate.md) | Bare-metal cfg boundary; native ARM workspace/Miri restored; debug image bytes preserved; cross-track prerequisite only | [Target boundary](../../analysis/reviews/code-reviews/2026-10-12-t037-target-boundary.md) |
+| 2 | [T-033](../../analysis/tasks/phase-b2/T-033-qemu-tooling-smp-and-timeout.md) | Validated SMP override/precedence and timeout/usage handling; 59 controlled cases | [QEMU tooling](../../analysis/reviews/code-reviews/2026-10-12-t033-qemu-tooling.md) |
+| 3 | [T-031](../../analysis/tasks/phase-b2/T-031-ci-userland-clippy-and-shellcheck.md) | Bare-metal userland clippy and ShellCheck, with isolated rejection probes | [Lint gates](../../analysis/reviews/code-reviews/2026-10-12-t031-lint-gates.md) |
+| 4 | [T-030](../../analysis/tasks/phase-b2/T-030-ci-release-profile-gate.md) | Release aliases/build/lint/host tests, both named syscall guards and debug perf-bench build/lint | [Release gates](../../analysis/reviews/code-reviews/2026-10-12-t030-release-gates.md) |
+| 5 | [T-032](../../analysis/tasks/phase-b2/T-032-panic-family-denies-hal-bsp.md) | HAL/BSP panic-family denies, justified function-level boot exceptions and unmap audit amendment | [Panic-family denies](../../analysis/reviews/code-reviews/2026-10-12-t032-panic-family-denies.md) |
+| 6 | [T-034](../../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md) | Required debug/release EL0 smoke, exact markers/no faults, rejection controls and uploaded diagnostics; logging preserves failures | [QEMU smoke](../../analysis/reviews/code-reviews/2026-10-12-t034-qemu-smoke.md) |
+| 7 | [T-036](../../analysis/tasks/phase-b2/T-036-ci-arm64-host-check-job.md) | Required native Linux ARM workspace check/clippy/test/Miri, architecture-isolated caches and exact private compiler-rejection probe; optional for phase exit, included here | [Native ARM CI](../../analysis/reviews/code-reviews/2026-10-12-t036-native-arm-ci.md), [late correction](../../analysis/reviews/code-reviews/2026-10-12-t035-ci-hygiene-tail.md) |
+| 8 | [T-035](../../analysis/tasks/phase-b2/T-035-ci-hygiene-tail.md) | Weekly informational 20-run performance report and full classic protection JSON with fail-closed export/check/local apply | [CI hygiene tail](../../analysis/reviews/code-reviews/2026-10-12-t035-ci-hygiene-tail.md) |
+
+Every one of the twelve findings in the opening list below is covered: release build/tests, named release regressions and perf-bench by T-030; userland clippy and ShellCheck by T-031; HAL/BSP denies by T-032; SMP tooling by T-033; both duplicate smoke findings and release runtime coverage by T-034; scheduled performance and merge policy as code by T-035. T-036 additionally supplies the polish ARM signal. Separate security reports are linked from the applicable code reviews. A [final independent documentation review](../../analysis/reviews/code-reviews/2026-10-12-phase-b2-track1-final-docs.md) reconciles all six entry documents and records the corrected opening-baseline wording.
+
+Six required checks are registered live, all bound to GitHub Actions app 15368 with strict checking. Full-policy read-back matches the versioned definition; every other policy value is preserved. Corrected [CI run 38187736985](https://github.com/HodeTech/Tyrne/actions/runs/38187736985) passes all seven jobs, including native ARM/Miri and real debug/release guests. The [first hosted performance report](../../analysis/reports/perf-baseline-2026-10-12-t035-hosted-check.md) records a clean full source SHA, 20 valid samples and zero failed samples. Performance and coverage remain informational and are excluded from required checks.
+
+[PR #48](https://github.com/HodeTech/Tyrne/pull/48) is open for maintainer review. Its first [PR-event CI 38189254381](https://github.com/HodeTech/Tyrne/actions/runs/38189254381) at `acd00133742235f02dae54e5f3f02116b4a02cfa` passed all seven jobs and all six live required checks; exact-source evidence is recorded in the task histories. Later documentation commits require their own PR checks. First merged `main` runs and default-branch performance dispatch can only be verified after the maintainer merges; they remain explicitly pending. No Track B.2-1 implementation is deferred. Tracks B.2-2…B.2-6, including the existing HIGH T-038 x2-clobber defect, retain their own open ownership. Phase C and D remain gated by the whole Phase B.2 exit bar.
+
+The [supplied PR48 review reconciliation](../../analysis/reports/2026-10-12-pr-48-supplied-review-reconciliation.md) records all 17 findings and the follow-up tooling/documentation corrections. Both follow-up steps completed two fresh independent rounds: code/security for A and code/integration for B. Both second rounds Approve their cumulative source with zero new findings and verified first-round corrections. Corrected full source `646ba33052632d5afda1e206007ed9bc334e8e3a` passes all seven jobs in [PR CI 38214402250](https://github.com/HodeTech/Tyrne/actions/runs/38214402250) and [push CI 38214395496](https://github.com/HodeTech/Tyrne/actions/runs/38214395496). Its [exact-byte hosted performance snapshot](../../analysis/reports/perf-baseline-2026-10-12-t035-pr48-p99-followup-hosted-check.md) contains the corrected p99 explanation, 20 valid/0 failed samples and informational p10/p50/p90 8.497/9.820/12.572 ms. These preserve the Accepted ADR, historical evidence and live policy; task histories identify the measured/reviewed source, while PR48 records final publication-tip CI separately. All eight tasks remain In Review.
+
+### Opening baseline
+
+The finding/action list below is retained as the opening baseline. Its present-tense descriptions of missing gates are historical; the implementation table and dated task/review histories above supersede them. The original acceptance criteria remain the contract.
 
 ### Sub-breakdown
 
@@ -64,9 +91,9 @@ The project's standards docs (`infrastructure.md`, `code-review.md`, `error-hand
 
 ### Acceptance criteria
 
-- `cargo build --release` + `cargo test --release` for the kernel and BSP crates run on every PR, including the `console_write_is_absent_in_release_builds` regression.
+- The bare-metal BSP is built with `--release`, and the host kernel/HAL/test-HAL crates are tested with `cargo test --release` on every PR. Both release-only `console_write` regressions must execute; the bare-metal BSP has no host-test target.
 - `tyrne-user` and `tyrne-userland-hello` are clippy-checked in CI on the `aarch64-unknown-none` target.
-- A `qemu-smoke` job runs `tools/smoke.sh` on every PR and gates merge on its exit code.
+- A `qemu-smoke` job runs debug and release `tools/smoke.sh --int` checks on every PR and gates merge on their exit codes; it verifies profile-appropriate EL0 evidence, completion, and absence of panic/CPU faults.
 - `hal` and `bsp-qemu-virt` carry the same `clippy::panic`/`unwrap_used`/`expect_used` denies `kernel` already has.
 - `tools/run-qemu.sh` and `tools/smoke.sh` accept an `--smp N` override, unblocking Milestone C1's own smoke acceptance criterion.
 - The remaining low/info items (perf-bench build, perf-harness.sh scheduling, shellcheck, "what gates merge" as code) are tracked even if not all land within B.2.
@@ -81,8 +108,8 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
 
 **Entry-point & core architecture docs**
 
-- **[🟠 HIGH]** overview.md — the designated entry-point document — describes the system as stuck at end-of-Phase-A, but Phase B is fully closed and Phase C is active — `docs/architecture/overview.md:5`
-  **Action:** Rewrite the status banner to reflect Phase B closure and Phase C's start; thread ADR-0027..0039 into the relevant sections (Address spaces, Syscall surface, Boot flow). Add this doc to whatever checklist/skill governs phase closure so it is updated as part of every phase's closure quartet, not left behind.
+- **[🟠 HIGH]** overview.md — the designated entry-point document — describes the system as stuck at end-of-Phase-A, but Phase B is fully closed, Phase B.2 is active, and Phase C is next and gated by B.2 — `docs/architecture/overview.md:5`
+  **Action:** Rewrite the status banner to reflect Phase B closure, active Phase B.2 and gated Phase C; thread ADR-0027..0039 into the relevant sections (Address spaces, Syscall surface, Boot flow). Add this doc to whatever checklist/skill governs phase closure so it is updated as part of every phase's closure quartet, not left behind.
 
 - **[🟠 HIGH]** task-loader.md's central claims are now false: the loader is described as producing a non-runnable descriptor loading an unexecuted placeholder blob, but the code runs a real EL0 task end-to-end — `docs/architecture/task-loader.md:13-21,92-103`
   **Action:** Rewrite the "Scope boundary" and "Embedded image content" sections to describe the landed state: `load_image` → `task_create_from_image` (T-024) → `add_user_task` (T-023) → scheduled EL0 execution (T-028), with the real `hello` image and ADR-0039's build pipeline. Retire or clearly historically-mark the 8-byte placeholder code sample.
@@ -176,7 +203,7 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
 **Standards docs**
 
 - **[🟠 HIGH]** CONTRIBUTING.md and SECURITY.md describe a project state roughly two milestones and a whole phase behind reality; SECURITY.md's core factual claim is now false — `CONTRIBUTING.md:3,14`; `SECURITY.md:7`
-  **Action:** Update both files' opening status paragraphs to match README.md's "Status at a glance"/CLAUDE.md's project-state paragraph: Phase B (B0–B6) closed 2026-06-01; Phase C active; first EL0 userspace task running through the syscall boundary. In SECURITY.md specifically, remove or correct "not yet a userspace-bearing OS" — that claim is now the opposite of true, and the syscall/capability boundary is exactly the surface SECURITY.md exists to describe accurately. Also update the trailing "refined as Phase B progresses" (SECURITY.md:7) since Phase B is closed.
+  **Action:** Update both files' opening status paragraphs to match README.md's "Status at a glance"/CLAUDE.md's project-state paragraph: Phase B (B0–B6) closed 2026-06-01; Phase B.2 active; Phase C next and gated by B.2; first EL0 userspace task running through the syscall boundary. In SECURITY.md specifically, remove or correct "not yet a userspace-bearing OS" — that claim is now the opposite of true, and the syscall/capability boundary is exactly the surface SECURITY.md exists to describe accurately. Also update the trailing "refined as Phase B progresses" (SECURITY.md:7) since Phase B is closed.
 
 - **[🟡 MEDIUM]** testing.md's mandated test-naming convention has 0% adoption in the actual codebase — `docs/standards/testing.md:63-77`
   **Action:** Either update testing.md to document the convention actually in use (`<subject>_<condition>_<expected_outcome>`, without a `test_` prefix, which real names already follow reasonably well), or do a mechanical rename sweep and add a clippy/CI check flagging new `#[test]` fns lacking the prefix.
@@ -265,7 +292,7 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
 
 ### Acceptance criteria
 
-- overview.md, task-loader.md, hal.md, scheduler.md, exceptions.md, security-model.md, memory-management.md, boot.md, and docs/architecture/README.md all reflect Phase B closed / Phase C active, with correct ADR cross-links.
+- overview.md, task-loader.md, hal.md, scheduler.md, exceptions.md, security-model.md, memory-management.md, boot.md, and docs/architecture/README.md all reflect Phase B closed / Phase B.2 active / Phase C next and gated by B.2, with correct ADR cross-links.
 - current.md's live-state bullets match HEAD; the phase-b task index lists all 23 tasks with correct statuses; all nine "In Review" task frontmatters flip to Done with `date_done` entries.
 - CONTRIBUTING.md, SECURITY.md, and the affected standards docs (testing.md, error-handling.md, code-review.md, logging-and-observability.md, commit-style.md, code-style.md) match current CI/tooling reality.
 - All four review-family README indices include every Phase-B-closing entry.

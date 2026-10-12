@@ -102,14 +102,20 @@ Coverage is measured with `cargo llvm-cov` on host-runnable tests. Hardware-only
 Enforced in CI today (block merge):
 
 - `cargo test` (host crates, `default-members`) — must pass.
-- Clippy with `-D warnings` — must pass (run as the `host-clippy` + `kernel-clippy` aliases, which together cover the workspace; see [infrastructure.md](infrastructure.md) §"Required gates").
+- `cargo test --release` (same host crates) — must pass. The separate `tools/check-release-tests.sh` guard requires both named release-only console tests to execute and pass; its isolated profile-flip rejection probe must also pass.
+- Clippy with `-D warnings` — must pass through the `host-clippy` and `kernel-clippy` aliases plus `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` after the userland image build; these cover distinct host and bare-metal targets (see [infrastructure.md](infrastructure.md) §"Required gates").
+- `shellcheck tools/*.sh` at default severity — must pass. Isolated expected-failure probes also verify that the shell and userland lint commands reject their deliberate regressions; the production source stays clean.
 - `cargo fmt --all -- --check` — must pass.
-- Host crates on stable Rust (`host-stable-check`) — must build/lint/test clean.
+- Host crates on stable Rust (`host-stable-check`) — must build/test clean; pinned-nightly jobs enforce linting.
 - Miri (Stacked Borrows) over the host-test suite — must pass.
+- Native ARM workspace check/clippy/test/Miri on `ubuntu-24.04-arm`, excluding only the BSP; host-gated userland remains included. An isolated arch-only hello regression must fail workspace clippy with compiler exit 101 and either the exact duplicate-`panic_impl` diagnostic or `error: unwinding panics are not supported without std`; parallel all-target compilation can report either first. Offline fixtures assert both classes, refuse unrelated/tool errors and verify cleanup. Live required-check registration and full-policy read-back completed on 2026-10-12 after hosted green and both fresh rounds. See [ci.md](../guides/ci.md#why-an-arm64-host-job).
+
+- Debug/release single-core QEMU EL0 smoke (`qemu-smoke`) with matching images, required profile markers and panic/CPU-fault rejection. Synthetic trace fixtures and three actual private kernel mutations verify rejection; production/probe traces and provenance are uploaded even on failure. Exact SVC counting and adversarial EL0 images remain separate scope.
+
+Offline branch-protection safety fixtures validate drift, app bindings, additive-only writes, remote green proof and CI refusal without live API calls or admin credentials.
 
 Not yet enforced in CI:
 
-- QEMU smoke tests — run by the maintainer before merge on the primary target; there is **no QEMU-smoke CI job yet** (tracked as a B2-or-later follow-up per [infrastructure.md](infrastructure.md) §"Planned gates"). A failing smoke test does not currently turn CI red — it is caught at maintainer review.
 - Hardware smoke tests — run periodically, not per-PR.
 
 A red CI is never ignored. Flaky tests are bugs, not facts of life.
@@ -142,6 +148,7 @@ When a test fails in CI:
 
 ## References
 
+- [ADR-0040 — Phase B.2 consolidation bridge](../decisions/0040-phase-b2-consolidation-bridge.md).
 - The Rust Book, Testing chapter: https://doc.rust-lang.org/book/ch11-00-testing.html
 - Embedded Rust testing patterns: https://docs.rust-embedded.org/book/
 - `cargo-nextest`: https://nexte.st/
