@@ -115,7 +115,7 @@ User image pages are RX and stack pages RW-NX. Kernel RAM remains RWX-equivalent
 
 Current malformed syscall inputs produce typed errors for the described boundary. A non-SVC EL0 synchronous exception reaches the kernel panic path. There is no implemented TaskFault supervisor message, restart, general cleanup or service-recovery protocol. Hello's Rust panic handler voluntarily calls task_exit(101); this is program behavior, not general execution-fault containment. Exit selects another task without reclaiming the old Task, AS, cap table or frames.
 
-Kernel panic reconstructs the console, prints the marker/PanicInfo and spins. It does not automatically reset, unwind, dump a full register set or produce a backtrace. Exception handlers can print their specific syndrome/frame information; that does not make every panic a register dump. See [boot](boot.md) and [exceptions](exceptions.md).
+Kernel panic reconstructs the console, prints the marker/PanicInfo and spins. It does not automatically reset, unwind, dump a full register set or produce a backtrace. Unhandled-exception panic messages carry class/ESR/class-id fields, and unexpected-IRQ messages carry the IRQ identifier. The BSP prints those messages through PanicInfo; no pre-handler saved-frame print is implemented. See [boot](boot.md) and [exceptions](exceptions.md).
 
 ### Bounded kernel resources
 

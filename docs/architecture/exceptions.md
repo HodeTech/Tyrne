@@ -47,7 +47,7 @@ There is **no SIMD register save** in this IRQ frame. Boot enables FP/SIMD; coop
 
 ### Syscall dispatch (sync / SVC path) — T-021
 
-`SyscallTrapFrame` is 272 bytes: x0–x30, ELR_EL1, SPSR_EL1 and alignment padding. Its repr(C) field order mirrors assembly and its size is asserted at compile time. It likewise does not save full SIMD/FP state. The input ABI uses x8 for number and x0–x5 for arguments; status/payload return through x0–x7.
+`SyscallTrapFrame` is 272 bytes: x0–x30, SP_EL0, ELR_EL1 and SPSR_EL1 (34 saved u64 values, with no padding). Its repr(C) field order mirrors assembly and its size is asserted at compile time. It likewise does not save full SIMD/FP state. The input ABI uses x8 for number and x0–x5 for arguments; status/payload return through x0–x7.
 
 Actual EL0 SVC processing has a returning and a non-returning arm.
 
@@ -97,9 +97,9 @@ On IRQ 27, the handler writes CNTV_CTL_EL0=`10`, EOIs and returns. It does not s
 
 ### Idle's `wfi` activation
 
-The installed idle entry unmasks IRQs, then loops WFI followed by `yield_now` with the activation callback. Under [ADR-0026](../decisions/0026-idle-dispatch-fallback.md) it is a **fallback**, never the FIFO head. T-012 replaced the interim spin body with WFI; later fallback fixes prevent it displacing real ready work.
+The installed idle entry loops WFI followed by `yield_now` with the activation callback; it does not explicitly unmask IRQs. First dispatch holds an IrqGuard on an abandoned caller frame, and the cooperative context switch does not restore DAIF. The earlier boot-time DAIF.I clear therefore does not establish unmasked idle entry; see [scheduler](scheduler.md#idle-task-and-structural-non-emptiness). Under [ADR-0026](../decisions/0026-idle-dispatch-fallback.md) it is a **fallback**, never the FIFO head. T-012 replaced the interim spin body with WFI; later fallback fixes prevent it displacing real ready work.
 
-Default boot ends in Task A's completion busy-spin, so that path never selects idle or demonstrates WFI wake. Timer/GIC installation is infrastructure; a real armed-deadline workload is needed for delivery evidence. Existing historical B1 completion/Miri results are not newly pending solely because this chapter is refreshed; the explicitly retained IRQ-take audit gap is the remaining separate issue.
+Default boot ends in Task A's completion busy-spin, so that path never selects idle or demonstrates WFI wake. Timer/GIC installation is infrastructure; an actual mask-state check and armed-deadline workload are needed before claiming delivery or idle wake. Existing historical B1 completion/Miri results are not newly pending solely because this chapter is refreshed; the explicitly retained IRQ-take audit gap is the remaining separate issue.
 
 ### IRQ-handler interaction with the raw-pointer scheduler bridge
 

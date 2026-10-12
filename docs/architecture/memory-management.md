@@ -42,7 +42,7 @@ These are bootstrap PA spans; the same spans are subsequently reached at high of
 | `0x0900_0000..0x0920_0000` | UART-containing device block | One 2-MiB block; actual PL011 starts at `0x0900_0000`. |
 | `0x4000_0000..0x4800_0000` | Normal cached RAM/kernel | 64 blocks, privileged RW/executable, USER clear. |
 
-Kernel RAM is RWX-equivalent; per-section W^X is reserved as ADR-0034 in the [index](../decisions/README.md). The live mapper returns BlockMapped when a page walk encounters an existing block; it does not automatically split bootstrap blocks into 512 pages. User image RX and stack RW-NX are separate mappings, not a retrofit of kernel section permissions.
+Kernel RAM is RWX-equivalent; per-section W^X is reserved as ADR-0034 in the [index](../decisions/README.md). For an existing block, the live mapper returns AlreadyMapped from `map`, and BlockMapped from `unmap` or `translate`; it does not automatically split bootstrap blocks into 512 pages. [T-041](../analysis/tasks/phase-b2/T-041-blockmappedmmu-already-mapped.md) owns reconciliation of the older fake with this real-map contract. User image RX and stack RW-NX are separate mappings, not a retrofit of kernel section permissions.
 
 ### `MAIR_EL1` attribute encoding
 
@@ -103,7 +103,7 @@ Bad translation registers/descriptors can fault instruction fetch, stack or MMIO
 
 ## Frame allocation discipline
 
-[`Pmm<N,R>`](../../kernel/src/mm/pmm.rs), delivered by [T-017](../analysis/tasks/phase-b/T-017-physical-memory-manager.md), is a bitmap allocator with a hint and cached reserved spans. QEMU configures `N=4096`, `R=8`, 32,768 frames across 128 MiB. It reserves pre-image RAM and kernel-through-bootstrap-stack storage, including BSS/static stacks and all six table frames. A successful allocation zeroes the full frame; free validates range/alignment/reservation/allocation state.
+[`Pmm<N,R>`](../../kernel/src/mm/pmm.rs), delivered by [T-017](../analysis/tasks/phase-b/T-017-physical-memory-manager.md), is a bitmap allocator with a hint and cached reserved spans. QEMU configures `N=4096`, `R=8`, 32,768 frames across 128 MiB. It reserves pre-image RAM and kernel-through-bootstrap-stack storage, including BSS/static stacks and all six table frames. A successful allocation zeroes the full frame. `PhysFrame` construction enforces page alignment before the call; `free_frame` checks the managed extent, reserved ranges and allocation bit.
 
 Initialization runs high after TTBR0 is disabled. [`phys_to_kernel_va`](../../hal/src/mmu/mod.rs) and [`phys_frame_kernel_ptr`](../../kernel/src/mm/mod.rs) are realized helpers, delivered by [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md) under ADR-0033. PMM zero-fill and loader copy route physical frames through the high direct map. The **2026-05-30 Amendments of UNSAFE-2026-0026 and UNSAFE-2026-0027** in the [audit log](../audits/unsafe-log.md) record these address-regime changes; they are not future placeholders.
 

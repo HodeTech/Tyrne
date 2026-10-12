@@ -95,7 +95,7 @@ The EL drop preserves masked DAIF through SPSR. PC-relative link/load uniformity
 
 ### Panic path
 
-The BSP panic handler chooses the low/high UART alias based on the current stack regime, reconstructs the console, writes `!! tyrne panic !!` and formatted PanicInfo, then spins. There is no general register dump, backtrace, reset or task-supervisor recovery. Specific exception panic paths print their syndrome/frame fields before this handler. If bad translation also removes the vector/console mapping, diagnostic installation cannot guarantee recoverability.
+The BSP panic handler chooses the low/high UART alias based on the current stack regime, reconstructs the console, writes `!! tyrne panic !!` and formatted PanicInfo, then spins. There is no general register dump, backtrace, reset or task-supervisor recovery. Unhandled-exception panic messages carry the class, ESR_EL1 and class id; unexpected-IRQ messages carry the IRQ identifier. The BSP handler emits these fields through formatted PanicInfo; the exception handlers do not pre-print or dump the saved frame. If bad translation also removes the vector/console mapping, diagnostic installation cannot guarantee recoverability.
 
 ## Invariants
 

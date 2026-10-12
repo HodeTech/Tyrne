@@ -54,7 +54,7 @@ If stale state holds an in-flight capability, debug builds assert before resetti
 Send and receive have separate preflights:
 
 1. Send validates Endpoint/SEND, transfer handle/TRANSFER, live endpoint and available endpoint state. `cap_take` then removes a **leaf** capability from the sender table; HasChildren becomes InvalidTransferCap. The slot generation changes and the capability value moves into endpoint state.
-2. Receive peeks the pending state and checks receiver-table capacity before consuming a pending cap. A full table returns ReceiverTableFull while preserving the message/cap for retry. `is_full()` scans the bounded 64-slot table; it is not a per-slot reservation.
+2. Receive peeks the pending state and checks receiver-table capacity before consuming a pending cap. A full table returns ReceiverTableFull while preserving the message/cap for retry. `is_full()` checks whether the free-list head is absent (`free_head.is_none()`); it does not reserve a slot.
 3. Receive consumes the pending message/cap and installs the cap as a new root in the receiver table. Rights are not widened, and the receiver obtains a fresh local handle.
 
 Under current exclusive cooperative access, those preflights protect the logical move against the stated rejections. They are not one cross-task atomic operation, a global no-error-mutation claim or an SMP transaction. `Capability` itself is neither Copy nor Clone; explicit authorized `cap_copy` can still create another value referring to the same object. Transfer moves this value once, rather than promising unique object authority throughout the system.
@@ -117,7 +117,7 @@ The [retained debug/release traces](../analysis/reports/2026-10-13-t045-architec
 
 ## Trade-offs
 
-Depth-one state is small and testable but cannot implement fan-in/fan-out without caller coordination or a new contract. The bare receive is nonblocking yet registers a waiter; a future polling operation may need semantics without that side effect. Separate reply and receive cost additional entries compared with a composite, deferred by ADR-0018. New-root transfers simplify local tables while leaving cross-table revocation unresolved. Fixed-capacity scans are bounded but not constant-time secrecy or scalability guarantees.
+Depth-one state is small and testable but cannot implement fan-in/fan-out without caller coordination or a new contract. The bare receive is nonblocking yet registers a waiter; a future polling operation may need semantics without that side effect. Separate reply and receive cost additional entries compared with a composite, deferred by ADR-0018. New-root transfers simplify local tables while leaving cross-table revocation unresolved. Fixed capacities bound metadata work; they do not establish constant-time secrecy or scalability guarantees.
 
 ## Open questions
 

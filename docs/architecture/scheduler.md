@@ -50,7 +50,7 @@ Current-task accessors read the current slot's registered AS/table/window. BSP s
 
 ### Idle task and structural non-emptiness
 
-`register_idle` installs a fallback context and handle. Selection uses `ready.dequeue().or(s.idle)`; idle never takes a FIFO turn ahead of ready work and has no numeric priority. Its entry unmasks IRQs, executes WFI, then yields. IRQ infrastructure exists, but the default demo arms no deadline and ends in Task A's busy-spin; retained smoke does not exercise idle/WFI or timer wake.
+`register_idle` installs a fallback context and handle. Selection uses `ready.dequeue().or(s.idle)`; idle never takes a FIFO turn ahead of ready work and has no numeric priority. Its entry repeatedly executes WFI, then yields, without explicitly unmasking IRQs. First dispatch holds an IrqGuard on an abandoned caller frame; the cooperative switch does not restore DAIF. Boot's earlier DAIF.I clear therefore does not establish unmasked idle entry. Mask state and actual delivery still need verification before claiming idle wake. IRQ infrastructure exists, but the default demo arms no deadline and ends in Task A's busy-spin; retained smoke does not exercise idle/WFI or timer wake.
 
 Without a ready task or idle, `start` panics as a boot programming error. The receive bridge returns `SchedError::Deadlock` when blocking would leave no dispatch target; it rolls back current/state and cancels the just-registered endpoint receive. These defensive paths remain tested even though the normal BSP registers idle. Registration and queue invariants, rather than a universal panic-free claim, explain normal dispatch.
 
