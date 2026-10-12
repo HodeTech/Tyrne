@@ -1,270 +1,152 @@
 # Memory management
 
-This document covers the kernel's virtual memory architecture: how the MMU is activated, what the v1 layout looks like, how page-table entries encode permissions and memory types, and how mapping mutations enforce TLB-invalidation discipline through the type system.
+Tyrne boots through temporary identity translation, migrates the EL1 kernel to shared privileged TTBR1, and activates per-task low TTBR0 roots for execution. This chapter describes that live layout, descriptor/flush contracts, the PMM, AddressSpace objects and trusted loader composition. Physical ownership, complete reclamation, kernel section permissions and hostile fault recovery remain separate work.
 
-It synthesises [ADR-0009](../decisions/0009-mmu-trait.md) (the `Mmu` HAL trait), [ADR-0012](../decisions/0012-boot-flow-qemu-virt.md) §Memory layout (the static image layout), and [ADR-0027](../decisions/0027-kernel-virtual-memory-layout.md) (the B2 MMU activation decision). When the document and an ADR disagree, the ADR is authoritative — this doc is a synthesis, not a substitute.
+> **Last verified against:** 2026-10-13; source da18ed5c2a2d8b3d61f82337a9da021d05d73451; owner [T-046](../analysis/tasks/phase-b2/T-046-docs-subsystem-chapters-refresh.md).
 
-## Why a memory-management chapter
+## Context
 
-The MMU is the architectural surface where capability semantics meet hardware. A `MemoryRegionCap` grant becomes a sequence of [`Mmu::map`](../../hal/src/mmu/mod.rs) calls; a revocation becomes [`Mmu::unmap`](../../hal/src/mmu/mod.rs) plus a TLB invalidation; a page fault from userspace becomes a synchronous exception that the capability system routes back to the offending task. None of that is reachable while translation is off, which is why B2's first commitment is to turn the MMU on.
+[ADR-0009](../decisions/0009-mmu-trait.md) defines the MMU trait; [ADR-0027](../decisions/0027-kernel-virtual-memory-layout.md) defines bootstrap translation; [ADR-0033](../decisions/0033-kernel-high-half-migration.md) and its dated riders define the realized high half. [ADR-0035](../decisions/0035-physical-memory-manager.md), [ADR-0028](../decisions/0028-address-space-data-structure.md), [ADR-0029](../decisions/0029-initial-userspace-image-format.md) and [ADR-0038](../decisions/0038-mmu-translate-and-user-access.md) govern allocation, AS objects, image loading and user-copy translation. These decisions and actual implementation control this synthesis; old identity-only descriptions apply only to bootstrap.
 
-Activating the MMU is also the project's first architectural state-machine transition that *cannot fail gracefully on the first instruction after the flip*: a typo in any of the page-table entries, the `MAIR_EL1` encoding, the `TCR_EL1` configuration, or the `SCTLR_EL1` write produces a translation fault on the very next instruction-fetch. The simulation table in [ADR-0027 §Decision outcome / §Simulation](../decisions/0027-kernel-virtual-memory-layout.md#simulation) walks the worst-case interaction step-by-step — read it before changing anything in `bsp-qemu-virt/src/mmu.rs` or `bsp-qemu-virt/linker.ld`.
+## Design
 
-## v1 layout (B2 — identity-only, kernel in `TTBR0_EL1`)
+### Why a memory-management chapter
 
-The B2 milestone activates the MMU with a deliberately minimal layout: identity-mapped kernel image and MMIO ranges, `TTBR0_EL1` carrying every translation, `TTBR1_EL1` reserved for the future high-half migration. No userspace, no per-task `TTBR0` swap, no ASID assignment. Everything works at the same address it did before the MMU came on; the MMU is "on" structurally (caching active, attributes enforced) without changing any virtual address the kernel observes.
+Hardware translation is one part of a [capability](../glossary.md) boundary. Current trusted kernel APIs create and map AS objects; no MemoryRegion capability syscall or fault-supervisor service is implemented. Turning translation on can fault before ordinary recovery is available. The [ADR-0027 simulation](../decisions/0027-kernel-virtual-memory-layout.md#simulation) and [boot migration](boot.md#high-half-migration-t-022--adr-0033) describe the crossing rather than treating vector installation as a guarantee that every bad mapping is recoverable.
+
+### Current layout and bootstrap identity translation
+
+Both regimes use 48-bit VA, a 4 KiB granule and four levels. BSP bootstrap uses 2-MiB L2 blocks; ordinary new AS mappings use 4-KiB L3 pages. Low identity translation is temporary. Shared TTBR1 remains active after migration; selected Task roots occupy TTBR0.
+
+The bootstrap low and high paths share the same physical L2 descriptors, while the EL0 image has separate user page tables.
 
 ```mermaid
 flowchart TB
-    subgraph "Translation regime"
-        Granule[4 KiB granule<br/>48-bit VA<br/>4-level translation]
-    end
-    subgraph "TTBR0_EL1 — bootstrap identity (active in v1)"
-        L0_0["L0[0]: table → L1"]
-        L1_0["L1[0]: table → L2_low<br/>(0..1 GiB region)"]
-        L1_1["L1[1]: table → L2_high<br/>(1..2 GiB region)"]
-        L2_low_mmio["L2_low[64..73]:<br/>9 × 2 MiB blocks for<br/>0x0800_0000..0x0920_0000<br/>device-nGnRnE"]
-        L2_high_ram["L2_high[0..64]:<br/>2 MiB blocks for<br/>0x4000_0000..0x4800_0000<br/>normal cached"]
-        L0_0 --> L1_0
-        L0_0 --> L1_1
-        L1_0 --> L2_low_mmio
-        L1_1 --> L2_high_ram
-    end
-    subgraph "TTBR1_EL1 — reserved for high-half (v1: empty, EPD1=1)"
-        Empty["Translation walks disabled<br/>(see ADR-0033 placeholder)"]
-    end
+    T0[TTBR0 selected task root] --> U[EL0 USER pages or EL1 bootstrap root]
+    T1[TTBR1 shared high root] --> H[High L0/L1]
+    H --> L2[Shared bootstrap L2 tables]
+    L[Temporary low L0/L1] --> L2
+    L2 --> R[128 MiB kernel/RAM blocks]
+    L2 --> D[GIC / UART device blocks]
 ```
 
-The four low-identity bootstrap page-table frames live in a dedicated `.boot_pt` section in [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) (added by T-016). Each is `PAGE_SIZE`-aligned and pre-zeroed by the existing BSS-zero loop in [`boot.s`](../../bsp-qemu-virt/src/boot.s) because `.boot_pt` is bracketed by `__bss_start` / `__bss_end`. The low-identity budget is **16 KiB** (4 frames × 4 KiB); no kernel allocator dependency at the bootstrap moment; all of `.boot_pt` is filled in before `SCTLR_EL1.M = 1`. **(T-022 / ADR-0033 adds two more frames to `.boot_pt` — the high-half `TTBR1_EL1` roots `__boot_pt_l0_hh` / `__boot_pt_l1_hh`, built by `high_half_activate` — for six frames / 24 KiB total; the two low-identity L2 tables are shared into the high-half regime, so no L2 frames are duplicated.)**
+Six pre-zeroed frames (24 KiB) are reserved **inside `.bss`**: four low L0/L1/two L2 frames and two high L0/L1 frames. `__boot_pt_*` symbols name them; `.boot_pt` is not a separate output section. No allocator is needed to enable bootstrap translation. The high L0 entry is 511; high L1 entries 508/509 reach the shared device/RAM L2 tables.
 
 ### Identity ranges
 
-| Region | PA range | VA range (identity) | Memory type | Permissions | Block-descriptor count |
-|--------|----------|---------------------|-------------|-------------|-----------------------|
-| GIC distributor / GIC CPU interface | `0x0800_0000 .. 0x0900_0000` | identical | device-nGnRnE (MAIR idx 0) | kernel R/W; UXN, PXN | 8 (each 2 MiB block) |
-| PL011 UART | `0x0900_0000 .. 0x0902_0000` | identical | device-nGnRnE (MAIR idx 0) | kernel R/W; UXN, PXN | 1 (one 2 MiB block; UART is sub-block but block-mapped for simplicity) |
-| Kernel + RAM | `0x4000_0000 .. 0x4800_0000` | identical | normal cached, write-back, write-allocate, inner shareable (MAIR idx 1) | kernel R/W/X (block-level; finer-grained `.text` RX vs `.rodata` R vs `.bss/.data` RW awaits B3+ remap-to-4-KiB-pages work) | 64 (each 2 MiB block) |
+These are bootstrap PA spans; the same spans are subsequently reached at high offset + PA. Ranges are half-open.
 
-**Why 2 MiB blocks instead of 4 KiB pages?** [ADR-0009](../decisions/0009-mmu-trait.md) commits the `Mmu` trait surface to 4 KiB granularity, but the *bootstrap* page-table construction is BSP-internal: the BSP can use any VMSAv8 feature that makes sense for the boot moment. Identity-mapping 128 MiB of RAM with 4 KiB pages would require ~32 768 L3 entries (64 L3 frames; 256 KiB just for the bootstrap tables) — disproportionate for a step that only needs to identity-cover a contiguous range. 2 MiB block descriptors at L2 reduce the entire bootstrap to 4 page-table frames at the cost of giving up sub-2-MiB granularity until post-MMU code remaps a region into 4 KiB pages. In v1 no caller exercises the sub-2-MiB case (the kernel's `.text` / `.rodata` / `.bss` distinction is enforced by the linker-script + access patterns, not by per-page MMU permissions yet). When B3+ code wants finer-grained permissions on a sub-2-MiB region, the BSP's `Mmu::map` implementation will split the block into 512 4 KiB pages — out of scope for T-016, in scope for the first follow-up B3+ task that needs it.
+| Span | Mapping | Count / access |
+|------|---------|----------------|
+| `0x0800_0000..0x0900_0000` | GIC device window | Eight 2-MiB blocks, privileged RW, PXN/UXN. |
+| `0x0900_0000..0x0920_0000` | UART-containing device block | One 2-MiB block; actual PL011 starts at `0x0900_0000`. |
+| `0x4000_0000..0x4800_0000` | Normal cached RAM/kernel | 64 blocks, privileged RW/executable, USER clear. |
+
+Kernel RAM is RWX-equivalent; per-section W^X is reserved as ADR-0034 in the [index](../decisions/README.md). The live mapper returns BlockMapped when a page walk encounters an existing block; it does not automatically split bootstrap blocks into 512 pages. User image RX and stack RW-NX are separate mappings, not a retrofit of kernel section permissions.
 
 ### `MAIR_EL1` attribute encoding
 
-MAIR carries up to eight 8-bit attribute encodings. v1 commits to two indices and reserves the rest:
-
-| Index | Encoding (`Attr_n`) | Memory type | Used for |
-|-------|---------------------|-------------|----------|
-| 0 | `0x00` | device-nGnRnE | GIC + UART (every `MappingFlags::DEVICE` mapping) |
-| 1 | `0xFF` | normal, inner+outer write-back, write-allocate, read-allocate | RAM (every `!DEVICE` mapping) |
-| 2 | reserved (`0x00`) | — | future write-combining or device-GRE |
-| 3 | reserved (`0x00`) | — | future normal-uncached for DMA buffers |
-| 4–7 | reserved (`0x00`) | — | future memory types (extended via a follow-on MMU ADR) |
-
-The BSP's `QemuVirtMmu::map` implementation translates `MappingFlags::DEVICE → AttrIndx=0` and `!DEVICE → AttrIndx=1` in the page-table entry. When future ADR work introduces a richer `MemoryType` enum, the encoder grows additional discriminant arms — additive change, no impact on existing entries.
+MAIR index 0 is `0x00` device-nGnRnE; index 1 is `0xFF` normal inner/outer write-back cached memory. DEVICE selects index 0; other mappings select index 1. The remaining indices are not a current cache-mode API. RAM descriptors use inner shareability; device descriptors use nonshareable attributes.
 
 ### `TCR_EL1` configuration
 
-v1's `TCR_EL1` value commits to the layout shape:
+| Field | Current setting / transition |
+|-------|------------------------------|
+| T0SZ / T1SZ | 16 / 16: two 48-bit regimes. |
+| TG0 / TG1 | `00` / `10`: 4 KiB granules. |
+| IRGN/ORGN, SH | Write-back/write-allocate, inner-shareable walks for both regimes. |
+| IPS | `010`: 40-bit physical-address encoding, distinct from the direct-map window limit. |
+| AS | 0: 8-bit ASID field; current activation uses ASID 0. |
+| EPD0 / EPD1 | Bootstrap `(0,1)` → both on `(0,0)` → low off `(1,0)` → selected-task low on `(0,0)`. |
 
-| Field | Bit range | Value | Meaning |
-|-------|-----------|-------|---------|
-| `T0SZ` | bits 5:0 | 16 | 48-bit `TTBR0_EL1` virtual addresses (`64 - 16 = 48` bits of VA) |
-| `EPD0` | bit 7 | 0 | Translations enabled for `TTBR0_EL1` |
-| `IRGN0` / `ORGN0` | bits 9:8 / 11:10 | 0b01 / 0b01 | Inner/outer write-back write-allocate cacheable for page-table walks |
-| `SH0` | bits 13:12 | 0b11 | Inner shareable for `TTBR0_EL1` walks |
-| `TG0` | bits 15:14 | 0b00 | 4 KiB granule for `TTBR0_EL1` |
-| `T1SZ` | bits 21:16 | 16 | (reserved; matches T0SZ for symmetry) |
-| `EPD1` | bit 23 | **1** | Translations **disabled** for `TTBR1_EL1` (v1 has nothing to map there yet) |
-| `IRGN1` / `ORGN1` / `SH1` | bits 25:24 / 27:26 / 29:28 | (reserved; matches TTBR0 settings) | (inert while EPD1=1) |
-| `TG1` | bits 31:30 | 0b10 | 4 KiB granule for `TTBR1_EL1` (inert in v1; correct for the future high-half ADR-0033) |
-| `IPS` | bits 34:32 | 0b010 | 40-bit Intermediate Physical Address — matches QEMU virt + Cortex-A72 |
-| `AS` | bit 36 | 0 | 8-bit ASID field; v1 uses ASID=0 globally |
+The uniform `0xFFFF_FFFF_0000_0000` offset maps kernel PA `0x4008_0000` at `0xFFFF_FFFF_4008_0000`. Helpers guard the low-4-GiB physical window on the bare-metal build; a larger physical range needs a revised BSP layout, even though TCR's PA encoding is wider. On host builds the offset is zero for real host-backed tests.
 
-**[ADR-0033](../decisions/0033-kernel-high-half-migration.md) (Accepted 2026-05-30; implemented by [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md))** flips `EPD1 = 1 → 0` and populates `TTBR1_EL1` at boot — the kernel **migrates to the high half** so `TTBR0_EL1` is freed for per-task userspace (B6's gating prerequisite). The rest of `TCR_EL1` stays byte-stable across the transition because the v1 settings already commit to the high-half-friendly shape (`EPD1` is the single bit that changes — the host-tested `TCR_EL1_VALUE_HIGH_HALF`). **The identity layout described in this section is now the boot-time *bootstrap* phase** `mmu_bootstrap` establishes before `high_half_activate` + the migration trampoline move the running kernel to `TTBR1_EL1`; see [`boot.md` §"High-half migration"](boot.md#high-half-migration-t-022--adr-0033) for the transition and the single linear `KERNEL_HIGH_HALF_OFFSET = 0xFFFF_FFFF_0000_0000` direct map.
+### Page-table entry encoding
 
-### Page-table entry encoding (block descriptor at L2)
+Pure [`vmsav8` helpers](../../hal/src/mmu/vmsav8.rs) encode table/block/page descriptors and decode translated leaf permissions. L2 blocks use 2-MiB-aligned output PAs; L3 pages use 4-KiB-aligned PAs. Valid/type, AttrIndx, AF and shareability select the appropriate descriptor form.
 
-Each L2 block descriptor has the shape (per ARM ARM §D5.3, AArch64 stage-1 block descriptor at level 2 with 4 KiB granule):
+| Mapping | AP | PXN / UXN |
+|---------|----|-----------|
+| Privileged RW, not executable | `00` | 1 / 1 |
+| Privileged RO, not executable | `10` | 1 / 1 |
+| Privileged executable RAM | `00` or `10`, according to WRITE | 0 / 1 |
+| USER RW, not executable | `01` | 1 / 1 |
+| USER RO executable image | `11` | 1 / 0 |
+| DEVICE | According to USER/WRITE flags | 1 / 1 regardless of EXECUTE. |
 
-```text
-bit  63   54 53 52      48 47                21 20      12 11 10 9 8 7 6 5 4 3 2 1 0
-    |UXN|PXN| Contig | Res |OutputAddress[47:21]| Reserved |nG|AF|SH| AP|NS|AttrIdx|T|V|
-    |   |   |        |     |   (2 MiB-aligned)  |   (RES0) |  |  |   |   |  |       | | |
-```
+Read permission is implicit. nG is cleared for GLOBAL and set otherwise; not every mapping is global. AF is set when mapping. NS-bit encoding alone is not a TrustZone/secure-EL1 guarantee. Encoder tests live in the HAL, not a fabricated host-built BSP test module. The trusted map API can accept combinations the current loader never uses; these flags do not enforce physical ownership or a global W^X policy.
 
-(For L3 page descriptors and level-1 block descriptors the `OutputAddress` field shifts: pages at L3 use bits [47:12] for 4 KiB-aligned PA; blocks at L1 use bits [47:30] for 1 GiB-aligned PA. The table below describes the L2 block-descriptor case used by v1's bootstrap.)
+### The `MapperFlush` flush-token discipline
 
-| Field | Bits | v1 value | Meaning |
-|-------|------|----------|---------|
-| `V` (Valid) | 0 | 1 | Entry is valid; an invalid entry produces a translation fault |
-| `T` (Type / Block-vs-Table) | 1 | 0 (block at L2; 1 at L0/L1 = table descriptor) | Distinguishes block descriptor from table descriptor |
-| `AttrIndx` | 4:2 | 0 (device) / 1 (normal) | Index into `MAIR_EL1` |
-| `NS` (Non-Secure) | 5 | 0 | EL1 secure-state mappings (Tyrne does not currently use TrustZone) |
-| `AP` (Access Permissions) | 7:6 | 0b00 (kernel R/W) | `0b00` = kernel R/W, no userspace; `0b01` = kernel R/W + user R/W; `0b10` = kernel R/O, no user; `0b11` = kernel R/O + user R/O |
-| `SH` (Shareability) | 9:8 | 0b11 (inner shareable for RAM) / 0b00 (non-shareable for device) | RAM mappings inner-shareable; device mappings non-shareable |
-| `AF` (Access Flag) | 10 | 1 | Access flag managed by software in v1; setting AF=1 at map time avoids the AF-fault path |
-| `nG` (Not Global) | 11 | 0 (global) | All v1 mappings global; per-ASID lifecycle deferred to ADR-0033 |
-| `OutputAddress` | 47:21 (block) / 47:12 (page) | identity (`PA[47:21] = VA[47:21]`) | Physical-address output of the translation |
-| `UXN` (Unprivileged eXecute Never) | 54 | 1 | Userspace cannot execute (no userspace yet, but locked-shut-by-default is the right discipline) |
-| `PXN` (Privileged eXecute Never) | 53 | 0 for kernel-image RAM; 1 for MMIO | Kernel can execute the kernel image; cannot execute MMIO |
+`map` returns `Result<MapperFlush, MmuError>`; `unmap` returns the token and removed frame. `flush(mmu)` invalidates the recorded VA; `ignore()` documents deferral for a later bulk invalidation. `#[must_use]` plus the denied unused-result lint catches accidental unused values, but explicit discarding can bypass it. Review still verifies the right MMU/root, invalidation ordering and the correctness of any ignored token.
 
-The BSP's [`QemuVirtMmu::map`](../../bsp-qemu-virt/src/mmu.rs) implementation computes the descriptor from `(va, pa, flags)` per the table above. Host tests in `bsp-qemu-virt/src/mmu.rs::tests` pin the encoding for each `MappingFlags` permutation so future BSP edits cannot silently drift the encoding away from the documented contract.
-
-## The `MapperFlush` flush-token discipline
-
-[ADR-0027 §Decision outcome / (c)](../decisions/0027-kernel-virtual-memory-layout.md) extends the [ADR-0009](../decisions/0009-mmu-trait.md) `Mmu` trait so that `map` and `unmap` return a typed `MapperFlush` token instead of `Result<(), MmuError>`. The token carries the just-mapped (or just-unmapped) `VirtAddr` and is `#[must_use]`-decorated so any caller that drops it without explicitly handling it produces a `unused_must_use` lint failure (promoted to a deny in the kernel crate).
-
-Two ways to discharge the token:
-
-```rust
-// Pattern 1 — single-mutation call site: flush immediately.
-let flush = mmu.map(&mut as_, va, pa, flags, &mut frames)?;
-flush.flush(&mmu);  // executes mmu.invalidate_tlb_address(va)
-
-// Pattern 2 — bulk operation: ignore each per-call token, then issue
-// a single invalidate_tlb_all() afterwards.
-for region in regions {
-    let flush = mmu.map(&mut as_, region.va, region.pa, region.flags, &mut frames)?;
-    flush.ignore();  // documented no-op; the bulk invalidate follows
-}
-mmu.invalidate_tlb_all();
-```
-
-Forgetting both `.flush()` and `.ignore()` is a compile error. This is the type-system-side encoding of the discipline the [2026-05-07 B1 closure retro §"What we learned"](../analysis/reviews/business-reviews/2026-05-07-B1-closure.md) codified into the [`write-adr` skill](../../.agents/skills/write-adr/SKILL.md) §Simulation rule: when reviewer attention is the only thing standing between a class of bug and shipping, prefer to encode the discipline in the type system.
-
-The token does not carry a `&Mmu` reference (which would require a lifetime parameter and complicate the return signature); the caller passes the `Mmu` reference at `.flush()` time. Mirrors the `x86_64` crate's `MapperFlush` shape — Rust ecosystem prior art for the same problem.
+The mapper allocates intermediate tables through a kernel `FrameProvider`, returns typed failures and keeps existing roots/intermediate tables after leaf unmap. It is neither a heap allocator nor complete AS destruction. [T-040](../analysis/tasks/phase-b2/T-040-mapperflush-asid-discriminant.md) separately owns flush-token AS identity.
 
 ### Why two methods (`flush` and `ignore`) instead of just `flush`?
 
-`Mmu::invalidate_tlb_address(va)` is a per-page TLB invalidate; `Mmu::invalidate_tlb_all()` is a sweep. For bulk operations where N consecutive `map` calls will be followed by a single `invalidate_tlb_all`, calling `.flush()` N times is *correct* but does N redundant per-page invalidates plus the sweep. `.ignore()` exists to make "I know what I'm doing; the bulk invalidate covers it" a one-method documented decision, not a "I forgot to flush" reviewer-attention concern. The asymmetry between the two methods is the discipline.
+Leaf-by-leaf immediate invalidation is simple; a loader rollback/bulk operation can instead remove several mappings and perform one full invalidation. `ignore()` makes that choice visible, not automatically correct. It does not disable a future invalidation obligation or prove stale translations are inaccessible.
 
-## Boot-time MMU activation sequence
+### Boot-time MMU activation sequence
 
-The `mmu_bootstrap` Rust function (landing in [`bsp-qemu-virt/src/mmu_bootstrap.rs`](../../bsp-qemu-virt/src/mmu_bootstrap.rs) per T-016 step 4) is called once by `kernel_entry` immediately after the `cpu.now_ns()` boot-snapshot and **before any MMIO-touching step** — both the timer banner (which writes the UART) and the GIC initialisation (which writes the GIC distributor / CPU interface) must follow MMU activation so their MMIO accesses go through the device-attribute mapping. The full `kernel_entry` order is `cpu.now_ns()` → `mmu_bootstrap()` → "tyrne: mmu activated" print → GIC init → timer banner → demo. The activation sequence (from ADR-0027 §Simulation) is:
+1. Reset establishes EL1, masked DAIF, a stack and zeroed BSS.
+2. `kernel_entry` emits low UART diagnostics and installs the low vector address before identity MMU activation.
+3. BSP builds low tables, programs translation attributes/registers and enables MMU/caches with required barriers.
+4. Build/install high root, enable TTBR1, rebase SP/VBAR and branch PC high.
+5. Null/disable TTBR0 and invalidate; construct high console/CPU and capture the elapsed-time origin.
+6. Initialize PMM/AS/loader, then GIC/timer support and task bindings; scheduler activation installs the selected root before execution.
 
-```mermaid
-sequenceDiagram
-    participant K as kernel_entry
-    participant B as mmu_bootstrap
-    participant PT as bootstrap page tables
-    participant SR as system registers
-    participant CPU as CPU pipeline
-    K->>B: Step 1 — populate page tables
-    B->>PT: write L0[0], L1[0], L1[1], L2_low[64..73], L2_high[0..64]
-    Note over PT: All entries set; AF=1; AttrIndx per region
-    B->>SR: Step 2 — configure regs
-    Note over SR: MAIR_EL1 = device|normal<br/>TCR_EL1 = T0SZ=16, IPS=2, EPD1=1<br/>TTBR0_EL1 = &__boot_pt_l0<br/>TTBR1_EL1 = 0<br/>ISB
-    B->>CPU: Step 3 — invalidate + enable
-    Note over CPU: TLBI VMALLE1<br/>DSB ISH<br/>IC IALLU<br/>DSB ISH<br/>ISB<br/>SCTLR_EL1.{M,I,C} = 1<br/>ISB
-    CPU-->>B: PC continues at identity-mapped VA<br/>(same address as before; now via TLB)
-    B-->>K: Step 4 — return; MMU active
-    Note over K: print "tyrne: mmu activated"<br/>continue with GIC init,<br/>then timer banner, then demo
-```
-
-The critical correctness moment is **Step 3**: the `ISB` after `MSR SCTLR_EL1` drains the pipeline so the next instruction-fetch goes through the freshly-installed translation regime. Because the kernel image is identity-mapped (PA = VA), the translation succeeds and the PC continues running at the same address it had before the flip. Any error in Step 1 (bad block descriptor; missing AF; wrong attribute index) produces a Translation Fault on that next instruction — caught by either the EL1 synchronous-exception vector (installed by [T-012](../analysis/tasks/phase-b/T-012-exception-and-irq-infrastructure.md)) or by `qemu -d int,unimp,guest_errors` reporting the fault.
+A low UART access already occurs before MMU enable. The boot timestamp occurs after high-half hardware construction, not at reset. The table/console mapping must itself work for an exception diagnostic to succeed; no numeric recoverability percentage is asserted.
 
 ### Failure-mode inventory
 
-| Failure | Root cause | Detection | Mitigation |
-|---------|-----------|-----------|-----------|
-| Translation Fault on first instruction after `SCTLR.M=1` | Bad block descriptor (AF=0, AttrIndx out of range, OutputAddress mis-aligned) | EL1 synchronous-exception handler fires; `qemu -d int,unimp,guest_errors` logs the fault | Host tests pin every encoding shape; the §Simulation table is the manual checklist |
-| Permission Fault on first `STR`/`LDR` after activation | Bad AP encoding (kernel got AP=0b11 = read-only) | EL1 synchronous-exception handler fires | Host tests cover every `MappingFlags` permutation including the WRITE bit |
-| Speculative MMIO read causes hang | Bad MAIR encoding (device range mapped as normal cached) | QEMU smoke hangs at GIC init or UART write | MAIR index 0 = `0x00` (device-nGnRnE) is the strictest mode; speculative-read prevention is its job; encoding is host-tested |
-| TLB stale-translation after `unmap` | Forgotten `MapperFlush::flush()` call | `unused_must_use` lint denies the build | Token discipline prevents the bug class at compile time |
-| Bootstrap frames not zero | `.boot_pt` not bracketed by `__bss_start`/`__bss_end` | Random page-table-entry corruption; symptom is a Translation Fault on a "valid" address | Linker-script invariant: `.boot_pt` lives inside the `.bss` range; verified by host inspection of the linked ELF (T-016 step 3) |
+Bad translation registers/descriptors can fault instruction fetch, stack or MMIO. Non-SVC faults reach whole-kernel panic, and a missing vector/console mapping may make even that diagnosis unavailable. Fresh smoke validates the composed trusted boot path, not all descriptor failures, arbitrary PA grants or hardware break-before-make behavior.
 
 ## Frame allocation discipline
 
-[ADR-0009](../decisions/0009-mmu-trait.md) §Decision drivers requires "frame allocation is the kernel's responsibility" — the `Mmu::map` API receives a `&mut dyn FrameProvider`; the trait never calls a global allocator. v1 satisfies this for the bootstrap moment via static reservation (`.boot_pt`); for post-MMU mappings the kernel needs an actual physical-frame allocator (PMM).
+[`Pmm<N,R>`](../../kernel/src/mm/pmm.rs), delivered by [T-017](../analysis/tasks/phase-b/T-017-physical-memory-manager.md), is a bitmap allocator with a hint and cached reserved spans. QEMU configures `N=4096`, `R=8`, 32,768 frames across 128 MiB. It reserves pre-image RAM and kernel-through-bootstrap-stack storage, including BSS/static stacks and all six table frames. A successful allocation zeroes the full frame; free validates range/alignment/reservation/allocation state.
 
-The PMM is **live as of [T-017](../analysis/tasks/phase-b/T-017-physical-memory-manager.md) (Done 2026-05-10)** per [ADR-0035](../decisions/0035-physical-memory-manager.md). The implementation lives in [`kernel/src/mm/pmm.rs`](../../kernel/src/mm/pmm.rs) and is wired into `bsp-qemu-virt`'s `kernel_entry` boot sequence between `mmu_bootstrap()` and the GIC init step.
+Initialization runs high after TTBR0 is disabled. [`phys_to_kernel_va`](../../hal/src/mmu/mod.rs) and [`phys_frame_kernel_ptr`](../../kernel/src/mm/mod.rs) are realized helpers, delivered by [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md) under ADR-0033. PMM zero-fill and loader copy route physical frames through the high direct map. The **2026-05-30 Amendments of UNSAFE-2026-0026 and UNSAFE-2026-0027** in the [audit log](../audits/unsafe-log.md) record these address-regime changes; they are not future placeholders.
 
-**Design.** Bitmap allocator with hint pointer; one bit per [`PAGE_SIZE`](../../hal/src/mmu/mod.rs) frame; reservation list at init. The `Pmm<const N: usize, const R: usize>` type is parameterised over bitmap byte count (`N`) and reserved-range cache capacity (`R`); each BSP picks the consts at instantiation time:
+**Historical evidence (2026-05-14).** T-019-era `tyrne: image loaded (...)` output described the then-placeholder image and first PMM/AS/map composition. That banner is absent today. [Fresh retained debug/release evidence](../analysis/reports/2026-10-13-t045-architecture-verification.md) instead shows real hello/exit, with 175 debug versus 170 release reserved frames at those exact builds. These values and bootstrap-root addresses vary with layout/profile, not the allocator contract.
 
-- `bsp-qemu-virt`: `N = 4096` (32 768 frames × 1 bit / 8 = 4 KiB) and `R = 8`. The 128 MiB QEMU virt RAM extent (`0x4000_0000..0x4800_0000`) is managed; two reservations land at init — `[0x4000_0000, 0x4008_0000)` (QEMU firmware-reserved) and `[0x4008_0000, __stack_top_aligned)` (kernel image + `.bss` containing `.boot_pt` + boot stack).
-- Future BSPs (Pi 4 with 4 GiB RAM): `N` grows linearly with extent size; `R` may grow to cover DTB / ATF / ACPI / initrd / framebuffer reservations.
-
-**API.** Three public methods:
-
-- `Pmm::new(extent, reserved) -> Result<Self, PmmError>` — one-shot at boot; five fail-fast validations (extent page-aligned; bitmap covers extent; reserved-list fits in `R`; each reserved range is page-aligned, in-extent, and non-inverted; no two reserved ranges overlap) before any bitmap mutation. Pure safe Rust.
-- `Pmm::alloc_frame() -> Option<PhysFrame>` — forward-from-hint linear bitmap scan + zero-fill via `core::ptr::write_bytes` ([UNSAFE-2026-0026](../audits/unsafe-log.md); the only `unsafe` in the PMM body). Returns `None` on bitmap-full; the caller propagates as `MmuError::OutOfFrames` per the [`FrameProvider`](../../hal/src/mmu/mod.rs) contract.
-- `Pmm::free_frame(frame) -> Result<(), PmmError>` — three-stage validation (extent-bounds, defensive reserved-range scan, bitmap-bit check) then bit-clear + hint rewind. Returns `OutOfRange` or `DoubleFree` on misuse; each error path leaves bitmap state byte-stable.
-
-Plus `Pmm::extent()` / `Pmm::stats()` accessors and `impl FrameProvider for Pmm<N, R>`.
-
-**`FrameProvider` integration.** `Mmu::map`'s `&mut dyn FrameProvider` parameter is satisfied by the PMM at runtime; v1 has no `Mmu::map` caller post-bootstrap from the cooperative IPC demo (all tasks share the bootstrap AS), so the IPC-demo half of the integration is verified through host tests + the smoke trace's clean completion. [T-018](../analysis/tasks/phase-b/T-018-address-space-kernel-object.md) implementing [ADR-0028](../decisions/0028-address-space-data-structure.md) installed the AS-object surface but does **not** itself call `Pmm::alloc_frame` at runtime — T-018's BSP wiring uses `AddressSpace::wrap_bootstrap` over the already-live `.boot_pt` L0 frame (per ADR-0028 §Simulation row 0 the wrap must NOT re-zero the live root), so `cap_create_address_space` is reachable through T-018's surface but unexercised on the v1 boot path. The **first runtime exercise** of `Pmm::alloc_frame` (including UNSAFE-2026-0026's zero-fill block) + `cap_create_address_space` + post-bootstrap `Mmu::map` (UNSAFE-2026-0025) lands with [T-019](../analysis/tasks/phase-b/T-019-task-loader.md)'s task loader: its BSP smoke calls `load_image` once per boot, which allocates a fresh AS root + per-page leaf frames + intermediate page-table frames. The 2026-05-14 smoke trace (`tyrne: image loaded (...)`) is the verification artefact; UNSAFE-2026-0025 and 0026 each gained 2026-05-14 Amendments recording the lift from `Pending QEMU smoke verification`.
-
-**Smoke trace.** Boot output gains exactly one new line immediately after `tyrne: mmu activated`:
-
-```text
-tyrne: pmm initialized (32596 frames available; 172 reserved)
-```
-
-The `available + reserved = 32 768` sanity-check is built into the test fixture (`stats_parity_with_bitmap_bit_count`). The exact reserved-frame count is **build-dependent** (it tracks the kernel-image + `.bss` + stack size, which differs debug vs release): the post-T-022 debug build reserves 172 (32 596 available); release reserves 168. The reserved set decomposes as 128 (firmware region, 512 KiB) + the kernel-image / `.bss` / `.boot_pt` / 64 KiB-stack range — which grew by the two high-half `TTBR1` root frames T-022 added to `.boot_pt` (`__boot_pt_l0_hh` / `__boot_pt_l1_hh`, +8 KiB).
-
-**Audit-log surface.** [UNSAFE-2026-0026](../audits/unsafe-log.md) covers the single `core::ptr::write_bytes` site in `Pmm::alloc_frame`. The entry's safety argument names five invariants: page-alignment of the target (propagates from `Pmm::new`'s validation (i)), exclusive ownership at write time (the just-set bitmap bit), identity mapping post-MMU (per ADR-0027 §Decision outcome (a)), bitmap-math overflow-freedom (all `saturating_*` / `wrapping_div`), and `write_bytes` ordering (single-core; no peer reader). A new entry rather than an Amendment of UNSAFE-2026-0001 per [ADR-0035 §Dependency chain step 5][adr-0035-dep5]'s adjudication-deferred caveat — PL011 MMIO base blessing and PMM RAM zero-fill share surface shape but differ on what they touch and what proves ownership.
-
-Forward-portable to the future high-half kernel ([ADR-0033 placeholder](../decisions/0027-kernel-virtual-memory-layout.md)) without algorithm rewrite: the bitmap is stored in `.bss`, addressed by frame index; the high-half migration relocates the bitmap base address but does not require a `PA → VA` translation discipline at the algorithm level. The frame-zeroing step itself remains identity-mapping-dependent in v1 and will need a `phys_to_virt` helper post-high-half — a one-line helper that the high-half ADR introduces alongside the migration step.
-
-[adr-0035-dep5]: ../decisions/0035-physical-memory-manager.md#dependency-chain
+The PMM's current bitmap access is single-core. Its non-atomic operations cannot be assumed safe when a second core starts; Phase C owns that gate.
 
 ## Address-space objects
 
-Per [ADR-0028](../decisions/0028-address-space-data-structure.md). The kernel wraps the BSP-specific [`Mmu::AddressSpace`](../../hal/src/mmu/mod.rs) associated type into a typed `AddressSpace<M: Mmu>` kernel object that lives in a per-type arena (`AddressSpaceArena<M>` — [ADR-0016](../decisions/0016-kernel-object-storage.md)'s fixed-size-block pattern with generation-tagged handles, mirroring `EndpointArena` / `TaskArena` / `NotificationArena`). The kernel propagates the existing `M: Mmu` generic axis from [ADR-0019](../decisions/0019-scheduler-shape.md) / [ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md) — no new generic axis is introduced at the address-space-object surface.
+[`AddressSpace<M>` and its eight-slot arena](../../kernel/src/mm/address_space.rs) wrap BSP root state in generation-checked handles. Slot zero wraps the already populated **low bootstrap root**, even after that root has been temporarily disabled; it is not TTBR1's high root. EL1 A/B/idle activate it with USER-clear mappings. Hello's separately created root maps its user image/stack; shared TTBR1 keeps privileged code reachable across swaps.
 
-**Capability variant.** [`CapKind::AddressSpace`](../../kernel/src/cap/mod.rs) + `CapObject::AddressSpace(AddressSpaceHandle)` (T-018 commit 2). Cap resolution uses the standard typed-handle pattern; wrong-kind caps surface as `CapError::WrongKind`, wrapped through `AddressSpaceError::CapError(_)` at the cap-gated wrapper surface.
+`cap_create_address_space` resolves an AddressSpace parent, checks DERIVE, narrowed rights, depth, arena and table capacity **before** root allocation. It creates/wraps the zeroed root, allocates the AS slot and derives a child cap. This is not insert_root and does not have the old capacity-after-allocation leak. It still trusts generic derivation's new-object correlation.
 
-**Cap-gated wrapper surface.** Three free functions in [`kernel/src/mm/address_space.rs`](../../kernel/src/mm/address_space.rs) per [ADR-0028 §Simulation rows 1-2](../decisions/0028-address-space-data-structure.md#simulation):
+`cap_map`/`cap_unmap` resolve kind/live AS and call the HAL. They do not check MAP/UNMAP rights or PA ownership. These trusted internal helpers are absent from v1 EL0 dispatch; [Phase E](../roadmap/phases/phase-e.md) must harden them with the relevant untrusted exposure.
 
-- `cap_create_address_space(table, parent_cap, new_rights, mmu, pmm, arena) -> Result<CapHandle, AddressSpaceError>` — 6-step capability-gated AS creation: validate parent-cap kind (must be `CapKind::AddressSpace` in v1; future `Untyped` per Phase-C); no-widening check on rights (mirrors `CapabilityTable::cap_copy`); `pmm.alloc_frame()` for the root; `unsafe { mmu.create_address_space(root) }` (UNSAFE-2026-0023 existing scope); arena slot; cap mint via `table.insert_root`. Rollback on cap-mint failure frees the arena slot via `destroy_address_space`; PMM frame leaks on `ArenaFull` / `CapsExhausted` (v1 limitation — `FrameProvider` trait has no `free_frame`; structurally unreachable in v1's sized arenas).
-- `cap_map(table, cap, mmu, pmm, arena, va, pa, flags) -> Result<(), AddressSpaceError>` — resolve cap → `&mut AddressSpace<M>` → `Mmu::map` → discharge `MapperFlush` token. Wraps `MmuError` as `AddressSpaceError::MmuMapError(_)`.
-- `cap_unmap(table, cap, mmu, arena, va) -> Result<PhysFrame, AddressSpaceError>` — mirrors `cap_map` inversely; returns the orphaned `PhysFrame` for caller-side handling (typically B4+ PMM `free_frame` once `cap_revoke(MemoryRegionCap)` lands; v1 tests verify the return value matches the originally-mapped PA).
-
-**Bootstrap-AS wrap.** Per [ADR-0028 §Simulation row 0](../decisions/0028-address-space-data-structure.md#simulation). At boot the BSP wraps the already-active L0 root frame (written into `TTBR0_EL1` by `mmu_bootstrap`) **without** calling `Mmu::create_address_space` — which would re-zero the live frame. The BSP-side `QemuVirtAddressSpace::from_existing_root(root)` constructor is safe (no zero-fill, no page-table modification); the kernel-side `AddressSpace::wrap_bootstrap(inner)` wraps it with metadata. Arena slot 0 holds the bootstrap AS; `BOOTSTRAP_ADDRESS_SPACE_HANDLE` is the deterministic name (slot 0, generation 0) for code that needs to reference the bootstrap AS before the actual arena allocation runs.
-
-**Activation-on-context-switch.** Per [ADR-0028 §Simulation row 3](../decisions/0028-address-space-data-structure.md#simulation). The scheduler's [`yield_now`](../../kernel/src/sched/mod.rs) / [`ipc_recv_and_yield`](../../kernel/src/sched/mod.rs) / [`start`](../../kernel/src/sched/mod.rs) take an `impl FnOnce(AddressSpaceHandle)` closure; the scheduler invokes it when the outgoing and incoming tasks' `AddressSpaceHandle`s differ (computed via the `address_space_activation_target` helper). The closure body — BSP-side `activate_address_space` — looks up the handle in `AS_ARENA` and calls [`Mmu::activate`](../../hal/src/mmu/mod.rs). v1 demo: all tasks share `BOOTSTRAP_ADDRESS_SPACE_HANDLE`, so the helper returns `None` and the closure never fires. B5+ multi-AS userspace tasks exercise the path. Host tests (`yield_now_activates_when_tasks_differ_in_address_space`) pin the fire path; the `address_space_activation_target_pure_function` test pins the helper's branch table.
-
-**`Task` integration.** [`Task`](../../kernel/src/obj/task.rs) gains an `address_space_handle: AddressSpaceHandle` field; `Task::new(id, address_space_handle)`. The scheduler maintains a `task_address_space_handles: [Option<AddressSpaceHandle>; TASK_ARENA_CAPACITY]` parallel array (indexed by task slot) — written by `add_task` / `register_idle`, read by the activation hook. v1's three tasks (Task A / Task B / idle) all carry `BOOTSTRAP_ADDRESS_SPACE_HANDLE`.
-
-**Audit-log surface.** No new entries for the AS-object layer itself — it is safe Rust over the existing MMU + PMM + cap surfaces. The activation-hook borrow + the BSP-side closure ride [UNSAFE-2026-0014](../audits/unsafe-log.md)'s existing umbrella (momentary `&` / `&mut` across cooperative switches); the static-cell access pattern is UNSAFE-2026-0010. The cap-gated wrappers' `unsafe { mmu.create_address_space(root) }` call ride UNSAFE-2026-0023's existing scope (the unsafe is on the HAL trait surface, not introduced by the wrappers).
-
-**Smoke trace.** Boot output gains exactly one new line immediately after the PMM banner:
-
-```text
-tyrne: address-space-arena ready (1 / 8 slots used; bootstrap AS root = 0x40092000)
-```
-
-The `1 / 8` confirms slot 0 holds the bootstrap AS and 7 slots are available for future B5+ tasks. The bootstrap-AS root address (the L0 frame in `.boot_pt`) is printed for cross-reference with `linker.ld`'s reservation.
-
-**Task loader composition (T-019).** The first runtime composition of the AS-object layer with PMM + cap-table + MMU is the [task loader](task-loader.md) — see that chapter for the §Simulation pipeline, rollback contract, and v1 baseline leaks. The loader is the first post-bootstrap caller of `cap_create_address_space` + `cap_map`, exercising [UNSAFE-2026-0025](../audits/unsafe-log.md) (page-table descriptor writes) and [UNSAFE-2026-0026](../audits/unsafe-log.md) (PMM frame zero-fill) at runtime and introducing [UNSAFE-2026-0027](../audits/unsafe-log.md) (the loader's own `copy_nonoverlapping` byte-copy).
-
-**Forward-compat to high-half migration ([ADR-0033 placeholder](../decisions/0027-kernel-virtual-memory-layout.md)).** The `AddressSpace<M>` struct holds only `inner: M::AddressSpace` in v1; future fields (`asid: Option<Asid>`, reverse-mapping pointers, per-AS table-walk bookkeeping) land additively via Amendment to the struct definition when ADR-0033 opens. No HAL trait surface change is needed for the additive case.
+Task creation stores an AS handle; scheduler registration separately records it and invokes activation before switching. [Task loader](task-loader.md) validates span/budget/source overlap, uses fresh image RX/stack RW-NX frames and frees committed leaves on failure. Root/intermediate-table/AS-slot leaks remain, and task exit does not destroy these resources. High-half helpers solve addressing, not lifecycle reclamation.
 
 ## TLB-invalidation scope
 
-v1 is single-core. Every `MapperFlush::flush()` call dispatches to `Mmu::invalidate_tlb_address(va)`, which the BSP implements as `TLBI VAE1, va_in_register; DSB ISH; ISB`. `Mmu::invalidate_tlb_all()` becomes `TLBI VMALLE1; DSB ISH; ISB`.
+Current `activate` installs TTBR0 with ASID 0, clears EPD0, then uses ISB, DSB ISHST, TLBI VMALLE1, DSB ISH and ISB. Per-address invalidation uses VAE1 with completion barriers; full invalidation uses VMALLE1. There is no ASID allocator or complete cross-core shootdown protocol. A future SMP design must revisit semantics/ownership; this chapter does not promise only the implementation body will change.
 
-Multi-core TLB shootdown is out of scope for v1 — [ADR-0009](../decisions/0009-mmu-trait.md) §Open questions tracks it as a future ADR pairing with the `Cpu` trait's multi-core extension. When that ADR lands, the `MapperFlush` token shape stays the same; only the implementation of `flush()` grows from per-core to broadcast-to-all-cores. The discipline at the type-system surface is forward-compatible.
+## Page-fault path
 
-## Page-fault path (forward-flag for B3+)
+Both kernel and non-SVC EL0 synchronous faults reach panic-class handling. No demand population, COW, TaskFault delivery or supervisor restart is implemented. ADR-0030 is already filed for syscalls and does not secretly provide those mechanisms. Fault supervision/lifecycle remain [Phase E](../roadmap/phases/phase-e.md) work; hardware permission/trap correctness remains [Phase D](../roadmap/phases/phase-d.md).
 
-v1's MMU activation does not yet wire page faults into the capability system. Translation faults / permission faults fire EL1 synchronous exceptions; [T-012](../analysis/tasks/phase-b/T-012-exception-and-irq-infrastructure.md)'s vector table currently routes them to a placeholder handler that panics with the fault syndrome. A future ADR (likely paired with the syscall ABI in ADR-0030 / B5) defines:
+## Invariants
 
-- How a fault from userspace is converted to a capability-system error.
-- Whether the kernel attempts on-demand page-table population (for COW, mmap-grow, etc.) before reporting the fault.
-- The `IpcError` / `SchedError` taxonomy extension for fault delivery.
+- Bootstrap table reservations are aligned and zeroed before activation; kernel PC/SP/VBAR are high before freeing low translation.
+- Trusted USER mappings are separate from privileged TTBR1; current activation flushes ASID-0 translations before task execution.
+- PMM allocation excludes configured reservations and zeroes returned frames under its current single-core ownership contract.
+- AS creation checks authority/depth/capacity before root allocation; map/unmap's narrower current enforcement is explicit.
+- Mapping mutation needs an intentional flush decision; successful smoke is not a substitute for reviewing that obligation.
 
-Until then, kernel-mode faults are a "kernel programming error" (panic-class). The simulation-table-driven discipline of ADR-0027 plus host tests for the encoder are the v1 prevention.
+## Trade-offs
+
+Shared L2 bootstrap blocks keep tables small while leaving kernel RAM permissions coarse. ASID-0 full invalidation avoids ASID lifecycle complexity at a switching cost. Fixed PMM/AS bounds and trusted loading simplify bring-up, without complete teardown, arbitrary physical grants or SMP protection. The single offset is concrete and auditable but limits future physical layouts.
+
+## Open questions
+
+Physical ownership/derive correlation, AS/object destruction and hostile fault handling precede untrusted memory services. Kernel section permissions, hardware break-before-make/cache maintenance and trap state require their dedicated Phase D work. ASIDs, shootdown and bitmap synchronization belong with Phase C concurrency. T-040 owns token identity; no status is promoted by this refresh.
 
 ## Cross-references
 
-- [ADR-0009 — `Mmu` HAL trait signature (v1)](../decisions/0009-mmu-trait.md) — the trait surface this doc describes.
-- [ADR-0012 — Boot flow and memory layout for `bsp-qemu-virt`](../decisions/0012-boot-flow-qemu-virt.md) — the static image layout this doc inherits.
-- [ADR-0024 — EL drop to EL1 policy](../decisions/0024-el-drop-policy.md) — kernel runs at EL1 when the MMU activates.
-- [ADR-0027 — Kernel virtual memory layout (B2 — identity-mapped MMU activation)](../decisions/0027-kernel-virtual-memory-layout.md) — the load-bearing decision document for this chapter.
-- [ADR-0033](../decisions/0033-kernel-high-half-migration.md) (**Accepted 2026-05-30**) — Kernel high-half migration; implemented by [T-022](../analysis/tasks/phase-b/T-022-high-half-kernel-mapping.md). The kernel now runs in `TTBR1_EL1` (boot-time migration) and `TTBR0_EL1` is freed for the per-task swap (B6). Consumes the `TTBR1`/`EPD1` reservation + byte-stable high-half `TCR` fields ADR-0027 pre-committed; **no supersede**.
-- [`bsp-qemu-virt/src/mmu.rs`](../../bsp-qemu-virt/src/mmu.rs) — `QemuVirtMmu` impl (lands with T-016).
-- [`bsp-qemu-virt/src/mmu_bootstrap.rs`](../../bsp-qemu-virt/src/mmu_bootstrap.rs) — boot-time activation routine (lands with T-016).
-- [`bsp-qemu-virt/linker.ld`](../../bsp-qemu-virt/linker.ld) — `.boot_pt` reservation + `__boot_pt_*` linker symbols (extended by T-016).
-- [`docs/audits/unsafe-log.md`](../audits/unsafe-log.md) — UNSAFE-2026-0022 through 0025 cover the page-table writes, system-register writes, TLB asm, and per-call entry writes (audit-log entries land with T-016).
-- [`docs/architecture/exceptions.md`](exceptions.md) — fault routing the future ADR will extend.
-- [`docs/architecture/hal.md`](hal.md) §Mmu — overview of the trait surface; this doc deepens.
+- [MMU trait and helpers](../../hal/src/mmu/mod.rs), [descriptor encoders/tests](../../hal/src/mmu/vmsav8.rs).
+- [BSP mapper](../../bsp-qemu-virt/src/mmu.rs), [bootstrap](../../bsp-qemu-virt/src/mmu_bootstrap.rs), [linker](../../bsp-qemu-virt/linker.ld).
+- [Boot](boot.md), [HAL](hal.md), [exceptions](exceptions.md), [scheduler](scheduler.md), [security model](security-model.md).
