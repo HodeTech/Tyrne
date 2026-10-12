@@ -7,9 +7,11 @@
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
-- **ADRs required:** none
+- **ADRs required:** [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md) (Accepted 2026-10-12; reviewed execution and corpus policy)
 
 ---
+
+> **Approved contract reconciliation (2026-10-12).** The maintainer approved the [preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and ADR package. The criteria below are the executable contract; dated opening observations remain historical. This preparation records no task delivery. Each implementation step includes verification and two fresh independent review rounds under [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); new task states stop at `In Review`.
 
 ## User story
 
@@ -26,7 +28,7 @@ Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md
 - [ ] **ADR-0011** has a one-line correction banner at the top in the same wording pattern as the banners on ADR-0004, ADR-0006 and ADR-0012 (their line 7): QEMU `virt` is GICv2 in v1, not GICv3; the trait surface is version-agnostic and unaffected. The banner text lives in `docs/decisions/0011-irq-controller-trait.md`, so its link to the correcting ADR is the sibling target `[ADR-0036](0036-qemu-virt-gicv2-no-iommu-v1.md)` (for navigation from this task: [ADR-0036](../../../decisions/0036-qemu-virt-gicv2-no-iommu-v1.md)).
 - [ ] **ADR-0012** §Open questions (line 148 at opening): the "EL drop" bullet is struck through and followed by `*Resolved 2026-04-27 by [ADR-0024](0024-el-drop-policy.md) (EL drop to EL1 policy).*` — a sibling link, because the text lives in `docs/decisions/0012-boot-flow-qemu-virt.md` (for navigation from this task: [ADR-0024](../../../decisions/0024-el-drop-policy.md)) — mirroring the existing "Boot-time MMU activation" treatment on the same list.
 - [ ] **ADR-0018** gains an appended `## Pros and cons of the options` section that restates the tradeoffs of the six options in §Considered options (lines 33-49), placed after the existing sections and before or after §References consistently with the template; no existing text changes.
-- [ ] For every touched ADR, `git diff` shows only additions, with one exception: the strikethrough markup wrapping the existing ADR-0012 sentence. No status line changes and the index in `docs/decisions/README.md` needs no edit (confirm by running the [`sync-adr-index`](../../../../.agents/skills/sync-adr-index/SKILL.md) comparison and recording "no anomalies").
+- [ ] For every touched ADR, `git diff` shows only additions, with one exception: the strikethrough markup wrapping the existing ADR-0012 sentence. No status line changes in the five corrected ADRs. Reconcile canonical ADR index membership and title/status/date against actual headers; report every anomaly and disposition instead of requiring "no anomalies". Report title/filename-slug differences (including 0040–0043) separately from index/header mismatches; do not rename filed records. Handle Deferred, prose-extended dates, partial supersession and reserved 0034 from existing evidence without inventing metadata. Align the sync-adr-index procedure vocabulary/reporting with those existing forms without concealing anomalies.
 - [ ] Each new banner or note carries the date it is applied and a link to the document that supplies the correction.
 
 ## Out of scope
@@ -43,14 +45,16 @@ Copy the established banner shapes rather than inventing new ones: ADR-0022 line
 
 - [ ] Every relative link in each touched file resolves.
 - [ ] `cargo fmt --all -- --check` and `cargo host-clippy` clean (the `hal/src/cpu.rs` doc-comment change must not trigger a lint); `cargo host-test` unchanged.
-- [ ] `git diff --stat` is limited to the five ADRs, `hal/src/cpu.rs`, this task file and `docs/roadmap/current.md`.
+- [ ] `git diff --stat` is limited to the five ADRs, `hal/src/cpu.rs`, `docs/decisions/README.md`, `.agents/skills/sync-adr-index/SKILL.md`, the explicit anomaly/disposition report and associated reviews/indexes, this task file and `docs/roadmap/current.md`.
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `adr`; a separate commit for the `hal/src/cpu.rs` comment is acceptable).
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+
+**Step-scoped evidence allowance.** In addition to the named content files, the step may update this task, `docs/roadmap/current.md`, the B.2 task/track indexes, governing decision references, source-bound reports/raw evidence, canonical review artifacts and their indexes where necessary. Verify this allowance against the step commit range, not the full stacked branch. Record a demonstrated existing-scope reason for any further file.
 
 ## Design notes
 
 - **Location re-verification (2026-10-11, HEAD `400dec0`):** ADR-0008:158 (Revision notes entry) and `hal/src/cpu.rs:99-104` match; ADR-0033 body lines 67, 105-112 still show `KBASE = 0xFFFF_FFFF_8008_0000` and the correction sits at line 188; ADR-0011 line 11 says "GIC v3 (QEMU `virt`)"; ADR-0012 §Open questions still lists "EL drop" unstruck; ADR-0018 has headings Context, Decision drivers, Considered options (Badge scheme, `reply_recv` fastpath), Decision outcome, Consequences, References and no pros-and-cons section.
-- **Open decisions:** ADR-0008 evidence vs retraction (criterion 1); where the ADR-0018 section sits relative to References.
+- **Resolved 2026-10-12:** retract the unverified generalized .rodata aliasing explanation, retaining the recorded QEMU observation and defensible direct-dispatch rationale; append ADR-0018 tradeoffs without changing existing sections. Report source/index/slug anomalies separately under ADR-0043.
 - The ADR-0008 claim is the only item here that touches source (a doc comment); it is "comment-only" and needs no new audit entry.
 
 ## Review history
@@ -58,3 +62,4 @@ Copy the established banner shapes rather than inventing new ones: ADR-0022 line
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: index needs no edit / no anomalies and DoD excludes index/sync skill. Approved replacement: source/header/index reconciliation with explicit anomaly/disposition report, title-slug differences including 0040–0043 and existing Deferred/date/partial/reserved forms; index/sync skill/reports allowed while five ADR corrections stay append-only with only the stated strikethrough exception. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |

@@ -7,9 +7,11 @@
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
-- **ADRs required:** none
+- **ADRs required:** [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md) (Accepted 2026-10-12; reviewed execution and corpus policy)
 
 ---
+
+> **Approved contract reconciliation (2026-10-12).** The maintainer approved the [preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and ADR package. The criteria below are the executable contract; dated opening observations remain historical. This preparation records no task delivery. Each implementation step includes verification and two fresh independent review rounds under [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); new task states stop at `In Review`.
 
 ## User story
 
@@ -29,7 +31,7 @@ The `current.md` half of the T-029 finding is [T-047](T-047-roadmap-state-and-ph
 - [ ] T-020 through T-028: the frontmatter `Status` is `Done` and a `- **date_done:** YYYY-MM-DD` line follows `Created`, exactly as in T-019, with each date taken from the merge table in Design notes; `grep -n "^- \*\*Status:\*\* In Review" docs/analysis/tasks/phase-b/T-02[0-8]-*.md` returns nothing.
 - [ ] T-020 through T-028: each Review history gains a merge-confirmation entry naming the PR number and merge commit from the Design notes table and stating the `In Review` -> `Done` flip, in the style of that file's history (all nine are bullet lists; T-019 shows the table-row form).
 - [ ] T-029 (`docs/analysis/tasks/phase-b/T-029-perf-microbench.md`): `Status` is `Done` (Phase 1 merged via PR #44, Phase 2 via PR #45, both 2026-06-01), `date_done` is added, a `Milestone` line is added after `Phase` (suggested wording: "B6 follow-on / Phase B closure tail — not gated on a numbered B-milestone"), and its Review history gains the merge-confirmation entry.
-- [ ] `docs/analysis/tasks/TEMPLATE.md` formalises the `date_done` field in the frontmatter block (after `Created`), with a one-line instruction that it is set when `Status` becomes `Done` and omitted while the task is open.
+- [ ] `docs/analysis/tasks/TEMPLATE.md` formalises the `date_done` field in the frontmatter block (after `Created`), with an instruction that it is a real ISO date set on maintainer-authorized `Done`, omitted while open and not fabricated for historical tasks. The lifecycle in `docs/analysis/tasks/README.md` states the same convention.
 - [ ] Link fixes, verified with a relative-link check over `docs/analysis/tasks/phase-a` and `docs/analysis/tasks/phase-b` (zero broken targets afterwards; three on 2026-10-11): `phase-a/T-004-cooperative-scheduler.md:25` gets the extra `../` (`../../../../hal/src/context_switch.rs`); `phase-a/T-002-kernel-object-storage.md:55` gets the extra `../` (`../../../../kernel/src/cap/table.rs`); `phase-b/T-011-missing-tests-bundle.md:25` is changed to match the correct link on line 100 (`../../reports/2026-04-23-coverage-baseline.md`).
 
 ## Out of scope
@@ -54,10 +56,12 @@ The maintainer authorises `Done` per the [tasks README](../README.md); here that
 Doc-only variant:
 
 - [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `docs/analysis/tasks/phase-b/README.md`, `docs/analysis/tasks/phase-b/T-02[0-9]-*.md`, `docs/analysis/tasks/phase-b/T-011-missing-tests-bundle.md`, `docs/analysis/tasks/phase-a/T-002-kernel-object-storage.md`, `docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md`, `docs/analysis/tasks/TEMPLATE.md`, `docs/roadmap/current.md`, and this task file.
+- [ ] `git diff --stat` lists only: `docs/analysis/tasks/phase-b/README.md`, `docs/analysis/tasks/phase-b/T-02[0-9]-*.md`, `docs/analysis/tasks/phase-b/T-011-missing-tests-bundle.md`, `docs/analysis/tasks/phase-a/T-002-kernel-object-storage.md`, `docs/analysis/tasks/phase-a/T-004-cooperative-scheduler.md`, `docs/analysis/tasks/TEMPLATE.md`, `docs/analysis/tasks/README.md`, `docs/roadmap/current.md`, and this task file.
 - [ ] Text is English; no new untagged fences ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+
+**Step-scoped evidence allowance.** In addition to the named content files, the step may update this task, `docs/roadmap/current.md`, the B.2 task/track indexes, governing decision references, source-bound reports/raw evidence, canonical review artifacts and their indexes where necessary. Verify this allowance against the step commit range, not the full stacked branch. Record a demonstrated existing-scope reason for any further file.
 
 ## Design notes
 
@@ -85,10 +89,11 @@ The plan names `T-004...:25` only, but the second broken link of the "two Phase-
 All ten files T-020..T-029 already have every acceptance checkbox ticked, so no checkbox edits are needed.
 The plan counts "nine" frontmatters (T-020..T-028); T-029 is handled separately because its status text is a two-phase sentence rather than `In Review`.
 
-**Optional follow-up for the implementer.** Lifecycle step 5 in [`../README.md`](../README.md) could mention setting `date_done`; it is not required here.
+**Required reconciliation (2026-10-12).** Lifecycle step 5 in [`../README.md`](../README.md) records the same `date_done` rule as the template. Existing merged-task dates come from the exact merge table; new B.2 tasks remain In Review.
 
 ## Review history
 
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: date_done only in the template and lifecycle update optional. Approved replacement: matching template/lifecycle rule with real authorized dates, exact merged ten-task closure and 23-row membership; historical source evidence preserved. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |

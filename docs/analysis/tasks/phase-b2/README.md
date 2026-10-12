@@ -2,12 +2,12 @@
 
 Tasks belonging to [Phase B.2 — Consolidation & Hardening](../../../roadmap/phases/phase-b2.md), the bridge phase between Phase B and Phase C. The phase is governed by [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md): it is a **mandatory gate** — Phase C (and D) cannot open until its exit bar is met.
 
-All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide sequence (T-029 was the last Phase B task). The 141 plan items of `phase-b2.md` are all accounted for (see [Coverage](#coverage)); the 71 polish items stay in `phase-b2.md` as an opportunistic backlog and are **not** exit-gating as a set. Tasks that consume polish gate only their plan items; T-036 and T-056 are optional for the phase exit. The requested Track B.2-1 sequence below includes T-036 explicitly.
+All 46 tasks were opened on 2026-10-11. Task IDs continue the project-wide sequence (T-029 was the last Phase B task). The 141 plan items of `phase-b2.md` are all accounted for (see [Coverage](#coverage)); the 71 polish items stay in `phase-b2.md` as an opportunistic backlog and are **not** exit-gating as a set. Tasks that consume polish gate only their plan items; T-036 and T-056 are optional for the phase exit. The requested Track B.2-1 sequence below includes T-036 explicitly; the approved Track B.2-2 sequence includes full T-056 implementation.
 
 ## How to use this folder
 
 1. **ADR-0040 was Accepted by the maintainer on 2026-10-11**, following the [independent approval follow-up](../../reviews/code-reviews/2026-10-11-adr-0040-approval-follow-up.md). Acceptance is a phase-level precondition: no task started before it, so individual tasks do not list it as a dependency.
-2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory. For the maintainer-requested Track B.2-1 sequence below, the Accepted ADR-0040 execution policy permits a successor after its predecessor's implementation, applicable gates and two fresh review rounds pass on `development`; the predecessor remains `In Review` pending the final PR.
+2. Pick the next task from the [recommended order](#recommended-order). Each task's `Dependencies` field is binding; `Informs` is advisory. For the maintainer-requested Track B.2-1 sequence below, the Accepted ADR-0040 execution policy permits a successor after its predecessor's implementation, applicable gates and two fresh review rounds pass on `development`; the predecessor remains `In Review` pending the final PR. Accepted [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md) extends that reviewed-execution exception to the approved Track B.2-2 sequence below only.
 3. Start it with the [`start-task`](../../../../.agents/skills/start-task/SKILL.md) skill's status rules (`Ready` → `In Progress`; update [`current.md`](../../../roadmap/current.md)).
 4. **Every task begins by re-verifying its plan item against the live tree** (ADR-0040 rule 5). The source review was static; if an item no longer reproduces, close the task with evidence and no code change.
 5. Tasks marked `Draft` carry an open design decision (listed in the task under *Open decisions*); settle design policy through an ADR or an appropriate clarification rider before implementing. Routine implementation choices belong in task history. (T-075 is `Draft` for a different reason: its dependency set is still growing; promote it to `Ready` when the last implementation task is `In Review`.)
@@ -36,6 +36,15 @@ The scope includes release kernel clippy and release EL0 smoke now. The current 
 **Sequence completion status (2026-10-12):** Steps 1–8 are Done after the maintainer merged [PR #48](https://github.com/HodeTech/Tyrne/pull/48) at `c16997e003fbd1726d1205734380394781c52002` and authorized T-030–T-037 promotion, date_done 2026-10-12. Each step was committed and reviewed twice by fresh independent agents. First merged-main [CI 38217531542](https://github.com/HodeTech/Tyrne/actions/runs/38217531542) passes all seven jobs, including native ARM/Miri and debug/release guests; [performance dispatch 38217799773](https://github.com/HodeTech/Tyrne/actions/runs/38217799773) passes on clean main with 20 valid/0 failed samples. Six required app-bound checks remain live and the complete versioned policy matches read-back. The [post-merge retrospective](../../reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) and [exact-byte main report](../../reports/perf-baseline-2026-10-12-t035-main-dispatch-check.md) retain permanent evidence. This completes Track B.2-1 and prerequisite T-037, without closing other tracks or Phase B.2.
 
 The [supplied PR48 review reconciliation](../../reports/2026-10-12-pr-48-supplied-review-reconciliation.md) tracks all 17 additional findings, corrections and evidence boundaries. Follow-up A completed both fresh code/security rounds; follow-up B completed both fresh code/integration rounds. Both second rounds Approve their respective cumulative source with zero new findings and verified first-round corrections. The corrected [hosted performance snapshot](../../reports/perf-baseline-2026-10-12-t035-pr48-p99-followup-hosted-check.md) is bound to clean source `646ba33`; PR48 records final publication-tip CI separately. Pre-merge source identities remain unchanged; the completion status above supersedes earlier task/merge-pending states.
+
+## Track B.2-2 implementation sequence (approved 2026-10-12)
+
+The maintainer approved the [preflight and 13-step plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md), ADR-0042/0043 and all twelve literal task-contract reconciliations.
+Step 0 records the separate Acceptance transitions and contract edits without task delivery; it receives two fresh review rounds before implementation starts.
+The implementation order is T-051 → T-045 → T-046 → T-048 → T-049 → T-050 → T-055 → T-052/T-053 → T-054 → T-047 → T-056 parser → T-056 integration → integrated verification/documentation/PR.
+Every step follows the two-round fresh-review/fix/commit loop; security-sensitive descriptions also receive distinct security review.
+New tasks stop at In Review for the maintainer. Optional-for-general-exit T-056 is fully selected and cannot close by a decision-only or carry-forward outcome.
+All work stays on development. Local work may proceed, but publication remains behind the existing PR #49 branch barrier recorded in the plan until its merge or an explicit combined-publication instruction.
 
 ## Index
 
@@ -67,7 +76,7 @@ The [supplied PR48 review reconciliation](../../reports/2026-10-12-pr-48-supplie
 | [T-053](T-053-standards-docs-mechanical-fixes.md) | Apply mechanical corrections to the standards docs | B.2-2 | Ready | — |
 | [T-054](T-054-adr-ledger-renumbering-cascade.md) | Cascade the ADR ledger renumbering across phase files | B.2-2 | Ready | — |
 | [T-055](T-055-adr-append-only-corrections.md) | Apply append-only corrections to Accepted ADRs | B.2-2 | Ready | — |
-| [T-056](T-056-docs-consistency-automation.md) | Automate docs-corpus consistency checks *(polish; optional for exit)* | B.2-2 | Draft | T-048, T-049, T-054 |
+| [T-056](T-056-docs-consistency-automation.md) | Automate docs-corpus consistency checks *(polish; optional for exit)* | B.2-2 | Draft | T-047, T-048, T-049, T-052, T-053, T-054, T-055 |
 | [T-057](T-057-typed-addresses-phys-virt.md) | Give `PhysAddr`/`VirtAddr` an audited API and use typed addresses at public boundaries | B.2-4 | Ready | T-042, T-043 |
 | [T-058](T-058-capability-table-on-arena.md) | Rebase `CapabilityTable` storage on the shared `Arena` | B.2-4 | Ready | — |
 | [T-059](T-059-capability-resolve-typed-primitive.md) | Introduce a single typed capability-resolution primitive | B.2-4 | Ready | T-058 |

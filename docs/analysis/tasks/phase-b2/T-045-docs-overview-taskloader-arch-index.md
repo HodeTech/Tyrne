@@ -7,9 +7,11 @@
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
-- **ADRs required:** none
+- **ADRs required:** [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md) (Accepted 2026-10-12; reviewed execution and corpus policy)
 
 ---
+
+> **Approved contract reconciliation (2026-10-12).** The maintainer approved the [preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and ADR package. The criteria below are the executable contract; dated opening observations remain historical. This preparation records no task delivery. Each implementation step includes verification and two fresh independent review rounds under [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); new task states stop at `In Review`.
 
 ## User story
 
@@ -33,9 +35,11 @@ The kickoff already refreshed `docs/roadmap/current.md`, the phase index, and th
 - [ ] `overview.md` "Address spaces" (line 169) and "Boot flow" (line 105) thread in the relevant ADR-0027..0039 links (at least 0027, 0028, 0033, 0035, 0037, 0038, 0039 where each applies), and the Boot-flow Mermaid sequence is resynced with the sequence in `boot.md` (lines 36-83) so no step in the overview diagram contradicts it.
 - [ ] `task-loader.md` introduction (line 3) and "Scope boundary" (lines 13-21, heading included) describe the landed state: `load_image` (`kernel/src/obj/task_loader.rs:507`) -> `task_create_from_image` (`:917`, T-024) -> `add_user_task` (`kernel/src/sched/mod.rs:444`, T-023) -> scheduled EL0 execution (T-028); verified against those locations and the EL0 setup in `bsp-qemu-virt/src/main.rs`.
 - [ ] `task-loader.md` "Embedded image content" (lines 92-103) describes the real `hello` image and ADR-0039's build pipeline, the 8-byte `mov w0, #42; ret` sample is kept only under an explicit historical marking, and the stale `tyrne: image loaded (entry = 0x800000; ... image bytes 8 ...)` sentence at line 130 is corrected against a fresh `tools/smoke.sh --int` trace (eliding fragile values with `...` is acceptable).
-- [ ] `docs/architecture/README.md`: the Status paragraph (line 7) matches its own table, and every Status cell (lines 13-21) names the latest task/ADR that touched that document, verified with `git log --oneline -- <file>` (for example `task-loader.md` -> T-019, T-024, T-028).
-- [ ] The "last verified against" freshness marker is defined once (one line, form recorded in the review history) in the Conventions section of `docs/architecture/README.md` and applied to `overview.md` and `task-loader.md`; the other seven chapters receive it from T-046.
+- [ ] `docs/architecture/README.md`: the Status paragraph (line 7) matches its own table, and every Status cell distinguishes the latest documented implementation coverage from the task/commit that last edited the chapter. Verify edit provenance with `git log --oneline -- <file>` and verify coverage against implementation source; do not imply T-024/T-028 edited `task-loader.md` merely because its refreshed content covers them.
+- [ ] The "last verified against" freshness marker is defined once (one line containing verification date, exact source baseline and owning task; form recorded in the review history) in the Conventions section of `docs/architecture/README.md` and applied to `overview.md` and `task-loader.md`; the other seven chapters receive it from T-046.
 - [ ] Phase closure hook: an item is added to the business master-plan acceptance criteria (`docs/analysis/reviews/business-reviews/master-plan.md:80-88`, the list that applies to phase-closure reviews) requiring that the `docs/architecture/` chapters, their freshness markers, and the README Status column are re-verified in the closure batch.
+
+- [ ] Review the whole overview and loader chapters against source, including current/planned HAL ownership, cooperative scheduling, IPC bridge versus syscall behavior, high-half translation, loader overlap/range/frame arithmetic and exit/fault limits. Recheck the overview boot flow and all architecture-index cells after T-046; cite retained fresh debug/release traces and distinguish manual exception counts from script assertions.
 
 ## Out of scope
 
@@ -50,7 +54,7 @@ The kickoff already refreshed `docs/roadmap/current.md`, the phase index, and th
 Rewrite rather than patch the stale passages.
 For `overview.md`, keep the existing structure (layers, boot flow, IPC, address spaces, interrupts, syscall surface) and bring each section to the post-Phase-B state, citing ADR-0027..0039 where the section's claim rests on them; the plan item offers either updating the syscall list to the real ABI or relabelling it as design-time speculation, and updating it is preferred because the ABI is Accepted and implemented.
 For `task-loader.md`, rewrite "Scope boundary" and "Embedded image content" as described in the plan item, and fix the other places in the file that repeat the same premise (line 3 and line 130).
-Read every claim against the code before writing it; the 2026-10-11 `tools/smoke.sh --int` output is the reference trace.
+Read every claim against the code before writing it; fresh debug and release `tools/smoke.sh --int` / `--release --int` runs are the reference traces, with raw output, exact source revision, pinned toolchain and QEMU version retained. Inspect the expected two SVCs and absence of other fault classes separately from the script's marker/fault gates.
 Finally add the freshness-marker convention and the master-plan closure item so the staleness root cause (five architecture docs describing B6 as future after B6 closed) has a named owner at the next closure.
 
 ## Definition of done
@@ -62,6 +66,8 @@ Doc-only variant:
 - [ ] New or changed diagrams are Mermaid, preceded by a short prose description; all fences are tagged; text is English ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+
+**Step-scoped evidence allowance.** In addition to the named content files, the step may update this task, `docs/roadmap/current.md`, the B.2 task/track indexes, governing decision references, source-bound reports/raw evidence, canonical review artifacts and their indexes where necessary. Verify this allowance against the step commit range, not the full stacked branch. Record a demonstrated existing-scope reason for any further file.
 
 ## Design notes
 
@@ -83,3 +89,4 @@ The master-plan list is also edited by [T-049](T-049-review-indices-sync.md) (di
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: named stale sentences, a marker of unspecified form and edit history treated as coverage. Approved replacement: whole-chapter sweep, date/source/task freshness, separate edit/coverage provenance and fresh debug/release raw traces with manual SVC inspection; T-046 coherence recheck. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |

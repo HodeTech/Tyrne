@@ -1,9 +1,9 @@
 # Track B.2-2 — Preflight review and implementation plan
 
-This document records the source-backed documentation review, decisions awaiting the maintainer, reconciled task contracts and the reviewed-step execution plan for Track B.2-2.
+This document records the source-backed documentation review, maintainer-approved decisions, reconciled task contracts and the reviewed-step execution plan for Track B.2-2.
 It is the implementation brief for a documentation and tooling wave; it does not report implementation as complete.
 
-- **Status:** Proposed — awaiting maintainer approval of the ADR package and task-contract reconciliations; copyright wording was supplied by the maintainer on 2026-10-12.
+- **Status:** Approved by the maintainer on 2026-10-12 — Step 0 Acceptance and literal contract reconciliation implemented, awaiting its two fresh implementation-review rounds. Copyright identity is also approved.
 - **Date:** 2026-10-12
 - **Author:** Codex (AI agent), on behalf of @cemililik
 - **Source baseline:** clean `development` at `7d48f50603fa0d30464ea7b032f4f0fb82c3964c`; `origin/main` at `c16997e003fbd1726d1205734380394781c52002`.
@@ -45,7 +45,7 @@ Their findings were reconciled against the source; these are preflight advisory 
 
 ## Decisions presented before implementation
 
-All recommendations below are proposals. Acceptance of the referenced ADRs and approval of the listed contract reconciliations precede implementation; elapsed time is not approval.
+The maintainer explicitly approved the complete package, plan and contract reconciliations on 2026-10-12. The table preserves the decisions presented before implementation; their Acceptance commits below record the authorized transitions.
 
 | Decision | Recommendation | Approval / implementation boundary |
 |----------|----------------|-------------------------------------|
@@ -55,7 +55,7 @@ All recommendations below are proposals. Acceptance of the referenced ADRs and a
 | T-056 tool/gate | Include optional-for-phase-exit T-056 in this implementation; Python 3.9+ stdlib, offline deterministic command and isolated fixtures, failing step inside existing required lint job. | Accept ADR-0043 before implementation. The gate is required on revisions with delivered CI wiring; Acceptance alone is not delivery. No seventh context, third-party package or change to the phase-wide optional status. |
 | Panic documentation | Describe banner + PanicInfo message/location + spin/halt, distinguish saved exception diagnostics from generic panic-time registers. Approve removing T-052's automatic register-dump follow-up obligation. | This closes a false current-state claim; no new register-dump feature or ungrounded implementation promise is made. Choosing a feature instead needs a separately scoped task/design before proceeding. |
 | `unimplemented!` and lint scope | State that `todo` is workspace-denied, `unimplemented!` relies on review, and panic-family per-crate denies apply to kernel/HAL/BSP with scoped allowances. | Preserve host stubs and avoid expanding runtime/lint policy in a documentation correction. |
-| Copyright identity | Maintainer supplied `HodeTech, Cemil ILIK and Tyrne Contributors` on 2026-10-12. Use the common line `Copyright 2026 HodeTech, Cemil ILIK and Tyrne Contributors`, preserving that spelling and capitalization. | This identity choice is resolved. T-050 applies it after the ADR/plan approval gate; the reply does not accept the ADR package. |
+| Copyright identity | Maintainer supplied `HodeTech, Cemil ILIK and Tyrne Contributors` on 2026-10-12. Use the common line `Copyright 2026 HodeTech, Cemil ILIK and Tyrne Contributors`, preserving that spelling and capitalization. | This identity choice is resolved. T-050 applies it after the ADR/plan approval gate; that identity reply alone did not accept the ADR package; explicit package approval followed on the same date. |
 | History and fresh evidence | Archive old current-focus material; add missing B6 template sections as dated structural reconciliation; mechanically repair archive links; run fresh coverage/Miri reports now. | Keep historical verdicts, sources and measured numbers intact. No fabricated retrospective runs. |
 | Commit scopes | Recommend `syscalls`, `architecture`, `bsp-<board>` for new examples; document historically used aliases/prior-use scopes and retain the existing review-agreement extension rule. | No new prohibition or static commitlint allowlist. |
 | Dependency execution | Extend reviewed stacked execution to this track as specified by ADR-0043. | Both rounds and verification must pass before dependent work starts; all new task states stop at In Review. |
@@ -68,7 +68,7 @@ The 0042 Acceptance, 0041 status/callout and both index rows change in one atomi
 Accept ADR-0043 separately and append its dated ADR-0040 rider in that same commit, covering Decision outcome rule 7 and Track B.2-1 implementation policy rule 4 before applying its standard/CI changes.
 The standard-change skill's proposal cross-links are staged through task/plan/index references here; the standards themselves are edited only after Acceptance.
 
-**Draft Acceptance-time rider for ADR-0040 (not yet applied):**
+**Reviewed Acceptance-time rider (filed on 2026-10-12):**
 
 > **2026-10-12 — Track B.2-2 clarification and limited execution extension (ADR-0043).** Decision outcome rule 7's numeric re-sequencing is implemented by T-054 through stable milestone-plus-purpose identifiers; filed ADR numbers and reserved 0034 remain intact. Track B.2-1 implementation policy rule 4's reviewed stacked-execution exception is extended by ADR-0043 to the maintainer-requested Track B.2-2 sequence only: prerequisite implementation, applicable gates and both fresh review rounds must pass on development before dependent work starts, and new tasks remain In Review until maintainer approval/merge. Decision outcome rule 3's optional-for-exit status for T-056 and the whole-phase C/D gate are unchanged; the selected sequence implements T-056, and its required CI enforcement begins on revisions containing the delivered wiring. The original decision body remains preserved; ADR-0043 supplies the current clarification and limited extension.
 
@@ -81,7 +81,7 @@ After approval, each affected task receives a dated reconciliation entry linking
 Its original opening history remains intact.
 Task “Ready” at baseline is not authority to bypass a newly identified ADR precondition.
 The three clauses below are mandatory proposed replacements, not merely advisory implementation notes; Step 0 applies them and reconciles the corresponding ADR-required metadata after explicit package approval.
-Until that approval, the original task files remain unchanged and are not executable under this proposed policy.
+That approval is now recorded; Step 0 applies the literal corrections while preserving each original opening-history entry.
 
 | Task | Reconciled scope and acceptance evidence |
 |------|------------------------------------------|
@@ -154,7 +154,7 @@ No external review comments/messages or live policy changes are needed by this p
 - **Comment-bearing T-055:** fmt, host Clippy and host tests as required by the task; validate no executable Rust/unsafe delta.
 - **Automation:** syntax compilation plus isolated unittest/CLI fixtures for every implemented check and valid edge form; fixtures operate in temporary roots, never by committing deliberate regressions or creating branches. Validate Python 3.9 compatibility locally and the available hosted Python interpreter on Linux.
 - **CI publication:** inspect exact-source PR/push results and new step logs. All six required contexts retain app 15368 bindings; coverage/performance remain informational. Hosted evidence is recorded only after actual execution, with first-main evidence remaining merge-dependent where relevant.
-- **Traceability:** task histories name commits, verification and review rounds. New tasks/ADRs remain Proposed/In Review until the applicable maintainer action; existing Phase-B merge closure is separately evidenced historical reconciliation.
+- **Traceability:** task histories name commits, verification and review rounds. New tasks remain In Review for maintainer approval; ADRs follow their explicit maintainer-authorized Acceptance/supersession transitions; existing Phase-B merge closure is separately evidenced historical reconciliation.
 
 ## Publication and remaining phase work
 
@@ -167,3 +167,17 @@ Selecting this documentation track is the maintainer's requested order, not a cl
 HIGH T-038 remains Ready; T-039/T-040 and later decision-bearing tasks keep their own preconditions.
 ADR-0040's scope checkpoint still follows CI and HIGH-correctness work, and all Phase B.2 exit criteria still gate C/D.
 This plan does not add implementation tasks or change the 46-task phase inventory.
+
+## Authorized Step 0 execution (2026-10-12)
+
+The maintainer explicitly approved the current ADR package, this plan and all contract corrections, including O1–O3 and removal of T-052's automatic register-dump follow-up obligation.
+Following careful end-to-end re-reading, the coordinator committed:
+
+- `862bfb6`: ADR-0041 historical recovery Accepted, separately from its proposal.
+- `714c74b`: ADR-0042 Accepted and ADR-0041 superseded atomically with both index rows/callout; the predecessor body is preserved.
+- `a72bea8`: ADR-0043 Accepted with its ADR-0040 rider in the same commit, covering both numbered rules; ADR-0040's original bytes remain a prefix of the amended record.
+
+All twelve task briefs now contain the approved literal contracts and dated old-to-new reconciliation records.
+T-045–T-055 remain Ready and T-056 remains Draft until its implementation prerequisites/review boundaries pass; this is preparation, not delivery.
+Step 0 receives two fresh independent review rounds before Step 1 starts.
+The proposal-readiness reviews remain historical; they are not reused as those implementation rounds.
