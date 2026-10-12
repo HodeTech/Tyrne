@@ -49,7 +49,24 @@ run_negative() {
         echo "FAIL: deliberate $MODE regression unexpectedly passed" >&2
         exit 1
     fi
-    if ! grep -Fq "$diagnostic" "$PROBE_DIR/diagnostic.log"; then
+    if [[ "$MODE" == "--arm-host" ]]; then
+        # --all-targets can report the no_std binary's unwind rejection before
+        # the test harness's duplicate panic handler. Both reject this exact
+        # copied cfg mutation; unrelated failures and tool errors must fail.
+        if [[ "$rc" -ne 101 ]]; then
+            cat "$PROBE_DIR/diagnostic.log" >&2
+            echo "FAIL: ARM clippy probe expected compiler exit 101; got $rc" >&2
+            exit 1
+        fi
+        if ! grep -Fxq "$diagnostic" "$PROBE_DIR/diagnostic.log"; then
+            diagnostic='error: unwinding panics are not supported without std'
+        fi
+        if ! grep -Fxq "$diagnostic" "$PROBE_DIR/diagnostic.log"; then
+            cat "$PROBE_DIR/diagnostic.log" >&2
+            echo "FAIL: ARM clippy probe failed without a recognized cfg-regression diagnostic" >&2
+            exit 1
+        fi
+    elif ! grep -Fq "$diagnostic" "$PROBE_DIR/diagnostic.log"; then
         cat "$PROBE_DIR/diagnostic.log" >&2
         echo "FAIL: command failed without expected diagnostic: $diagnostic" >&2
         exit 1

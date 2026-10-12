@@ -128,6 +128,8 @@ jobs:
         run: python3 tools/test-branch-protection.py
       - name: Performance report fixtures (synthetic, no guest)
         run: python3 tools/test-perf-harness.py
+      - name: ARM rejection-probe fixtures (offline, controlled diagnostics)
+        run: python3 tools/test-arm-host-probe.py
 
   # ─── Kernel build: aarch64-unknown-none ─────────────────────────────────
   # The bare-metal BSP cannot be built as part of the default workspace

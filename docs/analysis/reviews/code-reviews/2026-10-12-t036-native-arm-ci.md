@@ -6,6 +6,8 @@
 
 > **Reconciliation:** Round 1 both Approve, one duplicate Low premature merge-enforcement wording finding. Coordinator verified and corrected it; actual hosted Linux ARM job passed in 101 s and all seven development jobs passed. Both fresh Round 2 reviewers Approve with zero new findings and verify the Low correction. Coordinator subsequently registered the ARM check with full-policy read-back; final PR and post-merge evidence remain pending. T-036 stays In Review.
 
+> **Late integration reconciliation (2026-10-12):** Subsequent run38186028266 at `69ac515` exposed a flaky E0152-only assertion: Cargo reported the same private cfg regression as unsupported no_std unwinding first. The earlier source-bound approvals and green runs below are retained unchanged. Step8 corrects the assertion to require compiler exit101 plus either exact observed diagnostic and adds permanent offline controls. The [T-035 review](2026-10-12-t035-ci-hygiene-tail.md) carries the independent cross-step review and corrected hosted evidence; final PR/main remain separate.
+
 ## Round 1 — code
 
 # Code review 2026-10-12 — T-036 native ARM64 CI, round 1
