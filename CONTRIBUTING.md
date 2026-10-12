@@ -1,6 +1,6 @@
 # Contributing to Tyrne
 
-Thank you for your interest. Tyrne is **pre-alpha** and mid-way through Phase B: the Rust workspace exists, the kernel boots end-to-end on QEMU `virt` aarch64, and it runs a two-task IPC demo. Implementation is active, but the codebase is not yet open for unsolicited code contributions — each subsystem is being grown along the phased roadmap, and changes outside the active milestone's scope force premature rewrites. Issues, references, and ADR review are very welcome (see below).
+Thank you for your interest. Tyrne is **pre-alpha**. Phase B closed on 2026-06-01: the kernel boots on QEMU `virt` aarch64 and runs its first EL0 userspace task through a capability-gated syscall boundary. Phase B.2 is the active consolidation bridge; Phase C is next and gated on B.2 completion. Implementation is active, but the codebase is not yet open for unsolicited code contributions — each subsystem is being grown along the phased roadmap, and changes outside the active milestone's scope force premature rewrites. Issues, references, and ADR review are very welcome (see below).
 
 ## What is useful right now
 
@@ -11,17 +11,17 @@ Thank you for your interest. Tyrne is **pre-alpha** and mid-way through Phase B:
 
 ## What is not useful yet
 
-- Pull requests against source code outside the active milestone scope. The Rust workspace exists and the kernel boots end-to-end on QEMU virt (Phase A and milestones B0–B3 closed; B4 active), but each subsystem is being grown along the phased roadmap in [`docs/roadmap/`](docs/roadmap/); changes outside the current milestone's scope force premature rewrites and are usually not merged. Check [`docs/roadmap/current.md`](docs/roadmap/current.md) before opening a non-trivial PR.
+- Pull requests against source code outside the active roadmap scope. Each subsystem follows the phased [roadmap](docs/roadmap/); check [current focus](docs/roadmap/current.md) before opening a non-trivial PR. Changes outside the active scope force premature rewrites and are usually not merged.
 - Feature requests for subsystems that have not yet been designed. File those as discussion issues if you want to influence the design, not as feature requests.
 
-## When the project enters the implementation phase
+## Implementation workflow
 
-This document will be expanded with:
+For work within the active scope:
 
-- Branching strategy and release process.
-- PR template and review expectations.
-- CI gates (tests, clippy, rustfmt, capability auditing, `unsafe` auditing).
-- Coding conventions (see [docs/standards/](docs/standards/)).
+1. Start from [current focus](docs/roadmap/current.md) and the relevant [task](docs/analysis/tasks/). Propose a plan for non-trivial work; record architectural or process decisions as [ADRs](docs/decisions/) before implementation.
+2. Follow the [coding and documentation standards](docs/standards/) and [commit style](docs/standards/commit-style.md). Keep changes focused and include verification appropriate to the change.
+3. Use the [CI guide](docs/guides/ci.md) for local checks and the required merge gates. Record an ordinary [code review](docs/standards/code-review.md) and a distinct [security review](docs/standards/security-review.md) when the change touches a security-sensitive area.
+4. Follow the [release standard](docs/standards/release.md) for releases. Release preparation and review remain separate from routine implementation.
 
 ## Communication
 

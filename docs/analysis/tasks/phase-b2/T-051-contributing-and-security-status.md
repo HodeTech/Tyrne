@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -79,3 +79,4 @@ Adjacent, not in the plan item: `CONTRIBUTING.md:17-23` ("When the project enter
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: future-implementation CONTRIBUTING section excluded and current EL0 fault/exit limits incomplete. Approved replacement: present workflow plus five-syscall surface and trust/fault/reclamation limits, separate security reviews and maintainer SECURITY review before merge; disclosure unchanged. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-12 | Codex (AI agent) | Step 1 started after Step 0 passed both fresh rounds (`50f21ca`). Reconciled CONTRIBUTING workflow and SECURITY surface/limits from ABI, dispatch, vectors, BSP and scheduler; disclosure section preserved byte-for-byte. Static verification precedes the two distinct code/security rounds; no completion claimed. |

@@ -71,7 +71,7 @@ All work stays on development. Local work may proceed, but publication remains b
 | [T-048](T-048-phase-b-task-corpus-sync.md) | Synchronise the Phase B task corpus and fix task-file links | B.2-2 | Ready | — |
 | [T-049](T-049-review-indices-sync.md) | Synchronise the review-family indices | B.2-2 | Ready | — |
 | [T-050](T-050-entry-docs-and-glossary-sync.md) | Refresh README, guides index, glossary, and the add-bsp skill trace | B.2-2 | Ready | — |
-| [T-051](T-051-contributing-and-security-status.md) | Update CONTRIBUTING.md and SECURITY.md to the post-Phase-B state | B.2-2 | Ready | — |
+| [T-051](T-051-contributing-and-security-status.md) | Update CONTRIBUTING.md and SECURITY.md to the post-Phase-B state | B.2-2 | In Progress | — |
 | [T-052](T-052-standards-docs-reality-sync.md) | Reconcile standards claims with CI and lint reality (decisions required) | B.2-2 | Ready | T-032 |
 | [T-053](T-053-standards-docs-mechanical-fixes.md) | Apply mechanical corrections to the standards docs | B.2-2 | Ready | — |
 | [T-054](T-054-adr-ledger-renumbering-cascade.md) | Cascade the ADR ledger renumbering across phase files | B.2-2 | Ready | — |
