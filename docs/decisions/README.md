@@ -68,7 +68,7 @@ Each ADR contains:
 | 0038 | [`Mmu::translate` read-only walk + per-task user-access translation (B6 gate #1)](0038-mmu-translate-and-user-access.md) | Accepted | 2026-05-31 |
 | 0039 | [Userland build pipeline (B6 — `userland/hello` + `tyrne-user` + raw-flat embed orchestration)](0039-userland-build-pipeline.md) | Accepted | 2026-05-31 |
 | 0040 | [Phase B.2 consolidation bridge: governance, gating, and exit criteria](0040-phase-b2-consolidation-bridge.md) | Accepted | 2026-10-11 |
-| 0041 | [Test-name prefix policy: historical recovery](0041-test-name-prefix-policy-recovery.md) | Proposed | 2026-10-12 |
+| 0041 | [Test-name prefix policy: historical recovery](0041-test-name-prefix-policy-recovery.md) | Accepted | 2026-10-12 |
 | 0042 | [Descriptive test names without a mandatory prefix](0042-descriptive-test-names.md) | Proposed | 2026-10-12 |
 | 0043 | [Documentation corpus consistency and planned ADR identities](0043-documentation-corpus-consistency.md) | Proposed | 2026-10-12 |
 

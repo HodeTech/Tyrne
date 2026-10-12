@@ -1,6 +1,6 @@
 # 0041 — Test-name prefix policy: historical recovery
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-12
 - **Deciders:** @cemililik
 
