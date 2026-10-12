@@ -1,18 +1,18 @@
 # 0042 — Descriptive test names without a mandatory prefix
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-12
 - **Deciders:** @cemililik
 
 ## Context
 
-This ADR proposes to supersede [ADR-0041 — Test-name prefix policy: historical recovery](0041-test-name-prefix-policy-recovery.md) **after that recovery has been explicitly accepted**.
+This ADR supersedes [ADR-0041 — Test-name prefix policy: historical recovery](0041-test-name-prefix-policy-recovery.md), whose recovery the maintainer explicitly accepted in the preceding commit on 2026-10-12.
 The earlier written rule requires a `test_` prefix, but the shipped test corpus uses descriptive, unprefixed names.
 The mismatch reproduces at source `7d48f50603fa0d30464ea7b032f4f0fb82c3964c`; real examples in [the IPC tests](../../kernel/src/ipc/mod.rs) include `send_without_send_right_fails`, `recv_without_recv_right_fails`, and `send_with_wrong_object_kind_returns_wrong_object_kind`.
 The prefix requirement provides no additional description of the tested behavior, and adopting it now would churn source and test filters.
 
 [T-052](../analysis/tasks/phase-b2/T-052-standards-docs-reality-sync.md) asks the maintainer to choose between documenting the in-use convention and renaming/enforcing the historical prefix convention.
-This record proposes the former as a normative rule change, not a typo fix.
+The maintainer approved the former on 2026-10-12 as a normative rule change, not a typo fix.
 It changes no test behavior, test-layer requirements, or coverage policy.
 
 ## Decision drivers
@@ -30,7 +30,7 @@ It changes no test behavior, test-layer requirements, or coverage policy.
 
 ## Decision outcome
 
-Chosen option, subject to approval: **Option 1 — descriptive names without a mandatory prefix**.
+Chosen option: **Option 1 — descriptive names without a mandatory prefix**.
 
 Document `<subject>_<condition>_<expected_outcome>` as a naming guide, using the three real IPC names above as examples.
 Use ordinary Rust `snake_case`; concise names are acceptable when the behavior is already unambiguous.
@@ -38,10 +38,9 @@ The three descriptive components are guidance, not a requirement for a mechanica
 Review checks whether the name explains the behavior.
 No naming-prefix lint, mass rename, or retrospective rejection of historical prefixed names is introduced.
 
-After explicit maintainer approval, first accept ADR-0041's historical recovery in its own commit.
-Then, in one atomic supersession commit, accept this ADR, change ADR-0041 to `Superseded by 0042`, add its forward callout and update both index rows.
-Do not commit this ADR as Accepted while ADR-0041 remains Accepted.
-Only after that transition may T-052 replace the standard's pattern and examples.
+Following explicit maintainer approval and the careful re-read, this Acceptance commit atomically marks ADR-0041 `Superseded by 0042`, adds its forward callout and updates both index rows.
+ADR-0041's separate recovery Acceptance precedes this transition; no committed checkpoint leaves both contradictory records Accepted.
+T-052 may now replace the standard's pattern and examples.
 That standard edit must also add a References entry linking this ADR, as required by the standard-change procedure.
 
 ### Simulation

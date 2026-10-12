@@ -1,8 +1,10 @@
 # 0041 — Test-name prefix policy: historical recovery
 
-- **Status:** Accepted
+- **Status:** Superseded by 0042
 - **Date:** 2026-10-12
 - **Deciders:** @cemililik
+
+> **Superseded by [ADR-0042: Descriptive test names without a mandatory prefix](0042-descriptive-test-names.md) (2026-10-12).** The original decision below is preserved for the historical record.
 
 ## Context
 
