@@ -2,8 +2,9 @@
 
 - **Phase:** B
 - **Milestone:** B5 — Syscall boundary (this task is B5's trap/dispatch implementation — the EL0→EL1 `SVC` path that instantiates [ADR-0030](../../../decisions/0030-syscall-abi.md)'s convention and [ADR-0031](../../../decisions/0031-initial-syscall-set.md)'s syscall set)
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-05-29
+- **date_done:** 2026-05-29
 - **In Progress:** 2026-05-29
 - **In Review:** 2026-05-29 ([PR #34](https://github.com/HodeTech/Tyrne/pull/34), base `main`, branch `t-021-syscall-dispatch`; bundles T-020 + T-021 in one combined review per the maintainer's call)
 - **Author:** @cemililik (+ Claude Opus 4.8 agent)
@@ -106,3 +107,4 @@ The implementation deliberately splits along the HAL line ([P6](../../../standar
   - **Nit — unchecked payload index:** `SyscallReturn::with_payload` is now a **const-generic** `with_payload::<IDX>` with a `const { assert!(IDX < 7) }`, turning the (already unreachable-from-untrusted-input) runtime index panic into a **compile-time** error at the call site — matching the kernel's compile-time-guard idiom. Call sites updated to the `::<N>` turbofish.
   - **Clarity:** the three scattered "unreachable re-validation" comments in `sys_console_write` consolidated into one inequality-chain proof at the loop head.
   - **B6 carry-forward gates** (NOT B5 defects — the B5 stub proxy does not need them) recorded explicitly in [phase-b.md §B6 "T-021 carry-forward gates"](../../../roadmap/phases/phase-b.md#milestone-b6--first-userspace-hello): the per-task `console_write` window + per-page user-VA translation (return `FaultAddress`, never panic — the agent-suggested "panic on full-extent window" was **rejected** as a panic-free-contract violation), `SP_EL1` init on the `+0x400` entry, and the `SYSCALL_STUB_TABLE` → current-task-table swap. Two later-phase hazards (`ipc_send` `unreachable!()` under preemption; EL0 non-`SVC` fault containment) cross-referenced to ADR-0032/C3-009 and K3-4. All gates re-run green after the follow-up.
+- **2026-10-13 — Merge confirmation (T-048).** Verified PR #34, merge `f98e1af8e9f044d8d28858ca40c11ede03ef7e06` (2026-05-29) against `origin/main` first-parent history and the recorded maintainer completion in [current.md](../../../roadmap/current.md). Reconciled `In Review` → `Done`; `date_done` is 2026-05-29, from the final merge. Earlier implementation/review entries remain historical; no new test execution or review approval is implied.

@@ -41,13 +41,13 @@ Status transitions are author-driven. Only the maintainer authorizes `Done`.
 2. **Move to `In Progress`** when work begins. Update [`../../roadmap/current.md`](../../roadmap/current.md) to point at the task.
 3. **Work the acceptance criteria.** Any ADRs listed as dependencies are written (via `write-adr`) before implementation code lands.
 4. **Move to `In Review`** when all criteria appear satisfied. The maintainer's review confirms.
-5. **Move to `Done`** after review. Update `current.md`; if it was the last task of the milestone, trigger a business review via [`conduct-review`](../../../.agents/skills/conduct-review/SKILL.md).
+5. **Move to `Done`** after maintainer-authorized review/merge. Insert the optional `- **date_done:** YYYY-MM-DD` immediately after `Created`, using the real ISO completion date. Omit it while open; do not fabricate historical dates. Update `current.md`; if it was the last task of the milestone, trigger a business review via [`conduct-review`](../../../.agents/skills/conduct-review/SKILL.md).
 
 ## Conventions
 
 - Filename: `T-NNN-<kebab-slug>.md`, where `<slug>` is an imperative-verb phrase (`capability-table-foundation`, `el-drop-to-el1`).
 - Exactly one task per file.
-- Frontmatter fields are always present — no placeholder values left over from the template.
+- Required frontmatter fields are always present — no placeholder values left over from the template. The optional `date_done` follows the lifecycle rule above.
 - Acceptance criteria are concrete and testable (3–8 items; at most 10, or split the task).
 - If a task has open design decisions, they become ADR acceptance criteria on the task.
 

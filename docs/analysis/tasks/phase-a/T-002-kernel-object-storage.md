@@ -52,7 +52,7 @@ This task is **structure and lifecycle only**, not behaviour. The scheduler (A5)
 
 Sketch; real design in ADR-0016.
 
-1. **Storage.** Per-type fixed-size-block arena — one array of `Task`, one of `Endpoint`, one of `Notification`, each with index-based generation-tagged handles mirroring the [`CapabilityTable`](../../../kernel/src/cap/table.rs) pattern from T-001. Consistency with the already-audited capability table is valuable: one shape, three instances. A shared pool alternative is weighed in the ADR and should be rejected unless it earns its place.
+1. **Storage.** Per-type fixed-size-block arena — one array of `Task`, one of `Endpoint`, one of `Notification`, each with index-based generation-tagged handles mirroring the [`CapabilityTable`](../../../../kernel/src/cap/table.rs) pattern from T-001. Consistency with the already-audited capability table is valuable: one shape, three instances. A shared pool alternative is weighed in the ADR and should be rejected unless it earns its place.
 2. **Ownership.** Arenas are global (kernel-scope), not per-task, because a single kernel object is reachable from many capabilities across many tasks. Single-core v1 needs no synchronization.
 3. **Lifecycle.** Explicit destruction via a `Destroy`-righted capability (or a dedicated kernel path). The cascade "last capability drop destroys the object" is seductive but introduces reference counting that v1 does not need; defer until a concrete use case forces it.
 4. **CapObject wiring.** `CapObject` becomes an enum variant per `CapKind`, each carrying its typed handle:
