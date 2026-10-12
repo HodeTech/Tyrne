@@ -72,7 +72,7 @@ sequenceDiagram
     S->>U: activate task TTBR0, restore prepared context, ERET
     U->>BSP: attempt console_write, then task_exit (SVCs)
     BSP->>S: terminate current userspace task
-    S->>S: finish remaining demo work; idle
+    S->>S: finish remaining demo work; Task A spins
 ```
 
 The BSP publishes the fail-closed empty caller table before starting scheduling and binds the real table/window to the current EL0 task. The EL1 IPC tasks and EL0 task interleave; the diagram does not require both EL1 tasks to finish before EL0 entry. There is no `BootInfo` handoff or userspace init/config parser in this path.
@@ -100,7 +100,7 @@ sequenceDiagram
 
 The EL1 scheduler bridge in [`kernel/src/sched/mod.rs`](../../kernel/src/sched/mod.rs) adds cooperative behavior: receive blocks on `Pending`, resumes and consumes the completed receive; send unblocks/yields on `Delivered`, while `Enqueued` returns without switching. The EL0 dispatcher calls the bare primitives and returns encoded outcomes; it does not call these blocking bridge wrappers. [ADR-0017](../decisions/0017-ipc-primitive-set.md), [ADR-0021](../decisions/0021-raw-pointer-scheduler-ipc-bridge.md) and [ADR-0031](../decisions/0031-initial-syscall-set.md) provide the corresponding decisions.
 
-Capability transfer validates the source authority and delivery capacity before moving the capability; a pending send can hold it in endpoint state until receive. Notification objects are separate from endpoints and have kernel APIs, but no notification syscall is in v1. Userspace IRQ notification delivery is also future work.
+Capability transfer has two stages. Send validates source authority and endpoint-slot availability before moving the capability from the sender's table into endpoint state. Receive checks the receiver's table capacity before installing it; a full table leaves the pending message/capability in the endpoint for a later receive. Notification objects are separate from endpoints and have kernel APIs, but no notification syscall is in v1. Userspace IRQ notification delivery is also future work.
 
 ### Address spaces
 
@@ -112,7 +112,7 @@ The loader installs userspace image pages read/execute and stack pages read/writ
 
 ### Interrupts
 
-The BSP's vector entry saves context, identifies and acknowledges the interrupt through `IrqController`, dispatches the generic-timer handling path, performs EOI and returns. This supports the current timer/idle demonstration. It does not look up a userspace `IrqCap`, schedule a driver, or implement an EL0 `irq_eoi` call. Those are planned device-service mechanisms. The scheduler remains cooperative even while timer IRQs are enabled.
+The BSP's current-EL IRQ entry saves context and acknowledges through `IrqController`. The recognized generic-timer path masks its source, performs EOI and returns; a spurious interrupt returns without EOI, and any other nonspurious IRQ is EOI'd before panic. This infrastructure and the idle/WFI fallback are installed, but the default demo arms no timer deadline and ends in Task A's spin loop. The retained traces exercise neither timer IRQ delivery nor idle/WFI. The handler does not look up a userspace `IrqCap`, schedule a driver, or implement an EL0 `irq_eoi` call. Those are planned device-service mechanisms; scheduling remains cooperative.
 
 ### Syscall surface
 
@@ -126,7 +126,7 @@ The v1 register ABI uses `x8` for the number, `x0`–`x5` for arguments, and `x0
 | 4 | `task_exit` | Terminates the current caller without returning; no capability argument. Fails closed without a current task. |
 | 5 | `console_write` | Recognized only with `debug_assertions`; requires `DebugConsole` / `CONSOLE_WRITE`, then validates the user range and USER mappings before output. |
 
-Number 5 is rejected as `BadSyscallNumber` in normal release builds before capability lookup or output. The other internal task, address-space, capability and IRQ APIs are not additional syscalls. BSP binding verifies current task identity/generation, table and address space; incomplete binding uses an empty table/window and disables current-task control effects.
+Number 5 is rejected as `BadSyscallNumber` in normal release builds before capability lookup or output. The other internal task, address-space, capability and IRQ APIs are not additional syscalls. BSP binding obtains the registered table/window from the current scheduler slot and generation-resolves its AddressSpace handle. Missing table/window or failed AS resolution selects an empty table/window and disables current-task control effects. This path relies on trusted scheduler registration and lifetimes; it does not separately validate the current Task generation or table-pointer identity.
 
 The syscall input checks do not contain arbitrary EL0 execution faults: a non-SVC synchronous fault currently panics the whole kernel. `task_exit` removes the task from scheduling but does not reclaim all Task/AS/capability resources. These limits matter before untrusted userspace or repeated task creation is introduced; see [SECURITY.md](../../SECURITY.md).
 
