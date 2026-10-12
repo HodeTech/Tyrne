@@ -130,3 +130,7 @@ Root reverified the 39 pre-existing ADRs byte-for-byte and unchanged runtime/too
 **Approve — revised proposal readiness only.** Two fresh follow-up rounds completed; R1-GOV-01 is corrected and independently verified, with zero new second-round findings and zero unresolved proposal blockers. All supplied items are corrected in the draft package or covered by explicit Acceptance-time/Step 0 obligations.
 
 Present the revised package and O1–O3 recommendations for explicit maintainer approval. ADR Acceptance, literal task reconciliation, implementation and final task delivery have not occurred. This appended record supersedes the earlier pending-follow-up notice; it preserves all original source-bound reviews and is coordinator-checked publication, not another independent review round of itself.
+
+## Later authorized execution — 2026-10-12
+
+The maintainer subsequently approved the revised ADR package, plan and literal contracts explicitly. Acceptance and reconciliation are recorded in the [Step 0 review](2026-10-12-phase-b2-track2-step0.md), with two new independent rounds and verified corrections. This dated pointer supersedes the pending-approval execution state above while preserving the original proposal-review sources and verdicts.
