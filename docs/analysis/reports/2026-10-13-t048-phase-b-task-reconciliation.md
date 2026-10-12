@@ -1,7 +1,8 @@
 # T-048 Phase B task reconciliation — 2026-10-13
 
-- **Status:** Implemented; both fresh independent code review rounds pending. T-048 remains In Progress.
-- **Checked source:** `f573ae1d39271da4ea4ded57c1252abb29630683` on `development`; historical comparison before this step at `a214532`.
+- **Status:** Implemented; R1 identified one Low report-provenance finding, clarified below. Bounded correction verification and fresh R2 remain pending. T-048 remains In Progress.
+- **Implementation baseline:** `f573ae1d39271da4ea4ded57c1252abb29630683` on `development`; historical comparison before this step at `a214532`.
+- **Verified implementation:** The checks below ran on the resulting uncommitted implementation tree above that baseline; implementation, report and initial verification record were then committed as `550500f3080179fdb9b7254f64ea6fc48bf636d0`. The clean kickoff tree alone does not contain or prove the reconciliation.
 - **Merged-main evidence:** `origin/main` at `c16997e003fbd1726d1205734380394781c52002`. Local `main` is not the verification source.
 - **Authority:** Maintainer-approved [T-048 contract](../tasks/phase-b2/T-048-phase-b-task-corpus-sync.md), [13-step plan](2026-10-12-phase-b2-track2-preflight-and-plan.md), [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), and the Phase B completion/PR record in [current.md](../../roadmap/current.md).
 
@@ -54,3 +55,7 @@ Coordinator scratch assertions passed against the implemented tree: 23 unique/co
 `python3 /tmp/tyrne-b22-bounded-md-links.py docs/analysis/tasks/phase-a/*.md docs/analysis/tasks/phase-b/*.md docs/analysis/tasks/TEMPLATE.md docs/analysis/tasks/README.md` resolves **800 bounded inline local paths, zero missing**. Separate source-derived scratch fragment assertions resolve **99 heading references and two source-line references**, with duplicate heading slug handling and source-line bounds. Scans include code-formatted link labels, exclude fenced/code-contained examples, and cover the stated files/forms. They are not the full-corpus grammar gate owned by T-056. The scratch scripts are coordinator checks, not shipped tools or a reproducibility claim about another machine.
 
 `git diff --check` passes. New prose is English; no diagram/fence, executable, API, unsafe, dependency or CI change is introduced. No build, Rust test, smoke, Miri or coverage run was necessary or performed for this metadata/navigation step. Review will independently assess correctness, style, tests/evidence, documentation and integration, including preservation and literal contracts; both fresh rounds are still pending at this implementation record.
+
+## First-round provenance correction
+
+The fresh R1 reviewer independently verified the merged-task facts, preservation, rendered table and navigation at `550500f`, and identified one Low ambiguity in the former Checked source field: it named the clean kickoff commit although checks ran after applying the implementation. The header now separates the kickoff baseline, checked resulting tree and actual implementation commit. This changes no historical task content, status/date fact, runtime evidence or verification result. The R1 bounded follow-up and different fresh R2 assessment are still pending at this correction record.
