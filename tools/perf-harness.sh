@@ -253,8 +253,18 @@ HOST_UNAME=$(uname -a)
 # the upstream `qemu-system-aarch64`; `set -o pipefail` then aborts. Use awk
 # with a `; exit` to consume only the first line without provoking SIGPIPE.
 QEMU_VERSION=$(qemu-system-aarch64 --version | awk 'NR==1 { print; exit }')
-GIT_HEAD=$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "(unknown)")
+GIT_HEAD=$(cd "$REPO_ROOT" && git rev-parse HEAD 2>/dev/null || echo "(unknown)")
 GIT_BRANCH=$(cd "$REPO_ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(unknown)")
+RUST_VERSION=$(cd "$REPO_ROOT" && rustc -V)
+RUST_TOOLCHAIN=$(cd "$REPO_ROOT" && rustup show active-toolchain)
+GIT_TRACKED_STATE="unknown"
+if [[ "$GIT_HEAD" != "(unknown)" ]] && GIT_TRACKED_STATUS=$(cd "$REPO_ROOT" && git status --porcelain --untracked-files=no); then
+    if [[ -n "$GIT_TRACKED_STATUS" ]]; then
+        GIT_TRACKED_STATE="dirty"
+    else
+        GIT_TRACKED_STATE="clean"
+    fi
+fi
 
 # Bash 3.2 has indexed arrays; no associative arrays needed for this script.
 SAMPLES=()
@@ -433,7 +443,10 @@ echo "  build:   $PROFILE_LABEL"
 echo "  timeout: ${TIMEOUT_S}s per run"
 echo "  wall:    ${WALL_S}s total"
 echo "  git:     $GIT_HEAD on $GIT_BRANCH"
+echo "  tracked worktree: $GIT_TRACKED_STATE"
 echo "  qemu:    $QEMU_VERSION"
+echo "  rustc:   $RUST_VERSION"
+echo "  toolchain: $RUST_TOOLCHAIN"
 echo "================================================================"
 printf '  %-7s | %15s | %10s\n' "metric" "ns" "ms"
 printf '  %-7s-+-%15s-+-%10s\n' "-------" "---------------" "----------"
@@ -519,6 +532,9 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
         echo "| Build profile | ${PROFILE_LABEL} |"
         echo "| Kernel ELF | \`${KERNEL_ELF#"${REPO_ROOT}"/}\` |"
         echo "| Git HEAD | \`${GIT_HEAD}\` on \`${GIT_BRANCH}\` |"
+        echo "| Tracked worktree | ${GIT_TRACKED_STATE} |"
+        echo "| Rust compiler | \`${RUST_VERSION}\` |"
+        echo "| Active toolchain | \`${RUST_TOOLCHAIN}\` |"
         echo "| QEMU | \`${QEMU_VERSION}\` |"
         echo "| Host \`uname -a\` | \`${HOST_UNAME}\` |"
         echo "| Wall-clock (full harness run) | ${WALL_S} s |"

@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-1
-- **Status:** Ready
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-034](T-034-ci-qemu-smoke-job.md), [T-036](T-036-ci-arm64-host-check-job.md)
@@ -17,7 +17,7 @@ As the maintainer, I want an explicit, recorded decision on whether the performa
 
 ## Context
 
-Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) as a decision-bearing task. The Accepted Track B.2-1 policy chooses implementation of both items; recording those choices alone does not satisfy the remaining implementation and evidence criteria. `tools/perf-harness.sh` is the canonical source for boot-to-end timing claims but no CI job runs it (`docs/standards/infrastructure.md:114` says "Maintainer-launched only; not yet wired into CI"), so there is no automated performance signal. Separately, "what gates merge" is stated only in the `ci.yml` header comment (`.github/workflows/ci.yml:7-9`) and prose (`docs/guides/ci.md:85-91`, `infrastructure.md:186`); the actual required-checks list is a GitHub setting that no diff can review.
+Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) as a decision-bearing task. The Accepted Track B.2-1 policy chooses implementation of both items; recording those choices alone does not satisfy the remaining implementation and evidence criteria. At the opening baseline, `tools/perf-harness.sh` was the canonical source for boot-to-end timing claims but no CI job ran it (`docs/standards/infrastructure.md:114` says "Maintainer-launched only; not yet wired into CI"), so there was no automated performance signal. Separately, "what gates merge" was stated only in the `ci.yml` header comment (`.github/workflows/ci.yml:7-9`) and prose (`docs/guides/ci.md:85-91`, `infrastructure.md:186`); the actual required-checks list was a GitHub setting that no diff could review.
 
 This task covers two items of `phase-b2.md` Track B.2-1 (line numbers as of the opening snapshot; locate by headline): LOW "`tools/perf-harness.sh` is likewise never invoked by CI" (line 51) and INFO "'What gates merge' is documented only in comments, not verifiable as code" (line 60). The track's acceptance criteria explicitly allow these low/info tails to be tracked without all landing in B.2, and the phase's closing note requires a scheduled-versus-gated CI choice to be routed through ADR governance rather than decided inside the backlog.
 
@@ -25,9 +25,10 @@ This task covers two items of `phase-b2.md` Track B.2-1 (line numbers as of the 
 
 - [x] Decision D1 is Accepted in ADR-0040 before implementation: weekly Monday `03:17 UTC` plus `workflow_dispatch`, informational, with a `development` push trigger limited to changes to the performance workflow or harness for pre-merge validation.
 - [x] Decision D2 is Accepted in ADR-0040 before implementation: version the existing classic `main` branch protection as JSON, with read-only export/check and explicit local apply tooling; no Terraform or ruleset migration.
-- [ ] The performance workflow builds the debug userland and kernel, runs `tools/perf-harness.sh --iterations=20 --report=ci-nightly`, and uploads the report with SHA/toolchain/QEMU metadata. Its first hosted `development` run is green and the downloaded artifact contents and wall time are recorded. Verify the manual dispatch after default-branch registration; do not claim it happened before merge. The job is not a required check.
-- [ ] The committed branch-protection definition preserves every existing setting and the GitHub Actions application bindings, includes the remote-green smoke and ARM checks, and has documented export, diff/check and apply commands. A read-back comparison against the live settings is clean; unexpected drift stops apply until reconciled. No administrative secret is available to CI.
-- [ ] Documentation: `docs/guides/ci.md` and `docs/standards/infrastructure.md` (including the line-114 sentence in the performance-harness section and the "Planned gates" list) match the decisions taken; the `ci.yml` header comment (lines 7-9) is still accurate. Explain that GitHub schedules are best effort, run from the default branch, and are automatically disabled after 60 days without repository activity in public repositories; document how to re-enable/dispatch the workflow.
+- [ ] The performance workflow builds the debug userland and kernel, runs `tools/perf-harness.sh --iterations=20 --report=ci-nightly`, and uploads the report with SHA/toolchain/QEMU metadata. Its first hosted `development` run is green and the downloaded artifact contents and wall time are recorded. The job is not a required check.
+- [ ] Verify manual dispatch after default-branch registration following maintainer merge; keep that evidence pending until it exists.
+- [x] The committed branch-protection definition preserves every existing setting and the GitHub Actions application bindings, includes the remote-green smoke and ARM checks, and has documented export, diff/check and apply commands. A read-back comparison against the live settings is clean; unexpected drift stops apply until reconciled. No administrative secret is available to CI.
+- [x] Documentation: `docs/guides/ci.md` and `docs/standards/infrastructure.md` (including the line-114 sentence in the performance-harness section and the "Planned gates" list) match the decisions taken; the `ci.yml` header comment (lines 7-9) is still accurate. Explain that GitHub schedules are best effort, run from the default branch, and are automatically disabled after 60 days without repository activity in public repositories; document how to re-enable/dispatch the workflow.
 
 ## Out of scope
 
@@ -38,19 +39,19 @@ This task covers two items of `phase-b2.md` Track B.2-1 (line numbers as of the 
 
 ## Approach
 
-Implement ADR-0040's Accepted D1-D3 policy. Use a separate performance workflow to keep measurements off the required PR pipeline; follow the repo's SHA pinning and least-privilege conventions, build the userland image before the kernel, and archive the report. Read-only inspection on 2026-10-11 found `gh api repos/HodeTech/Tyrne/rulesets` empty and `main` protected by classic branch protection. Export that existing mechanism through `gh api repos/HodeTech/Tyrne/branches/main/protection`; normalise response-only metadata separately from the apply payload, preserve all policy fields, and fail closed on settings the tooling cannot represent. Test drift detection and apply preconditions against local fixtures before any live mutation. Apply only after the new required checks have succeeded remotely, then read back and compare.
+Implement ADR-0040's Accepted D1-D3 policy. Use a separate performance workflow to keep measurements off the required PR pipeline; follow the repo's SHA pinning and least-privilege conventions, build the userland image before the kernel, and archive the report. Read-only inspection on 2026-10-11 found `gh api repos/HodeTech/Tyrne/rulesets` empty and `main` protected by classic branch protection. Export that existing mechanism through `gh api repos/HodeTech/Tyrne/branches/main/protection`; normalise response-only metadata separately from the apply payload, preserve all policy fields, and fail closed on settings the tooling cannot represent. Test drift detection and apply preconditions against local fixtures before any live mutation. Also query GraphQL-only deployment/review/actor policy and refuse nonempty unsupported extensions or new rulesets. Apply only after new required checks have succeeded remotely, then compare full read-back. Smoke/ARM were already registered in T-034/T-036, so this step's real apply is a verified no-op; offline fixtures exercise the mutating path.
 
 ## Definition of done
 
 Beyond the acceptance criteria:
 
-- [ ] `cargo fmt --all -- --check` clean.
-- [ ] `cargo host-clippy` clean with `-D warnings`.
-- [ ] `cargo kernel-clippy` clean.
-- [ ] `cargo host-test` passes.
-- [ ] Every touched markdown file has all `](...)` link targets resolving.
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] `cargo fmt --all -- --check` clean.
+- [x] `cargo host-clippy` clean with `-D warnings`.
+- [x] `cargo kernel-clippy` clean.
+- [x] `cargo host-test` passes.
+- [x] Every touched markdown file has all `](...)` link targets resolving.
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
 ## Design notes
 
@@ -69,3 +70,5 @@ Beyond the acceptance criteria:
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Draft |
 | 2026-10-11 | Codex (AI agent) | Preflight contract review: see [review artifact](../../reviews/code-reviews/2026-10-11-phase-b2-track1-preflight.md); documentation corrected, implementation not started; ADR-0040 remains Proposed. |
 | 2026-10-11 | @cemililik; Codex recorded the decision | ADR-0040 Accepted after the [approval follow-up](../../reviews/code-reviews/2026-10-11-adr-0040-approval-follow-up.md); design choices settled, status Ready. Implementation and hosted evidence remain pending. |
+| 2026-10-12 | Codex (AI agent) | Step 8 implementation: separate weekly Monday03:17UTC/dispatch/targeted-development performance workflow, 20 debug iterations, SHA/Rust/QEMU/run/wall metadata, pipefail and always-uploaded14-day artifacts. Versioned six-check classic policy includes REST settings, GraphQL-only review/deployment/actor baseline and empty rulesets. Local export/check/full read-back match; explicit apply returned no-op, no live write needed. Offline tests cover additive-only PATCH, drift before/after, green proof, CI refusal, unknown/unrepresentable policy and transport credential redaction; 27 tests pass normally and with Python optimization. Six synthetic performance controls pass, including report preservation and pipeline rejection. No CI admin credential or new dependency. |
+| 2026-10-12 | Codex (AI agent) | Real local QEMU11.1.1 debug measurement: 20/20 valid, zero failed, 100 s harness wall; p10/p50/p90 =4.085/4.210/4.505 ms. [Immutable local report](../../reports/perf-baseline-2026-10-12-t035-local-check.md) identifies HEAD69ac515 and dirty tracked worktree: this is pre-commit local evidence, not hosted/clean-source certification. Final metadata failure-path adjustment is covered by synthetic controls; no timing algorithm changed. fmt, host/kernel clippy and366 host tests pass; actionlint/ShellCheck/link/whitespace gates passed. First hosted performance artifact, both fresh rounds, final PR and post-merge dispatch remain pending. |

@@ -106,11 +106,13 @@ Enforced in CI today (block merge):
 - Clippy with `-D warnings` — must pass through the `host-clippy` and `kernel-clippy` aliases plus `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` after the userland image build; these cover distinct host and bare-metal targets (see [infrastructure.md](infrastructure.md) §"Required gates").
 - `shellcheck tools/*.sh` at default severity — must pass. Isolated expected-failure probes also verify that the shell and userland lint commands reject their deliberate regressions; the production source stays clean.
 - `cargo fmt --all -- --check` — must pass.
-- Host crates on stable Rust (`host-stable-check`) — must build/lint/test clean.
+- Host crates on stable Rust (`host-stable-check`) — must build/test clean; pinned-nightly jobs enforce linting.
 - Miri (Stacked Borrows) over the host-test suite — must pass.
 - Native ARM workspace check/clippy/test/Miri on `ubuntu-24.04-arm`, excluding only the BSP; host-gated userland remains included. An isolated arch-only hello regression must fail workspace clippy with duplicate `panic_impl`. Live required-check registration and full-policy read-back completed on 2026-10-12 after hosted green and both fresh rounds. See [ci.md](../guides/ci.md#why-an-arm64-host-job).
 
 - Debug/release single-core QEMU EL0 smoke (`qemu-smoke`) with matching images, required profile markers and panic/CPU-fault rejection. Synthetic trace fixtures and three actual private kernel mutations verify rejection; production/probe traces and provenance are uploaded even on failure. Exact SVC counting and adversarial EL0 images remain separate scope.
+
+Offline branch-protection safety fixtures validate drift, app bindings, additive-only writes, remote green proof and CI refusal without live API calls or admin credentials.
 
 Not yet enforced in CI:
 

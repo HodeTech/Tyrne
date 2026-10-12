@@ -1,8 +1,8 @@
 # Tyrne CI — gate for every push and pull request.
 #
 # Goal: every hygiene check that a contributor is expected to pass
-# locally before opening a PR is also enforced here. A red CI blocks
-# merge.
+# locally before opening a PR is also enforced here. A red required check
+# blocks merge; informational coverage/performance are excluded by policy.
 #
 # What actually gates merge (configured in GitHub branch protection):
 #   - lint-and-host-test, kernel-build, host-stable-check  (fast lane)
@@ -17,8 +17,9 @@
 # slower (~1–2 min in practice on the current small suite; historically
 # budgeted at ~10–15 min) but a Miri regression is a hard stop. The
 # `coverage` job is INFORMATIONAL only (it sets `continue-on-error: true`)
-# and must NOT be added to the required-checks list until the post-T-011
-# flip removes that flag — see docs/guides/ci.md §"Branch protection".
+# and remains excluded from .github/branch-protection/main.json. T-011 is
+# complete; a future calibrated floor needs a reviewed policy/workflow change.
+# Weekly performance reporting is separate and also excluded.
 #
 # Toolchain note: the kernel needs nightly (inline asm / lang items),
 # so the lint-and-host-test, kernel-build, and miri jobs all run the
@@ -123,6 +124,10 @@ jobs:
         run: tools/test-qemu-tooling.sh
       - name: Smoke gate trace fixtures (synthetic, no guest)
         run: tools/test-smoke-gates.sh
+      - name: Branch-protection safety fixtures (offline, no admin credentials)
+        run: python3 tools/test-branch-protection.py
+      - name: Performance report fixtures (synthetic, no guest)
+        run: python3 tools/test-perf-harness.py
 
   # ─── Kernel build: aarch64-unknown-none ─────────────────────────────────
   # The bare-metal BSP cannot be built as part of the default workspace
@@ -400,9 +405,8 @@ jobs:
 
   # ─── Coverage: informational ────────────────────────────────────────────
   # Produces an lcov report. Does NOT fail on a coverage drop today
-  # (no agreed floor yet); it exists to make trends visible. When the
-  # workspace settles around its post-T-011 shape, flip this job to
-  # enforce a floor (≥ 94 % regions or similar).
+  # (no agreed floor yet); it exists to make trends visible. T-011 is complete;
+  # a calibrated enforcing floor needs a separate reviewed policy/workflow change.
   coverage:
     name: coverage (informational)
     runs-on: ubuntu-latest

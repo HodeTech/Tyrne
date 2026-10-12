@@ -1,6 +1,6 @@
 # CI: what runs, where, and when
 
-This guide describes the GitHub Actions pipeline configured in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). It is the first external gate beyond self-review and agent-review. When the CI is red, the commit is not mergeable, even if local checks passed.
+This guide describes the GitHub Actions pipeline configured in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). It is the first external gate beyond self-review and agent-review. A failing required CI check blocks merge even if local checks passed. Informational reports are excluded from required checks.
 
 ## Jobs
 
@@ -12,7 +12,8 @@ This guide describes the GitHub Actions pipeline configured in [`.github/workflo
 | `arm64-host-check` | pinned nightly + `clippy` + `miri`, `ubuntu-24.04-arm` | 101 s first hosted run; 15 min bound | Native workspace check/clippy/test/Miri failure, wrong host or arch-only regression probe mismatch |
 | `host-stable-check` | stable (no extra components) | ~2 min | host crates failing to build or test on stable Rust |
 | `miri` | pinned nightly + `miri` component | ~10–15 min | Any Stacked Borrows violation in `cargo +nightly miri test --workspace --exclude tyrne-bsp-qemu-virt` |
-| `coverage` | pinned nightly + `llvm-tools-preview` + `cargo-llvm-cov` | ~3–5 min | **Never** (informational only, `continue-on-error: true`) |
+| `coverage` | pinned nightly + `llvm-tools-preview` + `cargo-llvm-cov` | ~3–5 min | Coverage/tool errors are informational; excluded from required policy |
+| `performance-report` (separate workflow) | pinned nightly + LLVM + QEMU | 20 × 5 s watchdogs plus setup; 10 min bound | Visible workflow failure on measurement/build/upload error; no timing threshold and no merge gate |
 
 The ARM job runs on `ubuntu-24.04-arm`; the remaining jobs use `ubuntu-latest` (x86_64). Every cache key and restore prefix includes `runner.os` and `runner.arch`, plus toolchain and lockfile identity, so ARM cannot restore x86_64 build artifacts.
 
@@ -124,7 +125,7 @@ The BSP is a bare-metal `no_std` + `no_main` binary whose panic handler conflict
 
 ## When does the coverage job start gating?
 
-Today `coverage` is informational: `continue-on-error: true` in the workflow. After T-011 closes (which raises `sched/mod.rs` past 90 % and the workspace past 96 %), the plan is to flip this job to enforce a floor. The floor should be slightly below the measured baseline so regressions trip the gate but normal churn does not.
+Coverage remains informational and excluded from the versioned required-check policy. T-011 is already complete; its old future-tense trigger does not establish a calibrated floor. A future enforcing floor needs an explicit reviewed decision, reproducible baseline and workflow change before adding coverage to protection. `continue-on-error: true` permits workflow success despite this job failing; it does not itself define a coverage threshold or reliably describe a particular UI color. See [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idcontinue-on-error).
 
 ## Adding a new check
 
@@ -135,25 +136,57 @@ Today `coverage` is informational: `continue-on-error: true` in the workflow. Af
 
 ## Nightly pinning
 
-Miri and cargo-llvm-cov use a **pinned** nightly declared via the `NIGHTLY_PIN` env var at the top of [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). Rolling nightly means that a miri or `llvm-tools` regression on the public nightly channel breaks CI without any commit of ours being the cause; pinning isolates us from that.
+Miri and cargo-llvm-cov use a **pinned** nightly declared via the `NIGHTLY_PIN` env var in [ci.yml](../../.github/workflows/ci.yml) and [performance.yml](../../.github/workflows/performance.yml). Rolling nightly means that a miri or `llvm-tools` regression on the public nightly channel breaks CI without any commit of ours being the cause; pinning isolates us from that.
 
 cargo-llvm-cov itself is also pinned — installed via [`taiki-e/install-action`](https://github.com/taiki-e/install-action) which downloads a prebuilt binary rather than compiling from source. The version is in the workflow as `tool: cargo-llvm-cov@<x.y.z>` (`0.6.16` at the time of writing). Pinning the tool prevents an upstream release from silently changing what "coverage" reports.
 
 Current pins:
-- `NIGHTLY_PIN = nightly-2026-01-15` (set 2026-04-23 when R6 landed).
+- `NIGHTLY_PIN = nightly-2026-01-15` (set 2026-04-23 when R6 landed; shared by both workflows).
 - `cargo-llvm-cov 0.6.16` (set 2026-04-28; see `coverage` job in `ci.yml`).
 
 To bump either pin:
 
 1. Open an issue titled "Bump &lt;pin&gt; to &lt;new-version&gt;" stating the reason (new Miri check we want, a compiler feature we need, a cargo-llvm-cov bug fix, a security advisory, routine refresh).
-2. Update the `NIGHTLY_PIN` env var or the `tool: cargo-llvm-cov@…` line in `.github/workflows/ci.yml` and the "Current pins" list above.
+2. Update `NIGHTLY_PIN` in both workflows, or `tool: cargo-llvm-cov@…` in `ci.yml`, then refresh the "Current pins" list above.
 3. Run `cargo +nightly-YYYY-MM-DD miri test --workspace --exclude tyrne-bsp-qemu-virt` and `cargo +nightly-YYYY-MM-DD llvm-cov --workspace --exclude tyrne-bsp-qemu-virt --summary-only` locally; make sure both are green on the new pin.
 4. Land the pin bump in its own commit with `Refs:` to the issue. The two pins can be bumped together or independently.
 
-## Branch protection and `continue-on-error`
+## Weekly performance reports
 
-The `coverage` job is marked `continue-on-error: true`. GitHub's UI renders this as a **neutral / yellow** verdict rather than green or red. Be deliberate when configuring branch-protection rules:
+[performance.yml](../../.github/workflows/performance.yml) runs Monday at **03:17 UTC / 06:17 Türkiye time**, on manual dispatch, and on `development` pushes touching that workflow or `tools/perf-harness.sh`; pushes touching neither path do not trigger it. It has no PR trigger. Each run builds matching debug userland/kernel, runs `tools/perf-harness.sh --iterations=20 --report=ci-nightly` and uploads `performance-<sha>-<attempt>` for 14 days. Reports include full SHA, tracked-worktree state, active Rust toolchain/compiler, QEMU/host, all valid raw samples, failed count, wall time and the percentile band. The artifact also has run/source identity, full Rust/QEMU versions and harness output; available diagnostics upload even when measurement fails. Reports refuse overwrites and are downloaded artifacts, never committed by CI. Explicit Bash/pipefail propagates harness failures through logging.
 
-- **Do not add `coverage` to the required-checks list** while it is informational; the neutral result does not satisfy `required == passing`, so every push would be blocked even when coverage is fine.
-- **Do add the six real gates** to required checks. GitHub matches each job's display **name**, not its id, so add these exact strings: `fmt + clippy + host tests (nightly)`, `aarch64-unknown-none kernel build (nightly)`, `host crates on stable`, `miri (Stacked Borrows)`, `QEMU debug + release smoke (nightly)`, and `ARM64 host check + clippy + tests + Miri (nightly)`. The ARM check was registered after remote green and both fresh rounds on 2026-10-12, with full-policy read-back in [T-036](../analysis/tasks/phase-b2/T-036-ci-arm64-host-check-job.md). The smoke check was registered on 2026-10-12 after corrected remote green and both fresh review rounds; [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md) records live read-back evidence.
-- When coverage flips from informational to enforcing (planned post-T-011), remove `continue-on-error: true` first, confirm a full run is green, then add the job to branch-protection.
+A failed measurement/build/upload is a visible failed workflow. There is no calibrated performance threshold; neither this job nor coverage is in the required-check definition. Compare bands only with matching host/profile context; QEMU timings are not hardware latency guarantees.
+
+[GitHub schedule semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule) are best effort: runs may be delayed or dropped, execute from the default branch, and public-repository schedules disable after 60 days without repository activity. Schedule/dispatch registration requires the workflow on the default branch; pre-merge `development` push evidence is separate. After maintainer merge, verify the first main CI run and dispatch:
+
+```sh
+gh workflow enable performance.yml --repo HodeTech/Tyrne
+gh workflow run performance.yml --repo HodeTech/Tyrne --ref main
+gh run list --repo HodeTech/Tyrne --workflow performance.yml
+gh run download <run-id> --repo HodeTech/Tyrne --dir /tmp/tyrne-performance-download
+```
+
+These are maintainer operations; no CI administrative secret is used. Record the actual dispatch/run/artifact evidence in [T-035](../analysis/tasks/phase-b2/T-035-ci-hygiene-tail.md), keeping it pending until default-branch registration exists.
+
+## Versioned classic branch protection
+
+[main.json](../../.github/branch-protection/main.json) captures the complete supported classic `main` policy, including six exact display names with GitHub Actions app binding15368 and strict checking. It preserves the existing solo-phase review count0, disabled admin enforcement/signatures/force-push/deletion, required linear history/conversation resolution and all other captured toggles. [T-034](../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md) and [T-036](../analysis/tasks/phase-b2/T-036-ci-arm64-host-check-job.md) record the subsequent smoke/ARM additions and full-policy read-backs. This captures existing protection; it does not enact the standards' future multi-contributor review-count policy.
+
+Required checks are exactly `fmt + clippy + host tests (nightly)`, `aarch64-unknown-none kernel build (nightly)`, `host crates on stable`, `miri (Stacked Borrows)`, `QEMU debug + release smoke (nightly)`, and `ARM64 host check + clippy + tests + Miri (nightly)`. Coverage and performance remain excluded by policy. GitHub can accept successful, skipped or neutral required-check conclusions; the former claim that neutral always blocks was incorrect. [GitHub protected-branch reference](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-status-checks-before-merging).
+
+Use Python3 and an authenticated `gh` locally. The tool is bound to `github.com`, `HodeTech/Tyrne`, `main`; export/check need read access and apply needs administration permission. Exit0 means match/success, exit1 means drift/verification/environment failure, exit2 means usage error. `check` prints a unified diff on drift.
+
+```sh
+python3 tools/branch-protection.py export > /tmp/tyrne-main-before.json
+python3 tools/branch-protection.py check
+# Review the snapshot and definition diff before this explicit local apply:
+python3 tools/branch-protection.py apply \
+  --expected-current /tmp/tyrne-main-before.json \
+  --verified-sha <full-40-character-remotely-green-sha>
+python3 tools/branch-protection.py check
+python3 tools/test-branch-protection.py
+```
+
+Apply refuses a CI environment, unexpected full-policy drift, a new repository/inherited ruleset, unrepresentable settings, unknown fields, missing/duplicate JSON fields, check removal, source-app rebinding or any non-status/strict change. It can only add checks; each addition needs exactly one completed successful remote check at the supplied full SHA with its explicit source app. It refuses incomplete/paginated check evidence. A matching policy is a real no-op. Read-only GraphQL also captures the applied classic rule's PR-review enablement, deployment requirements, push/review restrictions and actor-allowance counts omitted by the REST response; nonempty actor/deployment extensions stop reconciliation. See [GitHub BranchProtectionRule schema](https://docs.github.com/en/graphql/reference/branches#branchprotectionrule). Only known response URLs and duplicated context metadata are normalized; push restrictions or review-policy extensions require a deliberate tooling update, never silent omission.
+
+Immediately before the narrow required-status-checks PATCH, the complete policy is read again; afterward it must match the entire desired definition. The API offers no documented atomic conditional update for this operation: another administrator can still race between read and write. Coordinate administrative changes. Post-write mismatch is an error requiring inspection, without automatic rollback that could overwrite a concurrent change. Unexpected drift must be reconciled and reviewed in the snapshot/definition; do not blindly re-export over the committed definition. CI runs offline safety fixtures only and receives no administrative credentials. [GitHub status-check protection API](https://docs.github.com/en/rest/branches/branch-protection#update-status-check-protection).
