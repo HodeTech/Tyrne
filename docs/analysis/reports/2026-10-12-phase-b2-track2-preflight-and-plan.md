@@ -3,7 +3,7 @@
 This document records the source-backed documentation review, maintainer-approved decisions, reconciled task contracts and the reviewed-step execution plan for Track B.2-2.
 It is the implementation brief for a documentation and tooling wave; it does not report implementation as complete.
 
-- **Status:** Approved by the maintainer on 2026-10-12 — Step 0 Acceptance and literal contract reconciliation complete with both fresh implementation-review rounds passed; Step 1 (T-051) completed both fresh code/security rounds on 2026-10-13 and is In Review; Step 2 (T-045) completed both fresh code/security rounds and is In Review; Step 3 (T-046) is In Progress: seven whole-chapter refreshes and final overview/boot/index coherence. Copyright identity is also approved.
+- **Status:** Approved by the maintainer on 2026-10-12 — Step 0 Acceptance and literal contract reconciliation complete with both fresh implementation-review rounds passed; Step 1 (T-051) completed both fresh code/security rounds on 2026-10-13 and is In Review; Step 2 (T-045) completed both fresh code/security rounds and is In Review; Step 3 (T-046) completed both fresh code/security rounds and is In Review, including shared T-045 overview/boot/index checks; T-048 follows. Copyright identity is also approved.
 - **Date:** 2026-10-12
 - **Author:** Codex (AI agent), on behalf of @cemililik
 - **Source baseline:** clean `development` at `7d48f50603fa0d30464ea7b032f4f0fb82c3964c`; `origin/main` at `c16997e003fbd1726d1205734380394781c52002`.
@@ -191,3 +191,9 @@ T-051 implementation `4ffda15` received two fresh code/document rounds, each fol
 T-045 refreshed whole overview/loader chapters, coverage/edit-provenance index and the architecture closure hook. [Fresh debug/release evidence](2026-10-13-t045-architecture-verification.md) binds to executable source `4ad0b3d8a9d43310fcd937013131bffadcc803d7`; raw output and tool/profile/artifact identities are retained. Both smoke commands pass, manual counts show two SVCs and no other exception events, and the final Task A busy-spin is explicitly distinguished from unexercised idle/IRQ paths.
 
 [Both fresh code rounds](../reviews/code-reviews/2026-10-13-t045-architecture-entry-points.md), each followed by a distinct security pass, Approve cumulative `d6cb853..deec107`. Three unique R1 findings (Task-generation overclaim, transfer-stage ambiguity, idle/timer interpretation) were corrected in `deec107` and independently verified; R2 found none. T-045 is In Review, not Done. T-046 immediately owns seven whole-chapter refreshes and the remaining overview/boot/index shared checks; T-049 owns the pre-existing master-plan path repair. No runtime or historical evidence was rewritten and no publication occurred.
+
+## Step 3 execution — 2026-10-13
+
+T-046 refreshed all seven subsystem chapters, their exact freshness markers and nine index cells against source `da18ed5`, reusing source-bound runtime `4ad0b3d` with no executable delta. [Both fresh code rounds](../reviews/code-reviews/2026-10-13-t046-subsystem-architecture.md) and distinct subsequent security passes approve cumulative `d71aa4a..4b33607`. Six unique R1 findings (three Medium, three Low) were corrected in `4b33607` and independently verified: SP_EL0 frame layout, real block error split, idle inherited mask, free-list capacity, PanicInfo diagnostics and PMM alignment boundary. R2 found no new issue.
+
+T-046 is In Review, with no new run or Done claim. T-045's overview/boot/index shared criteria now close; its old master-plan navigation remains T-049-owned. T-048 starts next for historical merged-task reconciliation. Existing runtime/future-phase limits and the PR49 publication barrier remain intact.

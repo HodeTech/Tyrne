@@ -35,7 +35,7 @@ This prose refresh changes no Rust/assembly, ABI, unsafe contract, dependency, C
 
 ## Implementation checks
 
-Coordinator checks passed: `git diff --check`; the bounded inline-path scan over eight chapter/index files plus this report, including code-formatted labels (280 local paths, zero missing); a separate bounded check of ten current chapter heading links, seven exact freshness lines, balanced tagged fences and all four task-specific stale-token checks. These scratch checks cover the stated files/forms and do not replace T-056's later full-corpus grammar gate. A read-only comparison of kernel/HAL/BSP/userland/test-hal/tools/Cargo/config/CI/toolchain paths confirms no delta from the exact runtime capture. The old business-master-plan link is unchanged and remains T-049-owned.
+Coordinator checks at correction tip `4b33607` passed: `git diff --check`; the bounded inline-path scan over eight chapter/index files plus this report, including code-formatted labels (280 local paths, zero missing); a separate bounded check of ten current chapter heading links, seven exact freshness lines, balanced tagged fences and all four task-specific stale-token checks. These scratch checks cover the stated files/forms and do not replace T-056's later full-corpus grammar gate. A read-only comparison of kernel/HAL/BSP/userland/test-hal/tools/Cargo/config/CI/toolchain paths confirms no delta from the exact runtime capture. The old business-master-plan link is unchanged and remains T-049-owned.
 
 ## First-round corrections
 
@@ -51,3 +51,7 @@ Fresh code context `b22_t046_r1_code` completed at `5e191ad`; the distinct subse
 | S6, security-only Low | PhysFrame construction supplies alignment; free-time checks cover extent, reservations and allocation state. |
 
 No runtime change, new decision or new test execution is involved. Bounded correction verification by the first-round reviewers and the two fresh second-round contexts are still pending at this correction record; no final approval is preclaimed.
+
+## Review completion
+
+Both fresh rounds now approve cumulative `d71aa4a..4b33607`: [code](../reviews/code-reviews/2026-10-13-t046-subsystem-architecture.md), [distinct security](../reviews/security-reviews/2026-10-13-t046-subsystem-architecture.md). All six R1 corrections were independently verified; R2 found no additional issue. The preceding pending statements record implementation/correction time and are superseded by this completion entry. Whole-chapter and shared T-045 overview/boot/index verification are complete; T-046 and T-045 remain In Review. No runtime evidence changed or new execution/full-corpus/Done/phase-closure result is asserted.
