@@ -41,7 +41,7 @@ The [supplied PR48 review reconciliation](../../reports/2026-10-12-pr-48-supplie
 
 The maintainer approved the [preflight and 13-step plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md), ADR-0042/0043 and all twelve literal task-contract reconciliations.
 Step 0 completed the separate Acceptance transitions and contract edits without task delivery, then passed [both fresh review rounds](../../reviews/code-reviews/2026-10-12-phase-b2-track2-step0.md).
-**Progress (2026-10-13):** Step 1/T-051 is In Review after [both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t051-contribution-security-status.md), zero findings. Maintainer SECURITY wording review remains before merge. Step 2/T-045 is In Progress: architecture freshness, overview/loader/index and fresh debug/release evidence.
+**Progress (2026-10-13):** Step 1/T-051 is In Review after [both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t051-contribution-security-status.md), zero findings. Maintainer SECURITY wording review remains before merge. Step 2/T-045 is In Review after [both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t045-architecture-entry-points.md); three R1 findings corrected, no new R2 findings. T-046 is next and owns final overview/boot/index coherence.
 The implementation order is T-051 → T-045 → T-046 → T-048 → T-049 → T-050 → T-055 → T-052/T-053 → T-054 → T-047 → T-056 parser → T-056 integration → integrated verification/documentation/PR.
 Every step follows the two-round fresh-review/fix/commit loop; security-sensitive descriptions also receive distinct security review.
 New tasks stop at In Review for the maintainer. Optional-for-general-exit T-056 is fully selected and cannot close by a decision-only or carry-forward outcome.
@@ -66,7 +66,7 @@ All work stays on development. Local work may proceed, but publication remains b
 | [T-042](T-042-pmm-defensive-validation.md) | Harden PMM input validation (+ correct the false atomicity comment) | B.2-3 | Ready | — |
 | [T-043](T-043-user-access-hardening.md) | Harden the copy-user path (DEVICE exclusion, zero-length probe, top-page test) | B.2-3 | Ready | — |
 | [T-044](T-044-bootstrap-as-handle-invariant.md) | Reconcile the bootstrap address-space handle with the real allocation | B.2-3 | Ready | — |
-| [T-045](T-045-docs-overview-taskloader-arch-index.md) | Refresh the entry-point architecture docs (overview, task-loader, architecture index) | B.2-2 | In Progress | — |
+| [T-045](T-045-docs-overview-taskloader-arch-index.md) | Refresh the entry-point architecture docs (overview, task-loader, architecture index) | B.2-2 | In Review | — |
 | [T-046](T-046-docs-subsystem-chapters-refresh.md) | Refresh the subsystem architecture chapters (hal, scheduler, exceptions, security-model, memory-management, boot, ipc) | B.2-2 | Ready | — |
 | [T-047](T-047-roadmap-state-and-phase-index-sync.md) | Synchronise roadmap live state and phase index | B.2-2 | Ready | — |
 | [T-048](T-048-phase-b-task-corpus-sync.md) | Synchronise the Phase B task corpus and fix task-file links | B.2-2 | Ready | — |

@@ -3,7 +3,7 @@
 This document records the source-backed documentation review, maintainer-approved decisions, reconciled task contracts and the reviewed-step execution plan for Track B.2-2.
 It is the implementation brief for a documentation and tooling wave; it does not report implementation as complete.
 
-- **Status:** Approved by the maintainer on 2026-10-12 — Step 0 Acceptance and literal contract reconciliation complete with both fresh implementation-review rounds passed; Step 1 (T-051) completed both fresh code/security rounds on 2026-10-13 and is In Review; Step 2 (T-045) is In Progress: architecture refresh and fresh matching-profile traces. Copyright identity is also approved.
+- **Status:** Approved by the maintainer on 2026-10-12 — Step 0 Acceptance and literal contract reconciliation complete with both fresh implementation-review rounds passed; Step 1 (T-051) completed both fresh code/security rounds on 2026-10-13 and is In Review; Step 2 (T-045) completed both fresh code/security rounds and is In Review; T-046 follows with final overview/boot/index coherence. Copyright identity is also approved.
 - **Date:** 2026-10-12
 - **Author:** Codex (AI agent), on behalf of @cemililik
 - **Source baseline:** clean `development` at `7d48f50603fa0d30464ea7b032f4f0fb82c3964c`; `origin/main` at `c16997e003fbd1726d1205734380394781c52002`.
@@ -185,3 +185,9 @@ The proposal-readiness reviews remain historical; they were not reused as those 
 ## Step 1 execution — 2026-10-13
 
 T-051 implementation `4ffda15` received two fresh code/document rounds, each followed by a distinct fresh full security pass. All four passes found zero verified issues; no correction commit was needed. The [canonical code review](../reviews/code-reviews/2026-10-13-t051-contribution-security-status.md) and [security checklist](../reviews/security-reviews/2026-10-13-t051-contribution-security-status.md) bind to the exact cumulative source. Static navigation, status and reporting/history preservation checks pass. T-051 is In Review, with maintainer SECURITY wording review retained before merge; Step 2/T-045 proceeds automatically. No runtime or hosted test result is newly claimed for this documentation-only step.
+
+## Step 2 execution — 2026-10-13
+
+T-045 refreshed whole overview/loader chapters, coverage/edit-provenance index and the architecture closure hook. [Fresh debug/release evidence](2026-10-13-t045-architecture-verification.md) binds to executable source `4ad0b3d8a9d43310fcd937013131bffadcc803d7`; raw output and tool/profile/artifact identities are retained. Both smoke commands pass, manual counts show two SVCs and no other exception events, and the final Task A busy-spin is explicitly distinguished from unexercised idle/IRQ paths.
+
+[Both fresh code rounds](../reviews/code-reviews/2026-10-13-t045-architecture-entry-points.md), each followed by a distinct security pass, Approve cumulative `d6cb853..deec107`. Three unique R1 findings (Task-generation overclaim, transfer-stage ambiguity, idle/timer interpretation) were corrected in `deec107` and independently verified; R2 found none. T-045 is In Review, not Done. T-046 immediately owns seven whole-chapter refreshes and the remaining overview/boot/index shared checks; T-049 owns the pre-existing master-plan path repair. No runtime or historical evidence was rewritten and no publication occurred.
