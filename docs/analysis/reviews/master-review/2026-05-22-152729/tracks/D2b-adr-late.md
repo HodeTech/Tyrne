@@ -226,6 +226,8 @@ resolving the "no file today" parenthetical.
 [adr-0034-placeholder]: 0027-kernel-virtual-memory-layout.md
 ```
 
+> **Navigation annotation, 2026-10-13:** the fenced reference definition is original quoted Markdown data, retained exactly. Functional evidence: [review-era ADR-0029 lines 39–42](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/decisions/0029-initial-userspace-image-format.md?plain=1#L39-L42) and [ADR-0027 dependency discussion](../../../../../decisions/0027-kernel-virtual-memory-layout.md#dependency-chain). This repairs archive navigation without changing the original finding.
+
 This link target is used in the §Decision outcome text (line 39) as *"the future [ADR-0034 (kernel-image section
 permissions)][adr-0034-placeholder] placeholder's responsibility"*. The anchor resolves to
 `0027-kernel-virtual-memory-layout.md` as a whole file — not to the specific §Dependency chain section of ADR-0027

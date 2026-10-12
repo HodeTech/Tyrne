@@ -25,13 +25,13 @@ Post-merge review of PRs #12–#17 (2026-05-06 through 2026-05-07).
 
 | Blocker | Location | 2026-05-06 Status | PR #13 Action | Verified |
 |---------|----------|------------------|---|---|
-| GIC version (overview.md) | [`docs/architecture/overview.md:77`](../../../../architecture/overview.md#L77) | `GICv3` contradicts code | `GICv3 → GICv2` + clarifier added | ✓ |
-| GIC version (hal.md Mermaid) | [`docs/architecture/hal.md:50`](../../../../architecture/hal.md#L50) | `GICv3 / GIC-400 impl` | `GICv3 → GICv2` | ✓ |
-| GIC version (hal.md table) | [`docs/architecture/hal.md:181`](../../../../architecture/hal.md#L181) | `bsp-qemu-virt \| GICv3` | `GICv3 → GICv2` | ✓ |
-| Timer subsection stale | [`docs/architecture/hal.md:126`](../../../../architecture/hal.md#L126) | "`unimplemented!()`" post-T-012 | Rewritten: "per ADR-0010 §Revision notes" | ✓ |
-| Idle body description (scheduler.md ×2) | [`docs/architecture/scheduler.md:11`](../../../../architecture/scheduler.md#L11), [line 73](../../../../architecture/scheduler.md#L73) | `spin_loop()` post-T-012 | Updated to `wait_for_interrupt()` + ADR-0026 fallback-slot semantics | ✓ |
-| Security-model open-question | [`docs/architecture/security-model.md:330`](../../../../architecture/security-model.md#L330) | "Closed by T-013" but framed as future | Reframed: `_start` symbol ref, DAIF mask closed, boot checklist rule recorded | ✓ |
-| Glossary dead-link to ADR-0023 | [`docs/glossary.md:25`](../../../../glossary.md#L25) | Live link to missing file | ADR-0023 placeholder file created (PR #16); link now valid | ✓ |
+| GIC version (overview.md) | [`docs/architecture/overview.md:77`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/architecture/overview.md?plain=1#L77) | `GICv3` contradicts code | `GICv3 → GICv2` + clarifier added | ✓ |
+| GIC version (hal.md Mermaid) | [`docs/architecture/hal.md:50`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/architecture/hal.md?plain=1#L50) | `GICv3 / GIC-400 impl` | `GICv3 → GICv2` | ✓ |
+| GIC version (hal.md table) | [`docs/architecture/hal.md:181`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/architecture/hal.md?plain=1#L181) | `bsp-qemu-virt \| GICv3` | `GICv3 → GICv2` | ✓ |
+| Timer subsection stale | [`docs/architecture/hal.md:126`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/architecture/hal.md?plain=1#L126) | "`unimplemented!()`" post-T-012 | Rewritten: "per ADR-0010 §Revision notes" | ✓ |
+| Idle body description (scheduler.md ×2) | [`docs/architecture/scheduler.md:11`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/architecture/scheduler.md?plain=1#L11), [line 73](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/architecture/scheduler.md?plain=1#L73) | `spin_loop()` post-T-012 | Updated to `wait_for_interrupt()` + ADR-0026 fallback-slot semantics | ✓ |
+| Security-model open-question | [`docs/architecture/security-model.md:330`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/architecture/security-model.md?plain=1#L330) | "Closed by T-013" but framed as future | Reframed: `_start` symbol ref, DAIF mask closed, boot checklist rule recorded | ✓ |
+| Glossary dead-link to ADR-0023 | [`docs/glossary.md:25`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/glossary.md?plain=1#L25) | Live link to missing file | ADR-0023 placeholder file created (PR #16); link now valid | ✓ |
 
 **Commits involved:** `a30fb25` (PR #13 review-round applying 7 findings), `cfc4924` (PR #13 merge).
 
@@ -66,7 +66,7 @@ Post-merge review of PRs #12–#17 (2026-05-06 through 2026-05-07).
 
 #### 4a. Simulation Discipline Codification
 
-**Location:** [`.claude/skills/write-adr/SKILL.md`](../../../../../.claude/skills/write-adr/SKILL.md) §5, §10, §66.
+**Location:** [`.claude/skills/write-adr/SKILL.md`](https://github.com/HodeTech/Tyrne/blob/c258ee308ad479d41086082d350458f1b7d73c82/.claude/skills/write-adr/SKILL.md) §5, §10, §66.
 
 **Verified:**
 - Step 5 adds *Simulation* subsection requirement for multi-step state-machine ADRs (3–5 row table).
@@ -83,7 +83,7 @@ Post-merge review of PRs #12–#17 (2026-05-06 through 2026-05-07).
 - Status: `Deferred` (not a real decision yet).
 - Body structure: deferral conditions, four options A/B/C/D, decision drivers, consequences — all recorded.
 - Forward-references: all point to real ADRs (ADR-0014, -0016, -0017, -0026) with no "future task" handwaving.
-- Glossary entry [`docs/glossary.md:25`](../../../../glossary.md#L25) now correctly links to the placeholder file (resolves the 2026-05-06 dead-link blocker).
+- Glossary entry [`docs/glossary.md:25`](https://github.com/HodeTech/Tyrne/blob/8dc433eec2faf6755bec62a7ef5cd3c7958814e2/docs/glossary.md?plain=1#L25) now correctly links to the placeholder file (resolves the 2026-05-06 dead-link blocker).
 
 **Conclusion:** Placeholder is genuine (4-option Deferred body, no decision committed), per ADR-0025 §Rule 1.
 
@@ -226,3 +226,7 @@ Post-merge review of PRs #12–#17 (2026-05-06 through 2026-05-07).
 
 ---
 
+
+## Source-line navigation reconciliation — 2026-10-13
+
+The 9 original local line citations now open immutable historical source `8dc433eec2faf6755bec62a7ef5cd3c7958814e2`. No explicit per-file SHA. Original review commit 54f6042 has parent 8dc433e; all nine cited source blobs are identical at c258ee3 and 8dc433e. Bind to the verified original publication parent without asserting the agent actually reviewed at that HEAD. Original fragments and labels remain historical evidence; source bounds and navigation relevance do not independently re-prove each original claim or run.

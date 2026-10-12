@@ -51,3 +51,9 @@ The ADR-0040 approval follow-up in this index is explicitly an independent appro
 | 2026-10-13 | T-045 architecture entry points, both fresh rounds; three R1 findings corrected in `deec107`, no new R2 finding; T-046 coherence recheck next | [2026-10-13-t045-architecture-entry-points.md](2026-10-13-t045-architecture-entry-points.md) |
 | 2026-10-13 | T-046 seven whole subsystem chapters and T-045 shared coherence; six R1 findings fixed in `4b33607`, no new R2 finding | [2026-10-13-t046-subsystem-architecture.md](2026-10-13-t046-subsystem-architecture.md) |
 | 2026-10-13 | T-048 historical Phase B task reconciliation; both fresh rounds Approve, one R1 Low provenance correction verified at `a50f94a`; no new B.2 Done or runtime claim | [2026-10-13-t048-phase-b-task-reconciliation.md](2026-10-13-t048-phase-b-task-reconciliation.md) |
+
+## Companion plans
+
+Companion plans describe review execution; they do not supply independent verdicts.
+
+- [May-6 full-tree comprehensive review plan](2026-05-06-full-tree-comprehensive-review-plan.md), owned by the [May-6 canonical review](2026-05-06-full-tree-comprehensive.md). The canonical review links its preflight and Tracks A–J; the May-7 and May-8 canonical reviews likewise link their nested tracks.

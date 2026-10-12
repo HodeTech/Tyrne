@@ -52,12 +52,12 @@ This matches the count recorded in [`docs/roadmap/current.md`](../../../../roadm
 
 ### Audit log
 
-- **21 entries** in [`docs/audits/unsafe-log.md`](../../../audits/unsafe-log.md): UNSAFE-2026-0001 through UNSAFE-2026-0021. UNSAFE-2026-0012 is `Removed` (removal commit `f9b72f8`); the remaining 20 are Active.
+- **21 entries** in [`docs/audits/unsafe-log.md`](../../../../audits/unsafe-log.md): UNSAFE-2026-0001 through UNSAFE-2026-0021. UNSAFE-2026-0012 is `Removed` (removal commit `f9b72f8`); the remaining 20 are Active.
 - Numbering has no gaps (0001–0021 contiguous; 0012 retained as a removed-but-archived marker).
 
 ### ADRs
 
-- **25 ADRs** in [`docs/decisions/`](../../../decisions/) (0001–0025; 0023 reserved-empty, no file present at HEAD).
+- **25 ADRs** in [`docs/decisions/`](../../../../decisions) (0001–0025; 0023 reserved-empty, no file present at HEAD).
 - ADR-0018 (badge scheme + reply-recv) is `Deferred`; remainder are `Accepted`.
 
 ### Documentation

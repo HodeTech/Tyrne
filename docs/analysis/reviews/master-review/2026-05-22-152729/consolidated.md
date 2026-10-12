@@ -564,3 +564,34 @@ Concrete proposals, **not applied**. Each: what · why · rough effort (S/M/L) �
 - `docs/analysis/technical-analysis/**` — untracked / gitignored, per the maintainer. (Several tracks note these untracked files contain additional stale `.claude/skills/` references; they are deliberately *not* findings, consistent with the historical-snapshot exclusion.)
 
 Historical review snapshots under `docs/analysis/reviews/**` (the D5c corpus) were read in full as in-scope files, but their stale `.claude/skills/` links are point-in-time records (per `current.md:11`) and are *not* counted among the ~49 live broken links.
+
+## Evidence navigation reconciliation — 2026-10-13
+
+This appendix adds functional navigation to the original run evidence. The original report, its verdict, counts and source provenance remain historical. The scope table's literal `../00-coverage-manifest.md` is preserved quoted data; the functional manifest link below resolves from this report.
+
+- [Coverage manifest](00-coverage-manifest.md)
+- [C1-kernel-cap](tracks/C1-kernel-cap.md)
+- [C2-kernel-mm](tracks/C2-kernel-mm.md)
+- [C3-kernel-ipc-obj](tracks/C3-kernel-ipc-obj.md)
+- [C4-kernel-task-loader](tracks/C4-kernel-task-loader.md)
+- [C5-kernel-sched](tracks/C5-kernel-sched.md)
+- [C6-hal](tracks/C6-hal.md)
+- [C7-bsp](tracks/C7-bsp.md)
+- [C8-test-hal](tracks/C8-test-hal.md)
+- [C9-build-infra](tracks/C9-build-infra.md)
+- [D1-architecture](tracks/D1-architecture.md)
+- [D2a-adr-early](tracks/D2a-adr-early.md)
+- [D2b-adr-late](tracks/D2b-adr-late.md)
+- [D3-standards](tracks/D3-standards.md)
+- [D4-roadmap-tasks](tracks/D4-roadmap-tasks.md)
+- [D5a-meta-core](tracks/D5a-meta-core.md)
+- [D5b-audits-reports](tracks/D5b-audits-reports.md)
+- [D5c-existing-reviews](tracks/D5c-existing-reviews.md)
+- [X1-security](tracks/X1-security.md)
+- [X2-performance](tracks/X2-performance.md)
+- [X3-unsafe-audit](tracks/X3-unsafe-audit.md)
+- [X4a-contradictions-code-doc](tracks/X4a-contradictions-code-doc.md)
+- [X4b-contradictions-doc-doc](tracks/X4b-contradictions-doc-doc.md)
+- [X4c-contradictions-code-code](tracks/X4c-contradictions-code-code.md)
+- [X5-business-alignment](tracks/X5-business-alignment.md)
+- [gate-reproduction](tracks/gate-reproduction.md)

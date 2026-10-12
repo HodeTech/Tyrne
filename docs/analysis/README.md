@@ -3,7 +3,7 @@
 This folder is **the work**, tracked as it moves through the pipeline. Where [`../roadmap/`](../roadmap/) holds the plan, `analysis/` holds the execution:
 
 - [`tasks/`](tasks/) — individual task user stories, organized per phase.
-- [`reviews/`](reviews/) — reviews, organized per type (business, code, security, performance-optimization).
+- [`reviews/`](reviews/) — four event-triggered review types (business, code, security, performance optimization) and on-demand whole-tree master reviews.
 
 The separation is deliberate. The roadmap describes what we *intend*; analysis records what *happens*. The two are cross-linked in both directions but have different readers, different update cadences, and different lifetimes.
 
@@ -21,7 +21,7 @@ Tasks are created with the [`start-task`](../../.agents/skills/start-task/SKILL.
 
 ## Reviews
 
-Reviews come in four types. Each type has its own folder, its own master plan, and its own trigger criteria.
+Four event-triggered review types have their own master plans. A fifth family provides on-demand whole-tree master reviews with a distinct run layout.
 
 | Type | Folder | Trigger | Produces |
 |------|--------|---------|----------|
@@ -29,10 +29,11 @@ Reviews come in four types. Each type has its own folder, its own master plan, a
 | **Code** | [`reviews/code-reviews/`](reviews/code-reviews/) | Per non-trivial change, once PR flow begins. | Quality review (correctness / style / tests / docs) — one file per change. |
 | **Security** | [`reviews/security-reviews/`](reviews/security-reviews/) | Per change touching security-sensitive subsystems. | Deep security pass across capability / memory / kernel-discipline / crypto / secrets / dependencies axes. |
 | **Performance optimization** | [`reviews/performance-optimization-reviews/`](reviews/performance-optimization-reviews/) | Periodic or on concern. | Hypothesis-driven perf cycle: baseline, hotspot, proposal, measurement, regression check. |
+| **Master reviews** | [Master-review README](reviews/master-review/README.md) | On demand, maintainer-initiated whole-tree sweep. | Timestamped run with consolidated report, coverage manifest and per-track evidence. |
 
-Each folder contains a `README.md` describing when that type applies, a `master-plan.md` with a detailed multi-agent procedure, and one dated file per review conducted.
+The four event-triggered folders contain a `README.md`, a `master-plan.md` and dated canonical reviews. The [master-review family](reviews/master-review/README.md#run-layout) has its own README and timestamped run directories; each consolidated report links its manifest and tracks. Companion plans and nested tracks are discoverable supporting artifacts, not additional canonical verdicts.
 
-Reviews are produced with the [`conduct-review`](../../.agents/skills/conduct-review/SKILL.md) skill, which takes the review type as input and applies that type's master plan.
+The four event-triggered review types use the [`conduct-review`](../../.agents/skills/conduct-review/SKILL.md) skill and their master plans. Whole-tree master reviews follow the [master-review procedure](reviews/master-review/README.md#how-it-is-run).
 
 See [`reviews/README.md`](reviews/README.md) for the cross-cutting review philosophy.
 
