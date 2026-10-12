@@ -93,8 +93,18 @@ Captured report bytes/digests remain intact, including their historical interpre
 
 B Round 1 also found Low R1-INT-01: this reconciliation had attributed literal `MP-1` to the master plan, whose allocation-exhaustion requirement is unnumbered.
 The paragraph above now attributes the labels to the actual review artifacts and the common requirement to the master plan.
-These are coordinator-recorded corrections after the first independent round; fresh cumulative Round 2 must verify the changed source.
+These were coordinator-recorded corrections after the first independent round; fresh cumulative Round 2 subsequently verified the changed source as recorded below.
 The full [B code R1](../reviews/code-reviews/2026-10-12-pr48-docs-followup-r1.md) and [distinct B integration R1](../reviews/code-reviews/2026-10-12-pr48-docs-integration-r1.md) retain both findings as open at their immutable reviewed source `5816c93`.
+
+## Completed follow-up rounds and corrected hosted evidence
+
+Fresh [B code R2](../reviews/code-reviews/2026-10-12-pr48-docs-followup-r2.md) and [distinct B integration R2](../reviews/code-reviews/2026-10-12-pr48-docs-integration-r2.md) Approve cumulative `a1eb406..646ba33`, with zero new findings and both PR48-CR-01/R1-INT-01 corrections verified. Both complete reports were cross-read by their independent reviewers and then read in full by the coordinator. Follow-ups A and B each completed two fresh independent rounds; all 17 supplied dispositions and verified first-round corrections are reconciled. These source-bound agent verdicts do not replace maintainer review.
+
+Corrected full source `646ba33052632d5afda1e206007ed9bc334e8e3a` passes all seven jobs in [PR CI 38214402250](https://github.com/HodeTech/Tyrne/actions/runs/38214402250) and [push CI 38214395496](https://github.com/HodeTech/Tyrne/actions/runs/38214395496). [Performance run 38214395500](https://github.com/HodeTech/Tyrne/actions/runs/38214395500) produced a clean-source report containing the corrected nearest-rank/ties/reliability explanation: 20 requested/20 valid/0 failed samples, 101 s harness wall and 139 s enclosing evidence interval. All raw samples reproduce p10/p50/p90 `8,496,720 / 9,820,080 / 12,571,504 ns`; p99 and maximum both equal `13,788,672 ns`, as expected for 20 samples. This is informational measurement, without a cross-host regression or calibrated tail-reliability verdict.
+
+The [new exact-byte hosted snapshot](perf-baseline-2026-10-12-t035-pr48-p99-followup-hosted-check.md) retains the internal ci-nightly title. Its independently recomputed report-file SHA-256 is `dab24e41b0bc954f09b29cc942bbf962d552bf7763a92b1d6d1855918546bc87`. Service artifact 11731885187 is 4,187 bytes and expires on 2026-10-26; archive digest `0c36949212aff61e495fb0c515aa9bdbb5ced3277efed9331bb945e14742217c` is service-reported, not locally recomputed. Earlier snapshots retain their original bytes and measured source; the dated caveat above supersedes their inherited p99 interpretation only.
+
+This completion/publication record changes no runtime, protection policy or Accepted ADR. Final publication-tip CI is verified separately in PR48 rather than attributed to the earlier reviewed/measured source.
 
 ## Remaining review and merge boundary
 
