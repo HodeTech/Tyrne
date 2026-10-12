@@ -33,6 +33,8 @@ Stay on `development`; negative probes use disposable copies, never alternate br
 
 The scope includes release kernel clippy and release EL0 smoke now. The current hello program ignores a rejected console call and exits cleanly, so release smoke can require the greeting's absence plus task exit/completion without changing userland or the syscall gate. T-065 later re-keys these expectations to its explicit console feature; T-067 remains the separate adversarial-image task. No release runtime coverage is claimed until the actual local and hosted runs pass.
 
+**Sequence implementation status (2026-10-12):** Steps1–8 are implemented, checked, committed and reviewed twice by fresh independent agents. All eight tasks are In Review for the maintainer's final PR. The [phase record](../../../roadmap/phases/phase-b2.md) maps all twelve Track B.2-1 findings to deliveries; each task links full reviews and source-bound evidence. The late T-036 diagnostic-race fix is included in Step8's fresh second round and corrected hosted run38187736985. Six app-bound required checks are live; the full versioned policy matches read-back. First merged-main runs and performance dispatch remain merge-dependent; no sequence implementation is deferred. This status does not complete other tracks or close Phase B.2.
+
 ## Index
 
 | ID | Title | Track | Status | Depends on |

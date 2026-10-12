@@ -20,7 +20,7 @@ The plan is a **sequence**, not a schedule: there are no dates. Later phases are
 | [I](phase-i.md) | Mobile | Light | First prototype boot on phone-class hardware. |
 | [J](phase-j.md) | AI-native userspace layer (opt-in) | Sketch | Optional AI-integrated features running entirely in userspace above the kernel's trust boundary. Per [ADR-0015](../../decisions/0015-ai-integration-stance.md). |
 
-**Where we are (2026-10-11):** Phase A and Phase B are closed. [Phase B.2](phase-b2.md) is active ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)); Phase C is next and cannot open until B.2's exit bar is met. Tasks live in [`docs/analysis/tasks/phase-b2/`](../../analysis/tasks/phase-b2/README.md). The live pointer is always [`current.md`](../current.md).
+**Where we are (2026-10-12):** Phase A and Phase B are closed. [Phase B.2](phase-b2.md) is active ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)); Phase C is next and cannot open until B.2's exit bar is met. Tasks live in [`docs/analysis/tasks/phase-b2/`](../../analysis/tasks/phase-b2/README.md). Track B.2-1's eight approved steps are implemented with two fresh rounds each; all tasks remain In Review for the maintainer PR and merge-dependent evidence. Other tracks remain open. The live pointer is always [`current.md`](../current.md).
 
 ## Dependency sketch
 
@@ -30,7 +30,6 @@ flowchart LR
     B --> B2[Phase B.2<br/>consolidation & hardening]
     B2 --> C[Phase C<br/>multi-core]
     B2 --> D[Phase D<br/>Pi 4]
-    C --> D
     D --> E[Phase E<br/>drivers + services]
     E --> F[Phase F<br/>smart home]
     E --> G[Phase G<br/>security maturation]
@@ -44,7 +43,7 @@ flowchart LR
 
 The edges `B2 --> C` and `B2 --> D` are **binding gates** ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)): no Phase C or Phase D milestone opens and no Phase C or Phase D implementation task leaves `Draft` while Phase B.2 is open.
 
-Phases C and D may overlap: Pi 4 bring-up does not strictly require multi-core, but multi-core is easier to design and test against real hardware.
+After the whole B.2 exit bar is met, Phases C and D may overlap; D does not wait for C to finish. Pi 4 directly depends on the corrected shared kernel/HAL, MMU and syscall foundations, as ADR-0040 specifies. This is why the sketch draws both binding edges from B.2 and no finish-before-start edge from C to D.
 
 ## Why split by file
 

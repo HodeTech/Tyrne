@@ -24,6 +24,31 @@ To avoid colliding with Phase B's B0–B6 milestone IDs, the work below is organ
 
 The project's standards docs (`infrastructure.md`, `code-review.md`, `error-handling.md`) describe a CI posture that is, in several concrete and security-relevant ways, more thorough than what `.github/workflows/ci.yml` actually runs. This track closes that gap: every claimed gate either becomes a real, merge-blocking CI check, or the claim is corrected to match reality (the documentation half of that correction is tracked under Track B.2-2 where it doesn't require a CI change).
 
+### Implementation status (2026-10-12)
+
+The requested eight-step sequence is implemented on `development`, including optional T-036 and the sole cross-track prerequisite T-037. All eight tasks remain **In Review** for the maintainer's final PR review. Each step has two fresh independent review rounds; verified findings were fixed and committed. The late T-036 compiler-diagnostic race was corrected and reviewed in Step8's combined second round. This completes the requested implementation sequence, without closing Phase B.2 or promoting tasks to Done.
+
+| Step | Task | Delivered scope | Two-round review record |
+|------|------|-----------------|-------------------------|
+| 1 | [T-037](../../analysis/tasks/phase-b2/T-037-userland-bare-metal-cfg-gate.md) | Bare-metal cfg boundary; native ARM workspace/Miri restored; debug image bytes preserved; cross-track prerequisite only | [Target boundary](../../analysis/reviews/code-reviews/2026-10-12-t037-target-boundary.md) |
+| 2 | [T-033](../../analysis/tasks/phase-b2/T-033-qemu-tooling-smp-and-timeout.md) | Validated SMP override/precedence and timeout/usage handling; 59 controlled cases | [QEMU tooling](../../analysis/reviews/code-reviews/2026-10-12-t033-qemu-tooling.md) |
+| 3 | [T-031](../../analysis/tasks/phase-b2/T-031-ci-userland-clippy-and-shellcheck.md) | Bare-metal userland clippy and ShellCheck, with isolated rejection probes | [Lint gates](../../analysis/reviews/code-reviews/2026-10-12-t031-lint-gates.md) |
+| 4 | [T-030](../../analysis/tasks/phase-b2/T-030-ci-release-profile-gate.md) | Release aliases/build/lint/host tests, both named syscall guards and debug perf-bench build/lint | [Release gates](../../analysis/reviews/code-reviews/2026-10-12-t030-release-gates.md) |
+| 5 | [T-032](../../analysis/tasks/phase-b2/T-032-panic-family-denies-hal-bsp.md) | HAL/BSP panic-family denies, justified function-level boot exceptions and unmap audit amendment | [Panic-family denies](../../analysis/reviews/code-reviews/2026-10-12-t032-panic-family-denies.md) |
+| 6 | [T-034](../../analysis/tasks/phase-b2/T-034-ci-qemu-smoke-job.md) | Required debug/release EL0 smoke, exact markers/no faults, rejection controls and uploaded diagnostics; logging preserves failures | [QEMU smoke](../../analysis/reviews/code-reviews/2026-10-12-t034-qemu-smoke.md) |
+| 7 | [T-036](../../analysis/tasks/phase-b2/T-036-ci-arm64-host-check-job.md) | Required native Linux ARM workspace check/clippy/test/Miri, architecture-isolated caches and exact private compiler-rejection probe; optional for phase exit, included here | [Native ARM CI](../../analysis/reviews/code-reviews/2026-10-12-t036-native-arm-ci.md), [late correction](../../analysis/reviews/code-reviews/2026-10-12-t035-ci-hygiene-tail.md) |
+| 8 | [T-035](../../analysis/tasks/phase-b2/T-035-ci-hygiene-tail.md) | Weekly informational 20-run performance report and full classic protection JSON with fail-closed export/check/local apply | [CI hygiene tail](../../analysis/reviews/code-reviews/2026-10-12-t035-ci-hygiene-tail.md) |
+
+Every one of the twelve findings in the opening list below is covered: release build/tests, named release regressions and perf-bench by T-030; userland clippy and ShellCheck by T-031; HAL/BSP denies by T-032; SMP tooling by T-033; both duplicate smoke findings and release runtime coverage by T-034; scheduled performance and merge policy as code by T-035. T-036 additionally supplies the polish ARM signal. Separate security reports are linked from the applicable code reviews.
+
+Six required checks are registered live, all bound to GitHub Actions app15368 with strict checking. Full-policy read-back matches the versioned definition; every other policy value is preserved. Corrected [CI run38187736985](https://github.com/HodeTech/Tyrne/actions/runs/38187736985) passes all seven jobs, including native ARM/Miri and real debug/release guests. The [first hosted performance report](../../analysis/reports/perf-baseline-2026-10-12-t035-hosted-check.md) records a clean full source SHA, 20 valid samples and zero failed samples. Performance and coverage remain informational and are excluded from required checks.
+
+Final PR check evidence is recorded in the task histories when available. First merged `main` runs and default-branch performance dispatch can only be verified after the maintainer merges; they remain explicitly pending. No Track B.2-1 implementation is deferred. Tracks B.2-2…B.2-6, including the existing HIGH T-038 x2-clobber defect, retain their own open ownership. Phase C and D remain gated by the whole Phase B.2 exit bar.
+
+### Opening baseline
+
+The finding/action list below is retained as the opening baseline. Its present-tense descriptions of missing gates are historical; the implementation table and dated task/review histories above supersede them. The original acceptance criteria remain the contract.
+
 ### Sub-breakdown
 
 - **[🟠 HIGH]** The security-relevant release-profile contract (`console_write` debug-gate) is never built or tested by CI — `.cargo/config.toml:29-37` (kernel-build alias); `.github/workflows/ci.yml:96-101,140-143`

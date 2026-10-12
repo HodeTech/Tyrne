@@ -19,6 +19,8 @@ tasks/
 
 Task IDs (`T-NNN`) are sequential **across the whole project**, not restarted per phase. The phase folder structure is for reading convenience, not for namespacing IDs.
 
+**Phase B.2 Track B.2-1 (2026-10-12):** The [approved eight-step sequence](phase-b2/README.md) is implemented on `development`, including optional T-036 and prerequisite T-037. Each step has two fresh independent rounds; verified findings are fixed and committed. All eight tasks remain In Review for final maintainer review. PR-specific, first-merged-main and default-branch dispatch evidence are recorded only when they exist; other Phase B.2 tasks retain their own scope/status.
+
 ## Status vocabulary
 
 | Status | Meaning |
