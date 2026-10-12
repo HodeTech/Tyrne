@@ -64,7 +64,7 @@ Removing a dependency (replacing with in-tree code or dropping the feature it en
 
 CI was set up in Phase 4 (completed 2026-04-23); the gates below define the bar. The list distinguishes gates that are **enforced today** from gates that are **planned but not yet enforced** so a reader can tell what actually blocks a merge.
 
-### Required gates (enforced today, block merge)
+### Required gates (enforced by the current branch protection)
 
 These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml):
 
@@ -105,7 +105,7 @@ The `miri` job runs the host-test suite under Stacked Borrows on the pinned nigh
 ### CI platform
 
 - GitHub Actions is the default. Workflows live under `.github/workflows/`.
-- Jobs are reusable — shared setup (install toolchain, cache cargo registry) is a composite action.
+- Jobs currently repeat toolchain installation and cache setup directly in each workflow; no shared composite action exists.
 - A top-level `permissions: contents: read` block applies least privilege to the auto-provisioned `GITHUB_TOKEN`: the pipeline reads the repo, runs checks and uploads diagnostic artifacts through runtime artifact credentials without widening token scope. A future job that genuinely needs wider GITHUB_TOKEN permissions must declare them at the job level rather than widen the workflow default.
 - CI caches cargo data and `target/` keyed by toolchain and lockfile identity; every key and restore prefix includes `runner.os` and `runner.arch`, preventing cross-architecture restoration.
 - Secrets never enter CI. If a future workflow needs a secret (e.g. publishing artifacts), it is scoped and rotated.
@@ -187,9 +187,9 @@ The dependency graph in `Cargo.lock` is the obvious supply-chain surface, but th
 
 ## Branch protection and merge rules
 
-Current classic `main` protection is captured in [main.json](../../.github/branch-protection/main.json): six app-bound required checks, strict checking, linear history and conversation resolution; force pushes/deletion remain disabled. The existing solo-phase approving-review count remains0 and admin enforcement remains false. T-034/T-036 added their checks only after remote green and both review rounds, with complete-policy read-back.
+Current classic `main` protection is captured in [main.json](../../.github/branch-protection/main.json): six app-bound required checks, strict checking, linear history and conversation resolution; force pushes/deletion remain disabled. The existing solo-phase approving-review count remains 0 and admin enforcement remains false. T-034/T-036 added their checks only after remote green and both review rounds, with complete-policy read-back.
 
-- Required exact display names and source-app binding15368 are canonical in that JSON; coverage and performance are excluded. GitHub can accept successful, skipped or neutral required-check conclusions; their exclusion is deliberate informational policy, not a neutral-result restriction.
+- Required exact display names and source-app binding 15368 are canonical in that JSON; coverage and performance are excluded. GitHub can accept successful, skipped or neutral required-check conclusions; their exclusion is deliberate informational policy, not a neutral-result restriction.
 - Read-only export/check and explicit local apply commands are documented in [ci.md](../guides/ci.md#versioned-classic-branch-protection). Apply preserves every existing check/binding and non-status policy, rejects drift/unknown fields/rulesets and CI execution, and verifies full read-back. It has no atomic compare-and-swap guarantee.
 - Future multi-contributor policy requires at least one PR approval (two for security-sensitive changes per [security-review.md](security-review.md)); it is not silently applied to the existing solo-phase baseline by this task.
 - Force-push to protected `release/*` branches remains prohibited by policy.

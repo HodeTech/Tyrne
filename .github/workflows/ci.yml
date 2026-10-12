@@ -2,9 +2,12 @@
 #
 # Goal: every hygiene check that a contributor is expected to pass
 # locally before opening a PR is also enforced here. A red required check
-# blocks merge; informational coverage/performance are excluded by policy.
+# blocks actors subject to protection; informational reports are excluded.
+# The preserved solo policy permits admin bypass and requires zero approvals.
+# Source-app binding identifies Actions, not an immutable workflow body;
+# maintainer review of workflow/tool changes remains necessary.
 #
-# What actually gates merge (configured in GitHub branch protection):
+# Required checks configured in classic branch protection:
 #   - lint-and-host-test, kernel-build, host-stable-check  (fast lane)
 #   - miri                                                 (required, slow)
 #   - qemu-smoke                                           (debug + release)
@@ -370,7 +373,7 @@ jobs:
   # Runs the full host-test suite under Miri's Stacked Borrows checker
   # (see ADR-0021 / UNSAFE-2026-0014). Slower than the fast lane
   # (~1–2 min in practice; historically budgeted ~10–15 min) and requires
-# nightly, so it runs as its own job. A
+  # nightly, so it runs as its own job. A
   # Miri regression is a hard stop.
   miri:
     name: miri (Stacked Borrows)

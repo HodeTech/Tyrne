@@ -555,3 +555,10 @@ No repository file, commit, branch, shared binary or external application was mu
 | R2-INT-01 | Low | `bsp-qemu-virt/src/main.rs` task A prints completion, records elapsed time, then enters `loop { core::hint::spin_loop(); }` without yielding to `idle_entry`. | Corrected the guide, smoke comments and live performance-harness header/generated methodology to describe continued spinning. Timeout/exit behavior and all executable Rust/Bash logic are unchanged. Historical review text is retained with the superseding note above. |
 
 Verification of this wording-only correction: source inspection, Bash syntax and the 59-case argument regression suite pass; the full ShellCheck baseline remains the same five findings owned by the immediately following T-031 step. No additional real guest run is claimed for a prose-only correction.
+
+## Supplied-review role-heading reconciliation (2026-10-12)
+
+This additive coordinator note maps the original Round 1 code report's numbered headings to the canonical five-role template without rewriting its source-bound review or verdict.
+Correctness is section 3; Style is section 4 (Style and portability); Test coverage is section 5 (Test coverage and sensitivity); Documentation is section 6; Integration is section 7 (Integration and existing findings).
+Section 1 contains its verdict, section 2 its read/procedure disclosure, and section 8 the complete checklist.
+This makes the existing coverage discoverable; it is not an additional independent review or a new approval.

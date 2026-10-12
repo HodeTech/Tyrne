@@ -18,6 +18,8 @@ A dated file `YYYY-MM-DD-<context>.md` in this folder, following the shape in [`
 
 For security-sensitive changes, a code review is **not** sufficient — a security review (in [`../security-reviews/`](../security-reviews/)) is additionally required. The code-review artifact notes which security reviews are expected or already produced.
 
+The ADR-0040 approval follow-up in this index is explicitly an independent approval artifact. It uses the dedicated `conduct-approval-review` template; its inclusion here does not convert it to a code review.
+
 ## Index
 
 | Date | Scope | File |
