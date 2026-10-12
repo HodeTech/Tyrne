@@ -1,6 +1,6 @@
 # 0043 — Documentation corpus consistency and planned ADR identities
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-12
 - **Deciders:** @cemililik
 
@@ -18,9 +18,9 @@ The original task brief's assumption that the repository has no Python tooling i
 The current six required GitHub Actions contexts are versioned in [main.json](../../.github/branch-protection/main.json); introducing another status context or an administrative workflow is unnecessary for this check.
 The corpus contains historical snapshots and quoted defects, so a checker must distinguish live claims from history and parse Markdown deliberately instead of applying a global regex to every occurrence.
 
-This proposal adds a documentation-maintenance policy and chooses T-054's existing stable-identifier option.
+This decision adds a documentation-maintenance policy and chooses T-054's existing stable-identifier option.
 It does not narrow the whole-phase scope, open Phase C/D, or change ADR-0040's outcome.
-In the same commit that accepts this ADR, append a dated rider to ADR-0040 covering both Decision outcome rule 7's historical numeric-cascade wording and Track B.2-1 implementation policy rule 4's explicitly limited stacked-execution exception.
+The same commit accepting this ADR on 2026-10-12 appends a dated rider to ADR-0040 covering both Decision outcome rule 7's historical numeric-cascade wording and Track B.2-1 implementation policy rule 4's explicitly limited stacked-execution exception.
 The rider points to this ADR's purpose-identity choice and Track B.2-2-only execution extension; ADR-0040's original body, filed number, status and whole-phase outcome remain intact.
 
 ## Decision drivers
@@ -42,7 +42,7 @@ The rider points to this ADR's purpose-identity choice and Track B.2-2-only exec
 
 ## Decision outcome
 
-Chosen option, subject to approval: **Option 1 — stable identifiers and required offline consistency checking**.
+Chosen option: **Option 1 — stable identifiers and required offline consistency checking**.
 
 ### Planned ADR identity
 
