@@ -7,7 +7,7 @@
 - **Security-review cross-reference:** Not applicable to this proposal-only delta. The implementation plan requires distinct security reviews of architecture/security-boundary descriptions; this artifact supplies no runtime security verdict.
 - **Description:** [Preflight and 13-step implementation plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md), Proposed ADRs [0041](../../../decisions/0041-test-name-prefix-policy-recovery.md), [0042](../../../decisions/0042-descriptive-test-names.md) and [0043](../../../decisions/0043-documentation-corpus-consistency.md), their index rows and the current-focus preparation notice.
 
-**Subsequent supplied-review follow-up:** The maintainer supplied M1–M3, L1–L6 and O1–O3 after the original review. Their [source-verified reconciliation](../../reports/2026-10-12-adr-0041-0043-supplied-review-reconciliation.md) and revised proposals are awaiting new independent follow-up rounds and explicit maintainer approval. The original rounds/verdict below remain tied to their recorded source, not to these later edits.
+**Subsequent supplied-review follow-up:** The maintainer supplied M1–M3, L1–L6 and O1–O3 after the original review. Their [source-verified reconciliation](../../reports/2026-10-12-adr-0041-0043-supplied-review-reconciliation.md) and revised proposals completed two further fresh independent rounds, recorded below; the sole Low finding is corrected and verified. Explicit maintainer approval remains pending. The original rounds/verdict below remain tied to their recorded source, not to these later edits.
 
 The initial range contains six Markdown files and 528 additions. Both broad rounds reviewed that same cumulative proposal, rather than only the last commit. The three earlier read-only preflight agents informed the writing brief; they are not counted as either review round. The coordinator read all four reviewer reports, validated the sole finding against the ADR template, and merged their five-role results here under the [code-review master plan](master-plan.md).
 
@@ -75,3 +75,58 @@ No unresolved finding.
 Present ADR-0041/0042/0043, the 13-step plan and its explicit task-contract reconciliations for maintainer approval. Copyright identity is resolved. ADR Acceptance, implementation verification/security reviews, task delivery, publication clearance and final maintainer review/merge remain their own later boundaries. This is not a `conduct-approval-review` promotion verdict or authority to implement the still-Proposed decisions.
 
 This indexed artifact records the completed reviews; its publication is checked by the coordinator and is not represented as another independent broad review of itself.
+
+## Supplied-review follow-up — 2026-10-12
+
+The maintainer's subsequent readiness review did not authorize Acceptance. The coordinator validated all twelve M/L/O items, revised the three Proposed ADRs and made literal Step 0 contract replacements plus the Acceptance-time rider reviewable in the plan. Accepted ADRs, standards, skills, task files, workflows and executable sources remain unchanged.
+
+- **Initial corrected source:** `aff9ff4aa6eee8607c1a74efd4bcd5e699da6f3d`.
+- **Final corrected source:** `7ccdde49aa77b35f181349adae4425bc68eb8801`.
+- **Focused supplied-follow-up range:** `fb23823793b821b70f1252e16bb1b482f72fe1fe..7ccdde49aa77b35f181349adae4425bc68eb8801`.
+- **Cumulative preparation range:** `7d48f50603fa0d30464ea7b032f4f0fb82c3964c..7ccdde49aa77b35f181349adae4425bc68eb8801`.
+- **Risk class / security cross-reference:** Ordinary proposal-only delta; n/a for runtime security. Later security review obligations remain unchanged.
+
+| Follow-up round | Fresh context | Model / effort | Result |
+|-----------------|---------------|----------------|--------|
+| 1 | `b22_supplied_r1_governance` | GPT-6 Astra / high | Approve for proposal readiness after R1-GOV-01 Low correction verified at `7ccdde4` |
+| 1 | `b22_supplied_r1_contracts` | GPT-6.1 Sol / high | Approve; zero additional findings, disclosed correction independently verified |
+| 2 | `b22_supplied_r2_governance` | GPT-6 Astra / high | Approve; zero new findings, cumulative correction and governance obligations verified |
+| 2 | `b22_supplied_r2_contracts` | GPT-6.1 Sol / high | Approve; zero new findings, cumulative correction and all twelve task/58-item owners verified |
+
+All four contexts are new relative to the original preparation reviews. Second-round contexts did not read the first-follow-up-round temporary reports; they verified the disclosed correction directly against source. The coordinator read all four complete reports and reconciled their five-role outputs below. Reviewers made no repository or remote writes. The initial preparation rounds remain distinct historical reviews.
+
+### Correctness
+
+No unresolved finding. ADR-0043 now requires the ADR-0040 rider in its Acceptance commit for both Decision outcome rule 7 and **Track B.2-1 implementation policy** rule 4; it does not mistakenly target Decision outcome rule 4, which governs Phase C status. The drafted rider preserves the old body/status and whole-phase outcome while explicitly naming the limited extension.
+
+M2/M3/L5 have mandatory literal Step 0 replacements: T-055's index/no-anomalies clause and scope; T-049's note-only alternative, other-archive exclusion and scope; T-052's motivating standard reference. Task provenance and the five Accepted-ADR corrections' additions-only/status limits remain preserved. These clauses are specified for application after explicit approval, not reported as already implemented.
+
+O1–O3 are concretely proposed: recovery remains Proposed without suspending the existing written standard; 0042 Acceptance and 0041 supersession are atomic after separate recovery Acceptance; selected T-056 delivery is fully verified while general optional phase-exit accounting remains unchanged. Acceptance alone does not deliver or activate its required gate.
+
+### Style
+
+No new actionable style issue. MADR/English conventions are maintained, shell and packaged-parser alternatives have separate costs, and ADR-0025 reference labels match the actual title. The grouped initial proposal/punctuation exception remains explicitly justified; no reviewed history is rewritten for it.
+
+### Test coverage
+
+The exact cumulative range and targeted Step 9 correction pass `git diff --check`. The coordinator's limited path check passes 121 straightforward relative targets in the seven follow-up-touched documents before final review-record publication; this is not a complete Markdown parser or a full-corpus gate result. The four simple new-proposal heading fragments remain valid.
+
+Independent read-only checks confirm 42 numbered ADR records/42 unique index rows, baseline metadata/title anomalies, 32 live numbered ledger definitions and unchanged prior ADR/source/task/standard/CI files. These are static preparation checks. No Rust, QEMU, Miri, coverage, hosted CI or future checker fixture result is claimed; those remain implementing-task gates.
+
+### Documentation
+
+The supplied [M/L/O disposition table](../../reports/2026-10-12-adr-0041-0043-supplied-review-reconciliation.md#source-verification-and-dispositions) accounts for every item. L1 distinguishes the newly occupied 0041–0043 collisions from unfiled D3/C5 0044. L4 reports title/slug differences separately from index/header equality without forced renames or invented dates. Historical skill navigation must use verified immutable targets while quoted paths/verdicts/measurements remain evidence.
+
+**R1-GOV-01 — Low, resolved:** At `aff9ff4`, Step 9 still allowed appending the rider later if it had not been filed at Acceptance. This contradicted the new same-commit requirement. Coordinator commit `7ccdde4` changes Step 9 to verification of the already-filed Acceptance-time rider and records the discovery. Both first-round contexts verified the exact correction; both fresh second-round contexts verified the cumulative corrected obligations and found no remaining delayed-rider alternative.
+
+### Integration
+
+No new blocker. All twelve task briefs were compared with the reconciled plan, including the complete original 58-item ownership accounting. Required consistency checks remain in the existing lint job, retaining the six app-bound contexts and Python standard-library runtime. The corpus repair owners precede checker enablement; required enforcement applies to revisions with delivered wiring, and default-branch enforcement follows merge.
+
+Root reverified the 39 pre-existing ADRs byte-for-byte and unchanged runtime/tool/workflow/standard/audit/task subtrees. All new ADRs/index rows remain Proposed; T-056 remains Draft and the other eleven track tasks Ready. T-038, the HIGH checkpoint and C/D exit gates retain their existing state. Copyright identity remains resolved separately. Work stays local on development while PR #49 owns its remote source branch; no new publication authority is inferred.
+
+### Follow-up verdict
+
+**Approve — revised proposal readiness only.** Two fresh follow-up rounds completed; R1-GOV-01 is corrected and independently verified, with zero new second-round findings and zero unresolved proposal blockers. All supplied items are corrected in the draft package or covered by explicit Acceptance-time/Step 0 obligations.
+
+Present the revised package and O1–O3 recommendations for explicit maintainer approval. ADR Acceptance, literal task reconciliation, implementation and final task delivery have not occurred. This appended record supersedes the earlier pending-follow-up notice; it preserves all original source-bound reviews and is coordinator-checked publication, not another independent review round of itself.
