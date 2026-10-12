@@ -3,7 +3,7 @@
 This document records the source-backed documentation review, maintainer-approved decisions, reconciled task contracts and the reviewed-step execution plan for Track B.2-2.
 It is the implementation brief for a documentation and tooling wave; it does not report implementation as complete.
 
-- **Status:** Approved by the maintainer on 2026-10-12 — Step 0 Acceptance and literal contract reconciliation complete with both fresh implementation-review rounds passed; Step 1 (T-051) completed both fresh code/security rounds on 2026-10-13 and is In Review; Step 2 (T-045) completed both fresh code/security rounds and is In Review; Step 3 (T-046) completed both fresh code/security rounds and is In Review, including shared T-045 overview/boot/index checks; T-048 follows. Copyright identity is also approved.
+- **Status:** Approved by the maintainer on 2026-10-12 — Step 0 Acceptance and literal contract reconciliation complete with both fresh implementation-review rounds passed; Step 1 (T-051) completed both fresh code/security rounds on 2026-10-13 and is In Review; Step 2 (T-045) completed both fresh code/security rounds and is In Review; Step 3 (T-046) completed both fresh code/security rounds and is In Review, including shared T-045 overview/boot/index checks; Step 4 (T-048) is In Progress for historical merged-task reconciliation. Copyright identity is also approved.
 - **Date:** 2026-10-12
 - **Author:** Codex (AI agent), on behalf of @cemililik
 - **Source baseline:** clean `development` at `7d48f50603fa0d30464ea7b032f4f0fb82c3964c`; `origin/main` at `c16997e003fbd1726d1205734380394781c52002`.
