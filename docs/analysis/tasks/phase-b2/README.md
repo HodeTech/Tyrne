@@ -40,7 +40,8 @@ The [supplied PR48 review reconciliation](../../reports/2026-10-12-pr-48-supplie
 ## Track B.2-2 implementation sequence (approved 2026-10-12)
 
 The maintainer approved the [preflight and 13-step plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md), ADR-0042/0043 and all twelve literal task-contract reconciliations.
-Step 0 records the separate Acceptance transitions and contract edits without task delivery; it receives two fresh review rounds before implementation starts.
+Step 0 completed the separate Acceptance transitions and contract edits without task delivery, then passed [both fresh review rounds](../../reviews/code-reviews/2026-10-12-phase-b2-track2-step0.md).
+**Progress (2026-10-13):** Step 1/T-051 is In Review after [both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t051-contribution-security-status.md), zero findings. Maintainer SECURITY wording review remains before merge. Step 2/T-045 is next.
 The implementation order is T-051 → T-045 → T-046 → T-048 → T-049 → T-050 → T-055 → T-052/T-053 → T-054 → T-047 → T-056 parser → T-056 integration → integrated verification/documentation/PR.
 Every step follows the two-round fresh-review/fix/commit loop; security-sensitive descriptions also receive distinct security review.
 New tasks stop at In Review for the maintainer. Optional-for-general-exit T-056 is fully selected and cannot close by a decision-only or carry-forward outcome.
@@ -71,7 +72,7 @@ All work stays on development. Local work may proceed, but publication remains b
 | [T-048](T-048-phase-b-task-corpus-sync.md) | Synchronise the Phase B task corpus and fix task-file links | B.2-2 | Ready | — |
 | [T-049](T-049-review-indices-sync.md) | Synchronise the review-family indices | B.2-2 | Ready | — |
 | [T-050](T-050-entry-docs-and-glossary-sync.md) | Refresh README, guides index, glossary, and the add-bsp skill trace | B.2-2 | Ready | — |
-| [T-051](T-051-contributing-and-security-status.md) | Update CONTRIBUTING.md and SECURITY.md to the post-Phase-B state | B.2-2 | In Progress | — |
+| [T-051](T-051-contributing-and-security-status.md) | Update CONTRIBUTING.md and SECURITY.md to the post-Phase-B state | B.2-2 | In Review | — |
 | [T-052](T-052-standards-docs-reality-sync.md) | Reconcile standards claims with CI and lint reality (decisions required) | B.2-2 | Ready | T-032 |
 | [T-053](T-053-standards-docs-mechanical-fixes.md) | Apply mechanical corrections to the standards docs | B.2-2 | Ready | — |
 | [T-054](T-054-adr-ledger-renumbering-cascade.md) | Cascade the ADR ledger renumbering across phase files | B.2-2 | Ready | — |
