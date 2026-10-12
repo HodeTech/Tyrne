@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -89,3 +89,4 @@ The overview Boot-flow diagram and the README Status cells owned by [T-045](T-04
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: selected sentence edits, unchanged planned capability rows and an exact-count smoke-script claim. Approved replacement: all seven chapters source-verified, future mechanisms labelled, actual rights/bounds/fault/exit behavior, inspected trace counts and distinct security rounds; overview/index coherence permitted. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-13 | Codex (AI agent) | Step 3 starts after T-045 completed both fresh code/security rounds (`d71aa4a`). Whole seven-chapter source review, exact date/source/task freshness, actual capability rights and boot/exception/scheduler limits, then overview/boot/index coherence. Runtime source remains unchanged from T-045 capture `4ad0b3d`; reuse those retained matching-profile traces without claiming another run. No new decision or executable change; both fresh rounds remain pending. |
