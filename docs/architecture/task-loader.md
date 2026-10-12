@@ -1,170 +1,140 @@
 # Task loader
 
-This chapter covers the **loader half** of Phase B's B4 milestone: how an embedded raw-flat userspace binary is turned into a populated address space. The complementary running half (`task_create_from_image` plus the syscall entry path) is documented separately when B5/B6 land.
+The task loader turns a trusted embedded raw-flat image into userspace mappings and a `LoadedImage` descriptor. The landed boot path then creates a Task capability, registers its execution context and schedules the first real EL0 `hello`. This chapter explains that composition, its validation and partial rollback, and the limits that must be addressed before general untrusted loading.
 
-It synthesises [ADR-0029](../decisions/0029-initial-userspace-image-format.md) (the raw-flat image format), [T-019](../analysis/tasks/phase-b/T-019-task-loader.md) (the loader implementation), [ADR-0028](../decisions/0028-address-space-data-structure.md) (the `AddressSpace<M>` kernel-object the loader writes mappings into), and [ADR-0035](../decisions/0035-physical-memory-manager.md) (the PMM the loader pulls frames from). When this document and an ADR disagree, the ADR is authoritative.
+> **Last verified against:** 2026-10-13; source `4ad0b3d8a9d43310fcd937013131bffadcc803d7`; owner [T-045](../analysis/tasks/phase-b2/T-045-docs-overview-taskloader-arch-index.md).
+
+## Context
+
+[ADR-0029](../decisions/0029-initial-userspace-image-format.md) selects the raw-flat format; [ADR-0039](../decisions/0039-userland-build-pipeline.md) defines its build pipeline. The loader composes [capabilities](../glossary.md), the [ADR-0028 address-space object](../decisions/0028-address-space-data-structure.md), the [ADR-0035 PMM](../decisions/0035-physical-memory-manager.md) and the MMU. [T-019](../analysis/tasks/phase-b/T-019-task-loader.md) introduced loading, [T-024](../analysis/tasks/phase-b/T-024-task-create-from-image.md) added Task creation, and [T-028](../analysis/tasks/phase-b/T-028-el0-userspace-wireup.md) wired actual EL0 execution.
 
 ## Why a task-loader chapter
 
-The loader is the first place where the four B-phase subsystems (PMM, MMU, capability table, address-space arena) compose into a single state machine. Every fallible step lives on a transaction boundary: succeed and the kernel state advances; fail and the function must unwind everything it has committed so far. The rollback contract is the load-bearing correctness property — without it, a misconfigured `image_base_va` or a frame-budget calculation bug would orphan PMM frames in an unreachable AS.
+This is where PMM frames, page tables, capability tables and object arenas compose. Validation before mutation reduces the failure window; rollback removes committed leaf mappings and the new capability but does not reclaim every underlying resource. The distinction is essential: a successful trusted demo and leaf cleanup are not a transactional general-purpose process loader.
 
-The loader is also the first runtime exerciser of three audit-log entries that previously had only host-test evidence: [UNSAFE-2026-0025](../audits/unsafe-log.md) (`QemuVirtMmu::map`'s page-table descriptor writes), [UNSAFE-2026-0026](../audits/unsafe-log.md) (the PMM's frame zero-fill via `core::ptr::write_bytes`), and [UNSAFE-2026-0027](../audits/unsafe-log.md) (the loader's own `core::ptr::copy_nonoverlapping` byte-copy site). The T-019 BSP wiring exercises all three on every boot.
+## Scope boundary (loaded state through scheduled EL0 execution)
 
-## Scope boundary (load-complete, not B5/B6-runnable)
+The live path has four separate responsibilities:
 
-T-019 produces a [`LoadedImage`](../../kernel/src/obj/task_loader.rs) **descriptor**, not a `CapHandle{CapObject::Task(...)}` (a runnable task cap). The reasons are architectural, not implementation laziness:
+| Stage | Owner | Result |
+|-------|-------|--------|
+| `load_image` | [`kernel/src/obj/task_loader.rs`](../../kernel/src/obj/task_loader.rs) | Populated AS plus `LoadedImage` metadata (entry, stack and AS cap). |
+| `task_create_from_image` | Same module, T-024 | Resolves the AS capability, creates `Task { id, address_space_handle }`, inserts a Task capability. Rolls the new Task arena slot back if cap insertion fails. |
+| `add_user_task` | [`kernel/src/sched/mod.rs`](../../kernel/src/sched/mod.rs), T-023 | Registers an EL0 context using loaded PC/SP, a per-task EL1 stack and caller-table binding. |
+| BSP scheduling and exception glue | [`bsp-qemu-virt/src/main.rs`](../../bsp-qemu-virt/src/main.rs), T-028 | Activates the task's TTBR0, enters EL0 and handles its SVC/exit path. |
 
-- The current [`Task`](../../kernel/src/obj/task.rs) struct carries `id: u32` + `address_space_handle: AddressSpaceHandle` only — there is **no** PC/SP context register file on it, so `ContextSwitch::init_context` cannot consume a `LoadedImage` until B6 adds a per-task EL0 context surface (B5 landed the syscall ABI, not the EL0 context).
-- The loader's new address space contains **only** the image + stack mappings. No kernel mappings are installed — an EL1 exception taken while the userspace AS is active would translation-fault on the kernel-side vector fetch. The kernel-in-userspace-AS problem is the future [ADR-0033 high-half migration placeholder](../decisions/0027-kernel-virtual-memory-layout.md)'s responsibility, gated on B6 surfacing per-task `TTBR0_EL1` swap (B5 closed via the syscall boundary without it — the real EL0 round-trip is B6).
-- The syscall entry path that lets a userspace task make its first kernel call is ADR-0030 / ADR-0031 work, also B5.
+The `Task` object's lack of a register file does not prevent execution: the scheduler owns that context separately. `load_image` alone neither creates a Task object nor schedules it; `task_create_from_image` alone does not initialize execution context. The shared high-half kernel root remains in TTBR1 while the task's low root is installed in TTBR0, per [ADR-0033](../decisions/0033-kernel-high-half-migration.md) and [ADR-0028](../decisions/0028-address-space-data-structure.md). [ADR-0037](../decisions/0037-el0-entry-context.md) governs entry, and [ADR-0038](../decisions/0038-mmu-translate-and-user-access.md) governs USER-checked buffer translation; [ADR-0030](../decisions/0030-syscall-abi.md) / [ADR-0031](../decisions/0031-initial-syscall-set.md) govern syscalls.
 
-The `task_create_from_image` wrapper that turns a `LoadedImage` into a runnable task cap lands with B6 (first userspace "hello"), building on B5's now-landed syscall ABI (ADR-0030 / ADR-0031), per [phase-b §B4 §Revision-notes](../roadmap/phases/phase-b.md#milestone-b4--task-loader).
+## Design
 
-## Pipeline (one §Simulation row at a time)
+### Pipeline (one §Simulation row at a time)
 
-The loader is an eight-step state machine; each step matches one row of [T-019 §Approach §Simulation](../analysis/tasks/phase-b/T-019-task-loader.md#simulation). Steps 1–5 are preflights / state-uncommitted (no committed state on failure); steps 6–8 commit and require rollback machinery.
+The eight loader stages correspond to [T-019's Simulation](../analysis/tasks/phase-b/T-019-task-loader.md#simulation). The diagram groups preflights to show the mutation and cleanup boundaries; the table preserves their order.
 
 ```mermaid
 flowchart TB
-    A[load_image entry] --> B{1. arg preflight}
-    B -- empty image --> X1[Err InvalidImage]
-    B -- zero stack --> X2[Err InvalidStackSize]
-    B --> C{2. cap preflight}
-    C -- lookup miss --> X3[Err InvalidParentCap]
-    C -- wrong kind --> X3
-    C --> D{3. frame budget}
-    D -- needed > avail --> X4[Err FrameBudgetExceeded]
-    D --> P{4. image PA overlap}
-    P -- could_yield_overlap --> X4b[Err ImageOverlapsAllocatableMemory]
-    P --> E{5. cap_create_address_space}
-    E -- DERIVE missing --> X5[Err AddressSpaceCreationFailed]
-    E -- PMM exhausted --> X5
-    E --> F[6. image-page loop]
-    F -- per page --> F1[pmm.alloc_frame]
-    F1 --> F2[copy_nonoverlapping bytes]
-    F2 --> F3[cap_map USER EXECUTE]
-    F3 -- ok --> F
-    F3 -- err --> R[rollback]
-    F1 -- None --> R
-    F --> G[7. stack-page loop]
-    G -- per page --> G1[pmm.alloc_frame]
-    G1 --> G2[cap_map USER WRITE]
-    G2 -- ok --> G
-    G2 -- err --> R
-    G1 -- None --> R
-    G --> H[8. construct LoadedImage]
-    H --> OK[Ok LoadedImage]
-    R --> X6[Err MapFailed or OutOfFrames]
+    A["Arguments and parent capability"] --> B["VA range, then frame budget"]
+    B --> C["Image PA overlap check"]
+    C --> D["Create AS and capability"]
+    D --> E["Allocate, copy and map image pages"]
+    E --> F["Allocate and map stack pages"]
+    F --> G["Return LoadedImage"]
+    E -->|failure| R["Remove committed leaves and AS cap"]
+    F -->|failure| R
 ```
 
-The preflight chain ([rows 1–4](../analysis/tasks/phase-b/T-019-task-loader.md#simulation)) is the discipline that keeps the rollback path bounded — by validating *before* `pmm.alloc_frame` is ever called, the loader guarantees that the "PMM allocated something we now can't undo" failure window is reduced to the structurally-rare mid-loop case. **Row 3 runs the VA-range check first, then the frame-budget check** — this ordering makes the documented `InvalidImageBaseVa { end: VirtAddr(usize::MAX) }` sentinel structurally observable for arithmetic-saturated requests (e.g. `stack_size_pages = usize::MAX`), which the previous ordering masked behind a `FrameBudgetExceeded` rejection. The **VA-range bound** is `span_end <= USERSPACE_VA_LIMIT` (= `1 << 48` per ADR-0027 §Decision outcome (a)'s `TCR_EL1.T0SZ = 16`); a requested span that crosses or exceeds the 48-bit `TTBR0_EL1` range fails fast with [`LoadError::InvalidImageBaseVa { base, end }`](../../kernel/src/obj/task_loader.rs); saturating arithmetic caps span-end overflow at `usize::MAX` (the documented sentinel) which is still `> USERSPACE_VA_LIMIT` and triggers the same rejection. The **frame-budget bound** is `1 + image_pages + stack_pages + intermediate_frame_count(image_base_va, image_pages, stack_pages) <= pmm.stats().free_frames`, where the leading `1` is the root L0 frame `cap_create_address_space` allocates and [`intermediate_frame_count`](../../kernel/src/obj/task_loader.rs) is an **exact** computation (not a "safe upper bound") of the distinct L1/L2/L3 page-table frames the VMSAv8 walker will allocate for the contiguous image+stack VA span — previous T-019 commits used a hard-coded constant `6` that under-counted whenever the image span crossed more than one 2 MiB L2 slot (e.g. an 8 MiB image crosses 4 L2 slots → needs 5 L3 tables for image + 1 for stack + 1 L2 + 1 L1 = 7 intermediates, not 6); review-round 3 Finding 1 swept the constant and replaced it with the exact-count helper. The image-PA-overlap preflight (row 4) discharges [UNSAFE-2026-0027](../audits/unsafe-log.md)'s "source and destination do not overlap" invariant at runtime by querying [`Pmm::could_yield_pa_overlapping`](../../kernel/src/mm/pmm.rs) with the image slice's PA range (correct under v1's identity-mapped kernel AS per ADR-0027 §Decision outcome (a)) — practically unreachable under correct BSP wiring (`.rodata`-resident images live in PMM-reserved memory by ADR-0035), but defensive against BSP misconfiguration.
+| Stage | Current checks / effects |
+|-------|--------------------------|
+| 1. Arguments | Reject empty image, zero stack pages and misaligned image base. |
+| 2. Parent cap | Resolve a live AddressSpace capability and check kind. |
+| 3. Span and budget | Validate the entire half-open image+stack VA range first, then available root/leaf/intermediate frame budget. |
+| 4. Source overlap | Convert the image's kernel VA to PA; reject overlap with any frame the PMM could allocate. |
+| 5. AS creation | `cap_create_address_space` enforces parent `DERIVE` authority and rights narrowing, then creates the root/AS/cap. Failure does not commit loader state. |
+| 6. Image | Allocate zeroed leaf frames, copy image chunks, map `USER \| EXECUTE`. |
+| 7. Stack | Allocate zeroed leaf frames, map `USER \| WRITE`. |
+| 8. Descriptor | Return entry at image base and stack pointer one past the stack's highest byte. |
+
+The mapped span must satisfy `span_end <= USERSPACE_VA_LIMIT`, where the limit is `1 << 48` under [ADR-0027](../decisions/0027-kernel-virtual-memory-layout.md). Equality is valid for the one-past end; no mapped byte is at that limit. Saturating arithmetic produces `usize::MAX` on overflow, which is rejected before the budget check. Base VA zero is legal: this loader does not enforce a null-page guard.
+
+For the current 4 KiB VMSAv8 page-table format, the budget is `1 + image_pages + stack_pages + intermediate_frame_count(...)`. The helper counts distinct L3 tables covering 2 MiB, L2 tables covering 1 GiB and L1 tables covering 512 GiB across the contiguous span. For an 8 MiB image starting at 8 MiB plus one stack page, four image L3 tables plus one stack L3 table, one L2 and one L1 give **7 intermediates**. This is an exact count for the current fresh-root lazy-allocation implementation, not a format-independent HAL rule.
+
+The overlap check uses `kernel_va_to_phys(image.as_ptr())` before querying `Pmm::could_yield_pa_overlapping`; comparing the high-half pointer directly with a PA range would be wrong. In the current BSP the embedded image is in reserved kernel `.rodata`, outside allocatable PMM frames. Host tests use offset zero. Destination writes use the centralized frame-to-kernel-pointer helper.
 
 ## Rollback contract
 
-Any failure from row 6 or row 7 triggers the rollback helper (`task_loader::rollback`). The contract is documented canonically in [T-019 §Approach §"Rollback contract (explicit)"](../analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit); the summary below repeats the load-bearing shape:
+An image/stack allocation or map failure removes committed stack pages first, then image pages, each in reverse installation order. `cap_unmap` returns the leaf frame for `pmm.free_frame`. A just-allocated frame whose map failed is freed by the forward path before rollback. Cleanup errors do not replace the original error.
 
-- **Reverse install order.** Stack pages first (newest first), then image pages (newest first), to mirror the forward direction's allocation order.
-- **Per page: `cap_unmap` + `pmm.free_frame`.** `cap_unmap` returns the orphaned `PhysFrame`; the helper passes it straight to `pmm.free_frame`. Errors from either are swallowed — the rollback path runs only after a primary failure; surfacing a secondary error would mask the first and provide no actionable information.
-- **Failing iteration's leaf frame.** When `cap_map` fails mid-loop the just-allocated leaf frame was *not* moved into the AS; the forward path frees it directly via `pmm.free_frame` *before* invoking the helper. The helper only handles already-committed mappings.
-- **Cap-side cleanup: `cap_drop`, not `cap_revoke`.** The AS cap is a leaf in the derivation tree by construction (the loader never derives from it), so `cap_drop` is the correct API: it `free_slot`s the leaf directly, requires only `!has_children` (satisfied), and is rights-agnostic. `cap_revoke(src)` would walk `src`'s *descendants* while leaving `src` itself valid, and also requires `CapRights::REVOKE` which `new_rights` may omit.
+The new AS capability is dropped using `cap_drop`, not `cap_revoke`: it is a leaf in the derivation tree; dropping is rights-agnostic, whereas revocation requires `REVOKE` and retains the source cap. See [T-019's explicit rollback contract](../analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit).
 
 ### v1 baseline leaks
 
-Even with the right APIs, this is still cap-side and leaf-frame cleanup. Three resources **leak** in v1 on every rollback:
-
-1. **The root L0 frame** `cap_create_address_space` allocated (step 5). `cap_drop` invalidates the cap but does not free the underlying frame.
-2. **Intermediate L1/L2/L3 page-table frames** the BSP's `walk_or_alloc_table` allocated during `cap_map`. v1's `cap_unmap` removes the leaf descriptor but does not garbage-collect intermediates.
-3. **The AS arena slot itself.** `cap_drop` does not call `destroy_address_space` on the arena slot.
-
-This is the deliberate v1 trade-off recorded in [T-019 §"Why the leak is acceptable as a v1 baseline"](../analysis/tasks/phase-b/T-019-task-loader.md#rollback-contract-explicit): the rollback path is exercised only on PMM exhaustion (rare with 32 K frames and small image+stack budgets) or on a misconfigured `image_base_va` collision (a kernel-discipline bug, not a userspace-reachable path); the v1 demo does not retry-loop on failure. Full reclaim arrives with the future `MemoryRegionCap` + per-AS destroy ADR (B5+, slot reserved in the [B3 closure retro §Adjustments](../analysis/reviews/business-reviews/2026-05-14-B3-closure.md#adjustments)). Future-state retry loops (B5+) MUST be paired with the reclaim ADR before they land; T-019's `MapFailed`/`OutOfFrames` paths today are **fail-stop** at the caller level.
+Rollback does **not** reclaim the root L0 frame, intermediate L1/L2/L3 frames or the AS arena slot. Dropping the cap is not destruction of the AS. The trusted BSP boot path fails stop on a loader error and does not retry indefinitely. Complete reclamation must precede a general retrying/untrusted loader; a date or milestone alone does not close this debt. Current `task_exit` likewise stops scheduling without full Task/AS/capability reclamation. See [SECURITY.md](../../SECURITY.md) and the [Phase E memory/lifecycle work](../roadmap/phases/phase-e.md).
 
 ## Mapping flags
 
-Per [T-019 §Acceptance criteria](../analysis/tasks/phase-b/T-019-task-loader.md#acceptance-criteria), the loader uses two fixed flag sets:
+| Region | Flags | Effect / limit |
+|--------|-------|----------------|
+| Image | `MappingFlags::USER \| MappingFlags::EXECUTE` | Read/execute, no writable globals; partial final page remains zero-filled beyond the copied bytes. |
+| Stack | `MappingFlags::USER \| MappingFlags::WRITE` | Read/write, non-executable; prevents execution from stack pages, not reuse of existing executable code such as ROP. |
 
-| Region | Flags | Rationale |
-|--------|-------|-----------|
-| Image | `MappingFlags::USER \| MappingFlags::EXECUTE` | Userspace must be able to fetch instructions; no `WRITE` so the kernel-image side of `.data` writes will fault until per-section flags land (deferred to ADR-0034). |
-| Stack | `MappingFlags::USER \| MappingFlags::WRITE` | Userspace must be able to push/pop; no `EXECUTE` so a stack-based ROP-style attempt would fault (defence-in-depth, even though v1 has no userspace exploit surface). |
+Raw flat carries no section metadata, so the loader cannot give `.rodata` and `.text` different permissions or support a writable `.data` region separately. The present `hello` needs neither writable globals nor a userspace allocator. [ADR-0034](../decisions/README.md) reserves **kernel-image** section hardening; it is not a userspace image-format decision. The current kernel RAM window also remains RWX-equivalent despite these userspace leaf flags. Current `cap_map` / `cap_unmap` are kind-checked trusted kernel APIs without per-operation MAP rights or physical-memory ownership checks; see [`overview.md`](overview.md#address-spaces).
 
-Per-section permissions (`.text` RX-only, `.rodata` R-only, `.data` RW-only, NX on non-`.text`) are deferred to the future ADR-0034 (placeholder; gated on B5+'s first attacker-observable execution context). Raw flat carries no section metadata, so the loader cannot discriminate today.
+## Embedded image content (real hello)
 
-## Embedded image content (v1 placeholder)
+[`userland/hello/src/main.rs`](../../userland/hello/src/main.rs) is a freestanding Rust program whose `_start` begins at offset zero, linked at `0x0080_0000` by [`hello.ld`](../../userland/hello/hello.ld). It attempts `console_write` through the seeded debug-console capability and then calls `task_exit(0)`. The console result is intentionally ignored: in normal release, number 5 returns `BadSyscallNumber`, and the task still exits normally. Its panic handler exits with code 101.
 
-T-019 ships with a hand-coded 8-byte aarch64 sequence:
+[ADR-0039](../decisions/0039-userland-build-pipeline.md)'s pipeline is `cargo build` for `aarch64-unknown-none` → pinned `rust-objcopy` → ignored `userland/hello/hello.bin` → BSP `include_bytes!`. [`tools/build-userland.sh`](../../tools/build-userland.sh) must run before building the BSP; [`tools/smoke.sh`](../../tools/smoke.sh) does this automatically for the matching profile when no explicit ELF is supplied. Debug and release share the `.bin` output path, so build/run those profiles sequentially.
 
-```rust
-// `mov w0, #42; ret` — sets w0 to 42 and returns.
-// Word 0 LE = 0x52800540 → MOVZ Wd=w0, imm16=0x002a, hw=00, sf=0 (w-reg).
-// Word 1 LE = 0xd65f03c0 → RET (Rn=x30 implicit).
-static USERSPACE_IMAGE: &[u8] = &[0x40, 0x05, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6];
-```
-
-This is sufficient to exercise the loader's `cap_create_address_space` + `cap_map` + `LoadedImage` return path under host tests + the smoke trace. **The blob is not executed in B4.** B6's `userland/hello/` crate produces the real userspace binary per [ADR-0029 §Decision outcome (Build pipeline — B6)](../decisions/0029-initial-userspace-image-format.md).
+**Historical B4 sample:** the original 8-byte `mov w0, #42; ret` blob exercised loading only. It is no longer the embedded runnable image. At the verified source baseline, freshly built `hello` is 117 bytes in debug and 69 bytes in release; these are measured artifacts, not permanent format constants. The retained [runtime report](../analysis/reports/2026-10-13-t045-architecture-verification.md) records both hashes and traces.
 
 ## Userspace VA layout
 
-T-019 uses `0x0080_0000` (8 MiB) as the userspace `image_base_va`. The choice is bounded by [ADR-0027 §Decision outcome (a)](../decisions/0027-kernel-virtual-memory-layout.md)'s `TTBR0_EL1` range (the full 48-bit userspace VA space) and pragmatically picked: page-aligned, well clear of the null-page guard region, structurally aligned at the 8 MiB boundary which simplifies the mental arithmetic reading the smoke trace (`entry = 0x800000; sp = 0x802000`), and far enough below `USERSPACE_VA_LIMIT` that no overflow concern arises for the placeholder image+stack span. Not algebraically derived from the kernel image's PA layout — earlier doc revisions claimed a "mirrors the kernel's `0x4008_0000` offset" rationale that does not check out mathematically (kernel offset within the RAM segment is 0.5 MiB, not 8 MiB); the claim has been retired.
+The BSP image base and the userspace link address are both `0x0080_0000` (8 MiB). This is a page-aligned choice within the 48-bit low range, not a formula derived from the kernel PA base and not evidence of an enforced null-page guard. Image and stack are contiguous: `stack_base = image_base + image_pages * PAGE_SIZE`; `stack_top_va = stack_base + stack_pages * PAGE_SIZE` is one past the mapped stack. The initial SP uses that top so a downward-growing stack enters the mapped range.
 
-The stack region follows the image contiguously: `stack_base = image_base_va + image_pages * PAGE_SIZE`. `stack_top_va = stack_base + stack_size_pages * PAGE_SIZE` is **one-past-the-highest** mapped VA (half-open `[stack_base, stack_top_va)` convention). `sp = stack_top_va` at task-creation initialisation is correct because the first userspace push (e.g. `sp -= 16`) lands inside the mapped range — matches the AAPCS64 convention.
+For either current image (less than one 4 KiB page) and the BSP's one-page stack, the layout is:
 
-```mermaid
-flowchart LR
-    subgraph "Loaded AS VA layout"
-        I[image_base_va<br/>0x0080_0000]
-        I -->|"image_pages * PAGE_SIZE"| SB[stack_base<br/>0x0080_X000]
-        SB -->|"stack_size_pages * PAGE_SIZE"| ST[stack_top_va<br/>one-past-highest]
-        I -. "USER|EXECUTE" .- SB
-        SB -. "USER|WRITE" .- ST
-    end
-```
+| Boundary | VA |
+|----------|----|
+| Image / entry | `0x0080_0000` |
+| Stack base | `0x0080_1000` |
+| Initial SP / one-past stack | `0x0080_2000` |
 
-For T-019's v1 placeholder (8-byte image + 1-page stack), the layout resolves to:
-
-```text
-0x0080_0000  image base (entry)
-0x0080_1000  stack base
-0x0080_2000  stack_top_va (sp init)
-```
-
-The smoke trace's `tyrne: image loaded (entry = 0x800000; sp = 0x802000; image bytes 8; stack bytes 4096; AS cap = idx 1)` line is the runtime confirmation of this layout.
+Fresh debug and release traces show `tyrne: high-half active`, entry into EL0 at PC `0x800000`, two SVC exceptions, `tyrne: userspace task exited` and `tyrne: all tasks complete`. Only debug prints `hello from userspace`. There is no current `tyrne: image loaded` banner: entry is observed in the exception log; SP/layout follow the loader and BSP setup, not a fabricated trace line. The report distinguishes manual exception counts from the smoke script's marker/fault assertions.
 
 ## Audit-log surface
 
-| Entry | Operation | Status post-T-019 |
-|-------|-----------|------------------|
-| [UNSAFE-2026-0025](../audits/unsafe-log.md) | `QemuVirtMmu::map`/`unmap` page-table descriptor writes | **Lifted from `Pending QEMU smoke verification` via Amendment** — T-019's BSP smoke is the first runtime exerciser of the post-bootstrap `Mmu::map` path. |
-| [UNSAFE-2026-0026](../audits/unsafe-log.md) | PMM frame zero-fill via `core::ptr::write_bytes` | **Lifted from `Pending QEMU smoke verification` via Amendment** — T-019's BSP smoke is the first runtime exerciser of `Pmm::alloc_frame`'s zero-fill block (the bootstrap AS was wrapped, not allocated). |
-| [UNSAFE-2026-0027](../audits/unsafe-log.md) | Task-loader `core::ptr::copy_nonoverlapping` byte copy | **New entry** opened with T-019 commit 2. Lifts from `Pending QEMU smoke verification` to fully Active via Amendment on T-019 BSP wiring landing. |
-
-The loader's `unsafe` surface is **exactly one block** in `kernel/src/obj/task_loader.rs::load_image`'s image-page loop. Everything else (preflights, rollback, stack-page loop's `cap_map`-only path, `LoadedImage` construction) is safe Rust.
+The loader's production byte-copy loop contains one `unsafe` block. Its entry is [UNSAFE-2026-0027](../audits/unsafe-log.md); PMM zeroing and MMU descriptor access use UNSAFE-2026-0026 / 0025. These entries and their dated amendments document their respective implementation evidence. The running path additionally crosses the trap, user-copy, high-half transition and EL0-entry sites (0029–0032). This chapter introduces no unsafe code and does not turn a successful smoke into a global memory-safety proof.
 
 ## Test surface
 
-T-019's host-test coverage in `kernel/src/obj/task_loader.rs::tests` pins **every row of the §Simulation table** plus the **rollback contract** plus the **enum-variant taxonomy** plus the **intermediate-frame-budget helper**. The 33 tests decompose as:
+At the source baseline, [`task_loader.rs`](../../kernel/src/obj/task_loader.rs) contains **42 `#[test]` functions**. They cover argument/cap/range/budget/overlap preflight, rights narrowing, loaded metadata, mapping flags and zero tails, intermediate-table arithmetic, mid-loop rollback and five Task-creation cases (successful mint, wrong kind, stale AS, full cap table with Task rollback, full Task arena). This is a source inventory, not a fresh host-test result.
 
-- §Simulation row 1: `rejects_empty_image`, `rejects_zero_stack`, `rejects_misaligned_image_base_va_with_pmm_byte_stable`.
-- §Simulation row 2: `rejects_invalid_parent_cap_lookup`, `rejects_invalid_parent_cap_wrong_kind`.
-- §Simulation row 3 (VA-range, then frame-budget): `rejects_when_pmm_budget_exceeded`, `frame_budget_includes_root_plus_intermediates`, `rejects_image_base_va_past_userspace_va_limit`, `rejects_image_base_va_saturating_overflow`, `accepts_image_base_va_exactly_at_userspace_va_limit_minus_span`, `va_range_preflight_runs_before_frame_budget`.
-- §Simulation row 3 (intermediate-frame helper): `intermediate_frame_count_minimal_single_l2_slot`, `intermediate_frame_count_8mib_image_one_stack_page_crosses_five_l2`, `intermediate_frame_count_l1_boundary_crossing`, `intermediate_frame_count_zero_span_defensive`, `intermediate_frame_count_saturated_total_pages`.
-- §Simulation row 4 (image-PA-overlap preflight): `rejects_when_image_overlaps_allocatable_memory`, `accepts_image_disjoint_from_pmm_extent`.
-- §Simulation row 5 (DERIVE delegation + happy-path cap mint): `missing_derive_surfaces_via_address_space_creation_failed`, `returns_loaded_image_with_correct_metadata`.
-- §Simulation rows 6–8 (happy path + per-region flag pins): `stack_top_va_is_one_past_highest_mapped`, `maps_image_pages_with_user_execute_flags`, `maps_stack_with_user_write_flags`, `tail_zeroing_on_partial_last_page`.
-- §Rollback contract: `rolls_back_on_cap_map_failure_mid_image_loop`, `rolls_back_on_pmm_exhausted_mid_image_loop`, `rolls_back_on_cap_map_failure_mid_stack_loop`, `rejects_misaligned_image_base_va_with_pmm_byte_stable` (no-rollback-needed case: row-1 alignment preflight catches the misalignment before any state change — pins the "PMM byte-stable" leg of the contract), `rollback_helper_zero_pages_only_drops_cap`.
-- Variant taxonomy: `loaded_image_struct_literal_round_trips_through_copy_and_eq`, `loaded_image_distinguishes_different_field_values`, `load_error_variants_pattern_match_exhaustively`, `load_error_variants_are_distinct`, `load_error_frame_budget_exceeded_fields_round_trip`.
+Mid-loop tests use `FailingMapMmu` and the test-only `Pmm::force_alloc_failure_after` to reach paths that normal single-core budget preflight makes unlikely. Extra block-mapping and intermediate-allocation failure cases pin the page-table boundary. Fresh debug/release QEMU runs in the report exercise the composed boot-to-EL0 path; they do not replace the unit tests or prove resource reclamation.
 
-The mid-loop-failure tests use two test-only injection mechanisms:
+## Invariants
 
-- A `FailingMapMmu` decorator (defined inline in the test module) wraps `FakeMmu` and fails the Nth `map` call deterministically — used to drive mid-image-loop and mid-stack-loop `cap_map` failures.
-- [`Pmm::force_alloc_failure_after`](../../kernel/src/mm/pmm.rs), a `#[cfg(test)] pub(crate)` setter, schedules `alloc_frame` to start returning `None` after N successful calls — used to drive the `OutOfFrames` rollback path (structurally unreachable in v1 post-FrameBudgetExceeded preflight, but the defensive code in `load_image` has its own rollback shape that the test pins).
+- Argument, parent-capability, VA, budget and overlap preflights precede image/stack mapping mutation; AS creation has its own authority and allocation checks.
+- The one-past VA end may equal `1 << 48`; an overflowing span is rejected.
+- Image leaf pages are USER/read/execute; stack leaf pages are USER/read/write and non-executable.
+- Source image PA cannot overlap PMM-allocatable frames at the copy site.
+- Partial loader rollback removes committed leaves and the AS cap; root/intermediate/arena reclamation is explicitly outside that contract.
+- Task creation and scheduler registration are distinct from loading; cap-table exhaustion during Task creation deallocates the newly created Task slot.
+
+## Trade-offs
+
+- Raw flat and a fixed link address make the first trusted image easy to build and audit, at the cost of relocation, section permissions and writable globals.
+- Exact VMSAv8 budgeting avoids the old fixed-count underestimate but must be revisited for a different page-table format.
+- Fail-stop boot wiring bounds use of the partial rollback path; it is unsuitable for a general repeating loader until full reclamation lands.
+
+## Open questions
+
+- General image format and validation for writable sections and untrusted binaries.
+- Complete AS/frame/Task reclamation and lifecycle authority before repeated creation or loading.
+- Stack guards and larger workloads beyond the fixed one-page userspace stack.
 
 ## Cross-references
 
-- [ADR-0029 — Initial userspace image format](../decisions/0029-initial-userspace-image-format.md) — the raw-flat format decision this chapter implements.
-- [T-019 — Task loader](../analysis/tasks/phase-b/T-019-task-loader.md) — the §Simulation table + acceptance criteria + rollback contract this chapter synthesises.
-- [ADR-0028 — Address-space data structure](../decisions/0028-address-space-data-structure.md) — the `AddressSpace<M>` kernel object the loader writes mappings into.
-- [ADR-0035 — Physical Memory Manager](../decisions/0035-physical-memory-manager.md) — the PMM the loader pulls frames from.
-- [ADR-0027 — Kernel virtual memory layout](../decisions/0027-kernel-virtual-memory-layout.md) — `TTBR0_EL1` userspace VA range bounds.
-- [`docs/architecture/memory-management.md` §"Address-space objects"](memory-management.md#address-space-objects) — the AS-object layer the loader composes on top of.
-- [`docs/architecture/boot.md` §"Stages"](boot.md#stages) — the boot sequence the loader's smoke line slots into.
-- [`docs/audits/unsafe-log.md`](../audits/unsafe-log.md) — UNSAFE-2026-0025 / 0026 / 0027 cover every `unsafe` block in the loader path.
+- [`overview.md`](overview.md) — current kernel/userspace boundary and syscall limits.
+- [`memory-management.md`](memory-management.md) — PMM and address-space details; refreshed by T-046.
+- [`boot.md`](boot.md) — detailed boot stages; refreshed by T-046.
+- [T-045 verification report](../analysis/reports/2026-10-13-t045-architecture-verification.md) — exact profile commands and retained evidence.

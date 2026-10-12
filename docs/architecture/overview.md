@@ -1,250 +1,165 @@
 # Architecture overview
 
-Tyrne is a capability-based microkernel whose system structure is deliberately narrow at the privileged layer and arbitrarily rich in userspace. This document describes the three layers that make up the running system — kernel, hardware abstraction layer, and userspace — what crosses each boundary, and the paths a boot and a message follow through them. It is the first architecture document a reader should open; every other `docs/architecture/` document elaborates one of the pieces summarized here.
+Tyrne is a [capability](../glossary.md)-based microkernel. This chapter introduces the running QEMU `virt` aarch64 system: the kernel core, HAL and BSP, the first EL0 userspace task, and the boot, IPC and syscall paths between them. It distinguishes that implementation from the planned userspace service architecture; follow the linked subsystem chapters for details.
 
-> **Status (2026-04-27).** Phase A is complete: kernel boots on QEMU `virt` aarch64 (per [`boot.md`](boot.md)), the cooperative FIFO scheduler runs two tasks (per [`scheduler.md`](scheduler.md)), and the synchronous IPC primitive set delivers messages with capability transfer (per [`ipc.md`](ipc.md)). The kernel-internal control flow described below is implemented end-to-end for the two-task IPC demo; the userspace, syscall, and address-space layers below remain Phase B / Phase C work.
+> **Status (2026-10-13).** Phase B closed on 2026-06-01. The kernel runs the first real EL0 `hello` task through the v1 syscall boundary alongside the EL1 two-task IPC demo. Phase B.2 is active; Phase C is next and remains gated by B.2's exit criteria. See [current focus](../roadmap/current.md).
+
+> **Last verified against:** 2026-10-13; source `4ad0b3d8a9d43310fcd937013131bffadcc803d7`; owner [T-045](../analysis/tasks/phase-b2/T-045-docs-overview-taskloader-arch-index.md).
 
 ## Context
 
-The overall shape of Tyrne was fixed by the foundational ADRs:
+[ADR-0001: Capability-based microkernel architecture](../decisions/0001-microkernel-architecture.md) puts capabilities, scheduling, IPC, memory and interrupt mechanisms in the kernel, with services intended for userspace. [ADR-0002: Rust as the implementation language](../decisions/0002-implementation-language-rust.md) and [ADR-0004: Target platforms](../decisions/0004-target-platforms.md) establish Rust and QEMU `virt` aarch64 as the implementation and primary development target. Raspberry Pi 4 is the first planned hardware target; its BSP has not landed.
 
-- [ADR-0001: Capability-based microkernel architecture](../decisions/0001-microkernel-architecture.md) — only capabilities, scheduling, IPC, memory, and interrupts live in kernel mode.
-- [ADR-0002: Rust as the implementation language](../decisions/0002-implementation-language-rust.md) — all kernel, HAL, and userspace code is Rust.
-- [ADR-0004: Target hardware platforms and support tiers](../decisions/0004-target-platforms.md) — primary development on QEMU `virt` aarch64; first real hardware is the Raspberry Pi 4; aarch64 is the long-term portfolio.
-
-Those decisions leave very little architectural room: the kernel must be small, userspace must be powerful, the HAL must exist as an explicit boundary, and Rust's ownership model is the tool we use to keep the whole thing honest. The rest of this document is a reading of how that translates into actual structure.
+The implementation is pre-alpha. Privilege separation and authority checks are present on specific paths, but this is not a production isolation guarantee. In particular, arbitrary untrusted image loading, fault containment, full resource reclamation and SMP are not implemented. [SECURITY.md](../../SECURITY.md) describes the current boundary and limitations.
 
 ## Design
 
 ### Top-level layers
 
-Tyrne has three layers: the **kernel**, a **hardware abstraction layer (HAL)** realized by per-board **Board Support Packages (BSPs)**, and **userspace**.
+The BSP implements the HAL traits and wires the portable kernel to hardware. Solid edges below describe the running system; the dotted service branch is planned.
 
 ```mermaid
 flowchart TB
-    subgraph Priv["Privileged mode"]
-        Kernel["Kernel core<br/>(capabilities · scheduler · IPC<br/>· memory · interrupt dispatch)"]
-        HAL["HAL trait surface"]
-        BSP["BSP<br/>(per-board concrete HAL)"]
-        HW["Hardware<br/>(CPU · MMU · GIC · UART · timer · MMIO)"]
-        Kernel --> HAL
-        HAL --> BSP
-        BSP --> HW
-    end
-    subgraph User["Unprivileged userspace"]
-        Init["init task"]
-        DrvTask["Driver tasks<br/>(UART, block, net, …)"]
-        Services["System services<br/>(log, fs, net, service manager)"]
-        Apps["Applications"]
-    end
-    Kernel <-->|syscall / IPC| Init
-    Kernel <-->|syscall / IPC| DrvTask
-    Kernel <-->|syscall / IPC| Services
-    Kernel <-->|syscall / IPC| Apps
-    DrvTask -.->|MMIO via MemoryCap| HW
+    Hello["EL0 hello task"] <-->|"SVC / return"| Kernel["EL1 kernel core"]
+    Kernel --> HAL["HAL traits"]
+    HAL --> BSP["QEMU virt BSP"]
+    BSP --> HW["CPU · MMU · GICv2 · PL011 · timer"]
+    Kernel -.-> Planned["Planned: init, driver and service tasks"]
 ```
 
-- **The kernel** holds a very small set of responsibilities. Everything that is not one of them — drivers, filesystems, network stacks, service supervision, shell — runs outside the kernel.
-- **The HAL** is a set of Rust traits; concrete implementations live in BSPs. The kernel depends on the traits only.
-- **Userspace** is where the interesting behaviour of the system lives. Userspace tasks talk to each other and to the kernel through capability-bound IPC.
+The kernel crate depends on HAL traits, not on a BSP crate. The BSP supplies boot assembly, hardware implementations, exception/syscall glue and demo setup. PL011, GICv2 and timer support currently run privileged; moving general device services into userspace is a design goal, not a description of all present drivers.
 
 ### What the kernel does
 
-The kernel is responsible for, and only for:
+1. **Capabilities.** Kernel-owned tables name typed, generation-checked objects and carry rights. Internal APIs support derivation, copying with authority, revocation and transfer. `Capability` is neither `Copy` nor `Clone`; copying authority requires the table API. These internal APIs are not all EL0 syscalls.
+2. **Scheduling.** A single-core cooperative FIFO scheduler switches contexts on explicit yield, blocking through the EL1 IPC bridge, or task exit. There is no priority scheduler or timer-driven preemption. See [`scheduler.md`](scheduler.md).
+3. **IPC.** Depth-one endpoints hold messages and an optional transferred capability; independent notification objects accumulate bits. The primitive APIs, EL1 scheduling wrappers and EL0 syscall behavior have different completion semantics, described below. See [`ipc.md`](ipc.md).
+4. **Memory.** The PMM allocates frames; address-space objects and MMU implementations install translations. Creating or dropping a capability is distinct from reclaiming the entire underlying address space. See [`memory-management.md`](memory-management.md) and [`task-loader.md`](task-loader.md).
+5. **Interrupts.** Exception vectors dispatch the current GICv2/generic-timer IRQ path. The timer IRQ does not preempt tasks or deliver a userspace IRQ service. See [`exceptions.md`](exceptions.md).
 
-1. **Capability management.** Creation, transfer, derivation, and revocation of [capabilities](../glossary.md). The capability table of every task lives in kernel-owned memory; the table is never writable from userspace.
-2. **Scheduling.** Choosing which runnable [thread](../glossary.md) executes on a CPU next; honouring priority and preemption policies. See [`scheduler.md`](scheduler.md) for the cooperative FIFO design and the raw-pointer bridge into IPC.
-3. **IPC.** Transporting messages between tasks' address spaces, rendezvouing senders and receivers, and moving capabilities along with the messages. See [`ipc.md`](ipc.md) for the primitive set, endpoint state machine, and capability-transfer protocol.
-4. **Virtual memory management.** Creating and destroying address spaces, installing translation table entries under capability control, managing physical page allocation at a low level.
-5. **Interrupt dispatch.** Trapping interrupts, performing the minimum work required to acknowledge the hardware, and turning the event into an asynchronous notification on an endpoint held by a userspace handler.
-
-The kernel is **not** responsible for: drivers (every driver is a userspace task), filesystems (userspace), network stacks (userspace), shells (userspace), task supervision policy (userspace), or any form of ambient authority. See [architectural principle P1](../standards/architectural-principles.md#p1--no-ambient-authority).
+Filesystems, network stacks, service supervision and a shell are future userspace responsibilities. The current kernel does not provide those services.
 
 ### What the HAL does
 
-The HAL is the trait boundary between the kernel's portable core and any one board's concrete hardware. It is not a driver layer; drivers live in userspace. It is the narrow interface the kernel needs to manipulate the CPU, the [MMU](../glossary.md), the interrupt controller, and a minimal boot-time console.
+The HAL provides the interfaces the portable core needs; concrete board support lives in `bsp-qemu-virt`. The current traits are `Cpu` (IRQ state, barriers, core identity and halt), `ContextSwitch` (context initialization and switching), `Mmu` (translation operations), `IrqController`, `Timer` and `Console`. `ContextSwitch` is separate from `Cpu` per [ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md). An empty `Iommu` placeholder does not supply DMA isolation.
 
-HAL trait surface (final form documented in [`hal.md`](hal.md), Accepted):
-
-- `Cpu` — mask / restore interrupts at the CPU level, halt / wait-for-interrupt, instruction barriers, current-core identity.
-- `ContextSwitch` — register save/restore for cooperative task switching (a separate trait from `Cpu` per [ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md)).
-- `Mmu` — translation-table layout, entry installation, TLB invalidation.
-- `IrqController` — IRQ mask / unmask, acknowledge, end-of-interrupt.
-- `Timer` — monotonic clock, one-shot deadline arming.
-- `Console` — bytes-out for early boot and panic diagnostics.
-
-A BSP is a crate that implements these traits for a specific target. Initial BSPs:
-
-- `bsp-qemu-virt` — QEMU `virt` aarch64 (GICv2, PL011 UART, generic timer). The QEMU `virt` machine defaults to GICv2; `bsp-qemu-virt` ships a v2-only driver in [`gic.rs`](../../bsp-qemu-virt/src/gic.rs) per [ADR-0011](../decisions/0011-irq-controller-trait.md), audited under [UNSAFE-2026-0019](../audits/unsafe-log.md). GICv3 requires `-machine gic-version=3` and is out of scope for v1.
-- `bsp-pi4` — Raspberry Pi 4 (BCM2711, legacy + GIC-400, mini-UART or PL011).
-
-The kernel depends on HAL traits. It does not `use` a BSP directly; the BSP is selected at build time.
+The current BSP uses QEMU `virt` with GICv2, PL011 and the aarch64 generic timer. GICv3 and Raspberry Pi 4 support remain future work. [`hal.md`](hal.md) expands the trait boundary; source definitions are in [`hal/src/`](../../hal/src/).
 
 ### What userspace looks like
 
-Userspace is a collection of tasks. A **task** in Tyrne is:
+The running userspace program is a trusted, BSP-embedded `hello` image, built from [`userland/hello/`](../../userland/hello/) under [ADR-0039](../decisions/0039-userland-build-pipeline.md). It has its own image/stack mappings, a kernel-owned capability table and a per-task EL1 kernel stack. The `Task` object holds identity and an address-space handle; execution context is held separately by the scheduler. No multi-threaded process model is exposed.
 
-- One or more threads.
-- A private address space, created by the kernel under capability control.
-- A capability table, referenced by the kernel when validating syscalls.
-- A start entry point.
-
-Tasks do not share memory by default. Shared memory is always the result of an explicit capability grant — the sender of a `MemoryRegionCap` allows the receiver to map the region — and is therefore auditable.
-
-Tasks are composed into a service graph whose shape is set at boot by the **init task** (see *Boot flow* below). The init task is a userspace program: it is not special, except that the kernel hands it the first capability bundle.
-
-Categories of userspace tasks expected to exist in Tyrne:
-
-- **Driver tasks** — one per hardware function, holding `MemoryCap` for that function's MMIO region and `IrqCap` for its interrupts.
-- **Service tasks** — filesystem, network, log, clock, crypto, storage. Stateless services are cheap to restart.
-- **Supervisor tasks** — watch over a set of services, restart them on fault (see [error handling](../standards/error-handling.md) §8).
-- **Application tasks** — end-user programs.
-
-The kernel is indifferent to which category a task belongs to; categorization is userspace convention.
+The BSP seeds a debug-console capability for this task. `hello` attempts `console_write` and then exits; the greeting appears only in debug builds. It is not an init service and does not spawn drivers. Init, service graphs, supervisors, general shared-memory grants and an untrusted image-loading interface are planned. No `MemoryRegionCap`-based mapping interface is exposed to EL0 today.
 
 ### Boot flow
 
-A boot carries execution from the reset vector through a narrow channel of trusted code into the first userspace task.
+The executable path is [`boot.s`](../../bsp-qemu-virt/src/boot.s), [`kernel_entry` / `kernel_main_high`](../../bsp-qemu-virt/src/main.rs), and the scheduler's [`add_user_task`](../../kernel/src/sched/mod.rs). The sequence below summarizes the current single-core path. [`boot.md`](boot.md) receives its detailed chapter refresh under [T-046](../analysis/tasks/phase-b2/T-046-docs-subsystem-chapters-refresh.md), which also rechecks this summary.
 
 ```mermaid
 sequenceDiagram
-    participant HW as Hardware
-    participant Boot as BSP reset / early-init
-    participant K as Kernel init (kernel_main)
-    participant Init as Userspace init task
-    HW->>Boot: reset vector
-    Boot->>Boot: set stack, install exception vectors, enable MMU
-    Boot->>Boot: zero BSS, copy DATA
-    Boot->>K: jump to kernel_main(boot_info)
-    K->>K: validate boot info from BSP
-    K->>K: initialize capability table root, physical allocator
-    K->>K: bring up scheduler, timer, interrupt dispatch
-    K->>K: construct init task's address space
-    K->>K: grant init task its root capability bundle
-    K->>Init: schedule init task
-    Init->>Init: parse boot config
-    Init->>Init: spawn drivers and services per config
-    Note over Init: steady state
+    participant Reset as BSP reset assembly
+    participant BSP as BSP Rust setup
+    participant S as Cooperative scheduler
+    participant U as EL0 hello
+    Reset->>Reset: mask DAIF, drop EL2 to EL1 if needed
+    Reset->>Reset: set stack, enable FP/SIMD, zero BSS
+    Reset->>BSP: kernel_entry (MMU initially off)
+    BSP->>BSP: install vectors, enable bootstrap identity MMU
+    BSP->>BSP: activate TTBR1, move PC/SP/VBAR high, disable TTBR0
+    BSP->>BSP: initialize PMM, wrap bootstrap AS, load hello
+    BSP->>BSP: configure GIC/timer, mint Task, seed caller table
+    BSP->>S: register EL1 B/A, EL0 hello and idle fallback; start
+    S->>U: activate task TTBR0, restore prepared context, ERET
+    U->>BSP: attempt console_write, then task_exit (SVCs)
+    BSP->>S: terminate current userspace task
+    S->>S: finish remaining demo work; idle
 ```
 
-The kernel hands execution to the init task once it is satisfied that:
+The BSP publishes the fail-closed empty caller table before starting scheduling and binds the real table/window to the current EL0 task. The EL1 IPC tasks and EL0 task interleave; the diagram does not require both EL1 tasks to finish before EL0 entry. There is no `BootInfo` handoff or userspace init/config parser in this path.
 
-- Capabilities, scheduling, IPC, memory, and interrupt dispatch are all live.
-- The init task has an address space, a stack, an entry point loaded, and its initial capability bundle installed.
-
-From that point, no code runs inside the kernel except in response to syscalls, interrupts, and faults.
+The translation split follows [ADR-0027](../decisions/0027-kernel-virtual-memory-layout.md), [ADR-0033](../decisions/0033-kernel-high-half-migration.md) including its single-offset revision notes, and [ADR-0028](../decisions/0028-address-space-data-structure.md). The trusted loading and task wiring are described in [`task-loader.md`](task-loader.md); [ADR-0037](../decisions/0037-el0-entry-context.md) governs EL0 entry; [ADR-0038](../decisions/0038-mmu-translate-and-user-access.md) defines USER-checked translation for syscall buffers.
 
 ### IPC
 
-IPC is the central operation of a microkernel. Tyrne will offer two IPC flavours, both mediated by the kernel, both capability-controlled.
+The kernel primitives in [`kernel/src/ipc/mod.rs`](../../kernel/src/ipc/mod.rs) check the endpoint capability and its `SEND` or `RECV` right. `ipc_send` returns `Delivered` when a receiver is waiting, otherwise `Enqueued`; a busy depth-one slot is an error. `ipc_recv` returns a message when available, otherwise registers a receiver and returns `Pending`. These primitive calls do not themselves block the scheduler.
 
-- **Synchronous rendezvous.** A sender issues `send(endpoint_cap, msg)` and blocks until a receiver pairs with the endpoint. Used for request-response. Inspired by seL4.
-- **Asynchronous notification.** A sender fires a one-bit (or small-bit-field) notification that accumulates in a notification object. Used for interrupts and low-rate signals. No block on the sender side.
-
-The two flavours use **independent** kernel objects. Synchronous rendezvous uses `EndpointCap` (kernel object `Endpoint`). Asynchronous notification uses `NotificationCap` (kernel object `Notification`); a notification accumulates bits in the `Notification` object — no endpoint is involved. The full state machine for both is in [`ipc.md`](ipc.md).
+This example shows primitive completion, also used by the EL0 dispatcher, without implying a blocking syscall:
 
 ```mermaid
 sequenceDiagram
     participant S as Sender
-    participant K as Kernel
+    participant K as Endpoint primitive
     participant R as Receiver
-    S->>K: syscall: send(ep_cap, msg)
-    K->>K: check SendCap rights on ep
-    alt Receiver already waiting
-        K->>R: copy message into receiver, transfer caps
-        K-->>R: return from recv()
-        K-->>S: return Ok
-    else Receiver not waiting
-        K->>K: enqueue sender on endpoint's send queue
-        Note over S: sender blocked
-        R->>K: syscall: recv(ep_cap)
-        K->>K: dequeue sender, deliver message, transfer caps
-        K-->>R: return message to recv()
-        K-->>S: unblock, return Ok
-    end
+    S->>K: ipc_send(endpoint cap, message)
+    K->>K: check SEND, preflight optional transfer
+    K-->>S: Enqueued (no receiver yet)
+    R->>K: ipc_recv(endpoint cap)
+    K->>K: check RECV, deliver pending message/cap
+    K-->>R: Received
 ```
 
-Capabilities can be transferred **with** a message. The kernel validates that the sender holds the capabilities claimed and that the receiver's capability table has room; on success, the capabilities move atomically with the message. This transfer, combined with the rule that capabilities are move-only Rust types, is the vehicle by which authority flows around the system. The full state machine and pre-flight discipline is documented in [`ipc.md`](ipc.md).
+The EL1 scheduler bridge in [`kernel/src/sched/mod.rs`](../../kernel/src/sched/mod.rs) adds cooperative behavior: receive blocks on `Pending`, resumes and consumes the completed receive; send unblocks/yields on `Delivered`, while `Enqueued` returns without switching. The EL0 dispatcher calls the bare primitives and returns encoded outcomes; it does not call these blocking bridge wrappers. [ADR-0017](../decisions/0017-ipc-primitive-set.md), [ADR-0021](../decisions/0021-raw-pointer-scheduler-ipc-bridge.md) and [ADR-0031](../decisions/0031-initial-syscall-set.md) provide the corresponding decisions.
+
+Capability transfer validates the source authority and delivery capacity before moving the capability; a pending send can hold it in endpoint state until receive. Notification objects are separate from endpoints and have kernel APIs, but no notification syscall is in v1. Userspace IRQ notification delivery is also future work.
 
 ### Address spaces
 
-Every userspace task has its own address space, backed by per-task translation tables that the kernel installs under capability control. The kernel has a single, boot-resident address space shared across CPUs; it is mapped into the upper half of every userspace address space as a kernel mapping inaccessible to userspace.
+[ADR-0028](../decisions/0028-address-space-data-structure.md) defines the `AddressSpace<M>` object. A userspace task's low mappings use its own `TTBR0_EL1` root; the privileged kernel remains under the shared `TTBR1_EL1` root rather than being copied into each userspace root. Kernel mappings deny EL0 access. The current fixed offset is `0xFFFF_FFFF_0000_0000`; physical kernel image base `0x4008_0000` therefore maps at `0xFFFF_FFFF_4008_0000`. This single-offset arrangement covers the v1 physical range below 4 GiB, not arbitrary future physical addresses. See [ADR-0033's revision notes](../decisions/0033-kernel-high-half-migration.md).
 
-Operations on an address space are always capability-gated:
+The current [`QemuVirtMmu::activate`](../../bsp-qemu-virt/src/mmu.rs) uses ASID 0 and flushes translations on root swaps, implementing [ADR-0028](../decisions/0028-address-space-data-structure.md). [ADR-0035](../decisions/0035-physical-memory-manager.md) supplies the allocator. `cap_create_address_space` checks derivation authority and narrowing; current `cap_map` / `cap_unmap` resolve an AddressSpace capability by kind but do not enforce per-operation MAP rights or a physical-memory ownership capability. They remain trusted kernel APIs. That hardening is required before exposing memory operations to untrusted callers in [Phase E](../roadmap/phases/phase-e.md).
 
-- `AddressSpaceCap` authorizes structural operations (create, destroy).
-- `MemoryRegionCap` authorizes mapping a particular physical region into an address space with a particular set of rights.
-- `UnmapCap` authorizes removal of existing mappings.
-
-No userspace task can observe or alter another task's address space without holding a capability that names that address space.
+The loader installs userspace image pages read/execute and stack pages read/write, non-executable. This does not mean the whole kernel enforces W^X: the current high-half RAM mapping is RWX-equivalent. Kernel section permissions are reserved under [ADR-0034](../decisions/README.md).
 
 ### Interrupts
 
-Interrupts are the event loop of the system.
-
-1. Hardware raises an IRQ. The kernel's ISR entry saves state and identifies the IRQ line through the `IrqController` trait.
-2. The kernel looks up the userspace task that holds the `IrqCap` for that line.
-3. The kernel fires an asynchronous notification on the task's IRQ endpoint.
-4. The kernel acknowledges the hardware and returns from the ISR.
-
-The userspace handler eventually runs, reads the notification, services the device (via MMIO through its `MemoryCap`), and issues `irq_eoi(irq_cap)` to signal completion. This keeps the kernel's ISR minimal (a constant-time dispatch) and pushes all policy into the handling task.
-
-See also [error-handling.md §9](../standards/error-handling.md) for the discipline expected inside ISR-like contexts.
+The BSP's vector entry saves context, identifies and acknowledges the interrupt through `IrqController`, dispatches the generic-timer handling path, performs EOI and returns. This supports the current timer/idle demonstration. It does not look up a userspace `IrqCap`, schedule a driver, or implement an EL0 `irq_eoi` call. Those are planned device-service mechanisms. The scheduler remains cooperative even while timer IRQs are enabled.
 
 ### Syscall surface
 
-The syscall surface is intentionally narrow. A first-cut enumeration (subject to evolution via ADR):
+The v1 register ABI uses `x8` for the number, `x0`–`x5` for arguments, and `x0` for return status with payload in `x1`–`x7`; see [ADR-0030](../decisions/0030-syscall-abi.md), [ADR-0031](../decisions/0031-initial-syscall-set.md), [`abi.rs`](../../kernel/src/syscall/abi.rs) and [`dispatch.rs`](../../kernel/src/syscall/dispatch.rs).
 
-- Task lifecycle: `task_create`, `task_destroy`, `task_yield`.
-- Address space: `as_create`, `as_destroy`, `as_map`, `as_unmap`.
-- IPC: `send`, `recv`, `reply_recv`, `notify`.
-- Capabilities: `cap_copy`, `cap_derive`, `cap_revoke`, `cap_drop`.
-- Interrupt control: `irq_claim`, `irq_eoi`.
-- Time: `time_now`, `time_sleep_until`.
-- Diagnostics: `debug_put` (serial console, gated by a debug capability; absent in hardened builds).
+| Number | Call | Current authority / behavior |
+|--------|------|------------------------------|
+| 1 | `ipc_send` | Endpoint capability with `SEND`; returns primitive outcome. |
+| 2 | `ipc_recv` | Endpoint capability with `RECV`; returns message or `Pending`. |
+| 3 | `task_yield` | Acts on the current caller only; no capability argument. Fails closed without a current task. |
+| 4 | `task_exit` | Terminates the current caller without returning; no capability argument. Fails closed without a current task. |
+| 5 | `console_write` | Recognized only with `debug_assertions`; requires `DebugConsole` / `CONSOLE_WRITE`, then validates the user range and USER mappings before output. |
 
-Every syscall validates capability bearers before performing side effects. A syscall returns a typed `Result` encoding per the [error handling standard](../standards/error-handling.md).
+Number 5 is rejected as `BadSyscallNumber` in normal release builds before capability lookup or output. The other internal task, address-space, capability and IRQ APIs are not additional syscalls. BSP binding verifies current task identity/generation, table and address space; incomplete binding uses an empty table/window and disables current-task control effects.
+
+The syscall input checks do not contain arbitrary EL0 execution faults: a non-SVC synchronous fault currently panics the whole kernel. `task_exit` removes the task from scheduling but does not reclaim all Task/AS/capability resources. These limits matter before untrusted userspace or repeated task creation is introduced; see [SECURITY.md](../../SECURITY.md).
 
 ## Invariants
 
-These are properties the overall architecture maintains. They are concrete enough to be exercised by tests and checked during review.
+These claims describe the current bounded paths, not a general assurance certificate:
 
-- **Capability-or-deny.** Every kernel-mode operation that affects authority fails unless the caller holds an appropriate capability.
-- **Mode separation.** Userspace code does not run in kernel mode; kernel code does not run in userspace.
-- **No kernel dereferencing of userspace pointers.** The kernel never follows a userspace pointer without routing through a validated mapping.
-- **Drivers in userspace.** No driver code runs in privileged mode. Every driver is a task holding `MemoryCap` + `IrqCap`.
-- **ISR minimality.** The kernel's interrupt entry performs at most: state save, IRQ identification, notification fire, EOI, return. Driver-specific logic is not in the kernel.
-- **Blob-free kernel.** No proprietary binary firmware or driver is linked into the kernel.
-- **Explicit shared memory.** Memory shared between tasks exists only through capability grants; ambient sharing is impossible.
-- **Move-only capabilities.** Capabilities are Rust move-only tokens; they cannot be silently duplicated.
+- Endpoint operations validate object identity, capability kind and the required `SEND` / `RECV` right before message state changes.
+- Capability tables remain kernel-owned; `Capability` cannot be duplicated through Rust `Copy` / `Clone`.
+- The real `hello` image executes at EL0 with its own low mappings, while exception handling remains in the privileged high half.
+- Debug-console output requires both recognition of syscall 5 and its capability/buffer checks; normal release rejects that number.
+- User-buffer copying uses checked USER mappings rather than directly dereferencing an unchecked userspace pointer.
+- Scheduling is single-core and cooperative; IRQ delivery alone does not preempt the current task.
+- No proprietary binary firmware or driver is linked into the kernel.
 
 ## Trade-offs
 
-The architecture is chosen for the assurance and portability properties above; it pays for them in known ways.
-
-- **IPC on the hot path.** Every cross-task operation crosses an address-space boundary. Mitigation: synchronous rendezvous has a fast path that avoids unnecessary copies; the message encoding is picked to keep common paths small.
-- **More design discipline per subsystem.** Adding a feature to Tyrne usually means designing a service interface, a capability model, and an IPC contract before writing behaviour. This is a feature for long-term reliability and a cost for short-term velocity. We accept it.
-- **Driver authors write constrained userspace.** Drivers run under a scheduler they do not control, with a fixed memory budget they are granted rather than allocated. Tooling and guides (planned) will reduce this cost.
-- **Capability-based thinking is unfamiliar.** Most developers arrive with POSIX intuitions. Documentation, the glossary, and skill files are how we absorb this cost.
+- Fixed-capacity arenas and a trusted embedded image keep the first boot path small, but do not provide general process creation, supervision or reclamation.
+- ASID 0 plus full root-swap invalidation simplifies the current translation model at a cost to future switching performance.
+- Privileged board drivers are sufficient for boot and diagnostics; the intended userspace driver model needs additional authority and IRQ interfaces.
+- Capability-based interfaces require explicit authority design. Existing kind-only memory helpers and fail-stop paths need hardening before wider exposure.
 
 ## Open questions
 
-Each of the following will be answered by a future ADR before the corresponding subsystem is implemented.
-
-- Final IPC primitive set. Pure seL4-style rendezvous? Extended with fast-path fastcalls? Call-with-reply-capability as a single syscall?
-- Async runtime model in userspace. Adopt an existing `no_std` async runtime, or write a minimal Tyrne-specific one?
-- Capability derivation tree depth limits. Unbounded, bounded with explicit limit, or bounded with revocation cascade?
-- Behaviour on task fault. Policy decisions pushed to supervisors; kernel mechanism needs to be pinned down.
-- `no_std` allocator in the kernel. First cut: compile-time-sized pools only (Hubris-style). Whether and when to introduce a dynamic allocator is open.
+- Reply-capability/call operations beyond the accepted v1 IPC set; any extension needs its own decision.
+- General image format, writable sections and safe untrusted loading before a richer userspace runtime.
+- Fault containment, supervision, complete task/address-space reclamation and physical-memory authority.
+- Userspace async runtime and service composition.
+- SMP scheduling, synchronization and hardware BSPs after their roadmap gates open.
 
 ## References
 
-- [ADR-0001](../decisions/0001-microkernel-architecture.md) — capability-based microkernel choice.
-- [ADR-0002](../decisions/0002-implementation-language-rust.md) — Rust as the implementation language.
-- [ADR-0004](../decisions/0004-target-platforms.md) — target platforms and tiers.
-- [Architectural principles](../standards/architectural-principles.md) — P1 through P12.
-- [Glossary](../glossary.md).
-- seL4 reference manual — https://sel4.systems/
-- Hubris architecture — https://hubris.oxide.computer/
-- Fuchsia / Zircon concepts — https://fuchsia.dev/fuchsia-src/concepts
-- Klein et al., *"seL4: Formal Verification of an OS Kernel"* (2009).
+- [Architecture index](README.md) — chapter coverage and verification convention.
+- [Architectural principles](../standards/architectural-principles.md) — goals and required design discipline.
+- [Glossary](../glossary.md) — project terminology.
+- [T-045 source and runtime verification](../analysis/reports/2026-10-13-t045-architecture-verification.md) — exact source baseline, retained debug/release traces and manual exception inspection.
