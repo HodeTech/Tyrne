@@ -566,8 +566,11 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
         echo "n)]\`; for any \`n < 100\` the index rounds up to \`n\` and \`p99 == max\`"
         echo "by construction. The number is reported as-computed (matching p10 /"
         echo "p50 / p90's convention) but readers should not over-read it as a"
-        echo "tail-latency signal at small \`n\`. p99 becomes statistically"
-        echo "informative when \`n >= 100\`."
+        echo "tail-latency signal at small \`n\`. At \`n = 100\`, rank 99 selects"
+        echo "the second-highest sample. For \`n >= 100\`, the selected rank is"
+        echo "below \`n\`; tied values can still equal the maximum. This rank"
+        echo "transition alone establishes no statistical reliability. Interpret"
+        echo "tail estimates with the sample count and measurement context."
         echo
         echo "## Metric — boot-to-end elapsed (nanoseconds)"
         echo

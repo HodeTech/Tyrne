@@ -71,8 +71,8 @@ The index now makes that distinction explicit without relocation or invented pro
 
 T-033's R1 numbered headings contain all five roles; an [additive role map](../reviews/code-reviews/2026-10-12-t033-qemu-tooling.md#supplied-review-role-heading-reconciliation-2026-10-12) makes them directly discoverable without rewriting the original review.
 The T-030 security index previously summarized the cumulative final range, not an incorrect R1 claim; it now names R1 and R2 separately.
-`MP-1` in the security master plan and `MP-33` in some historical artifacts denote the same extra allocation-exhaustion item after the 32 standard items, not different or missing checks.
-New checklist references use `MP-1`; historical labels and their 33 dispositions remain preserved.
+`MP-1` in later review artifacts and `MP-33` in some earlier artifacts denote the same unnumbered security-master-plan allocation-exhaustion requirement after the 32 standard items, not different or missing checks.
+The latest A R2 checklist uses `MP-1`; historical labels and their 33 dispositions remain preserved.
 
 Historical local/hosted performance reports retain their original source identity, metadata and raw measurements.
 New metadata minimization does not retroactively certify or redact every auxiliary artifact, arbitrary successful tool output or older report.
@@ -80,6 +80,21 @@ The [first hosted snapshot](perf-baseline-2026-10-12-t035-hosted-check.md) keeps
 The [follow-up hosted snapshot](perf-baseline-2026-10-12-t035-pr48-followup-hosted-check.md) follows the same convention and records the changed harness at clean full `50ab72bf2c15a4d34be25a1491a357313e50390a`.
 Its SHA-256 is `24c143abb0151de1eb3fb38ff3d74f3e060effd2a6c492cc8389bebca565ae85`; this is the report-file digest, not a locally recomputed artifact-archive digest.
 All 20 raw samples independently reproduce p10/p50/p90 `5,232,672 / 5,473,392 / 7,277,776 ns`; no calibrated or cross-host regression verdict follows.
+
+## Additional PR feedback and first-round corrections (2026-10-12)
+
+[PR feedback PR48-CR-01](https://github.com/HodeTech/Tyrne/pull/48#discussion_r4245197038), independently corroborated by both fresh B reviewers, identified an inherited Low overclaim in the generated p99 methodology.
+The original reports say p99 becomes statistically informative at `n >= 100`; that sentence is superseded by this correction and is not an endorsed reliability guarantee.
+Under nearest rank, `ceil(0.99 * 100) = 99`, the second-highest sample; below 100 the selected rank is the maximum.
+From 100 onward the selected rank is below the final rank, but tied values can still equal the maximum.
+Crossing that rank boundary alone establishes no statistical reliability; interpret tail estimates with sample count and measurement context.
+The generator now states those facts without changing calculations, raw measurements or validity thresholds.
+Captured report bytes/digests remain intact, including their historical interpretive sentence; the recorded 20-sample p10/p50/p90 values remain correct.
+
+B Round 1 also found Low R1-INT-01: this reconciliation had attributed literal `MP-1` to the master plan, whose allocation-exhaustion requirement is unnumbered.
+The paragraph above now attributes the labels to the actual review artifacts and the common requirement to the master plan.
+These are coordinator-recorded corrections after the first independent round; fresh cumulative Round 2 must verify the changed source.
+The full [B code R1](../reviews/code-reviews/2026-10-12-pr48-docs-followup-r1.md) and [distinct B integration R1](../reviews/code-reviews/2026-10-12-pr48-docs-integration-r1.md) retain both findings as open at their immutable reviewed source `5816c93`.
 
 ## Remaining review and merge boundary
 
