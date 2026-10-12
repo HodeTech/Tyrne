@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -90,3 +90,4 @@ The master-plan list is also edited by [T-049](T-049-review-indices-sync.md) (di
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: named stale sentences, a marker of unspecified form and edit history treated as coverage. Approved replacement: whole-chapter sweep, date/source/task freshness, separate edit/coverage provenance and fresh debug/release raw traces with manual SVC inspection; T-046 coherence recheck. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-13 | Codex (AI agent) | Step 2 started after T-051 completed both fresh code/security rounds (`d6cb853`). Apply the architecture-writing procedure, source/date/task freshness convention, whole overview/loader sweep and closure hook; fresh matching-profile debug/release traces are captured before prose edits. T-046 must subsequently recheck overview/boot/index coherence. |
