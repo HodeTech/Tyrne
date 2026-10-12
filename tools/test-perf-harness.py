@@ -35,7 +35,8 @@ echo "tyrne: boot-to-end elapsed = $((count * 1000000)) ns"
 ''',
             "bin/qemu-system-aarch64": "#!/usr/bin/env bash\necho 'QEMU fixture version'\n",
             "bin/rustc": "#!/usr/bin/env bash\necho 'rustc fixture compiler'\n",
-            "bin/rustup": "#!/usr/bin/env bash\necho 'nightly-fixture-aarch64-host (directory override)'\n",
+            "bin/rustup": "#!/usr/bin/env bash\necho \"nightly-fixture-aarch64-host (overridden by '$PERF_PRIVATE_PATH/rust-toolchain.toml')\"\n",
+            "bin/uname": "#!/usr/bin/env bash\n[[ \"$*\" == -srm ]] || exit 64\necho 'Darwin 27.0.0 arm64'\n",
             "bin/git": '''#!/usr/bin/env bash
 case "$*" in
  'rev-parse HEAD') echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
@@ -51,7 +52,8 @@ esac
             path.write_text(source)
             path.chmod(0o755)
         self.env = dict(os.environ, PATH=str(self.root / "bin") + os.pathsep + os.environ["PATH"],
-                        PERF_COUNTER=str(self.root / "counter"), PERF_STATE="clean", PERF_SAMPLES="all")
+                        PERF_COUNTER=str(self.root / "counter"), PERF_STATE="clean", PERF_SAMPLES="all",
+                        PERF_PRIVATE_PATH=str(self.root / "private checkout"))
 
     def run_harness(self, iterations=3):
         return subprocess.run(["/bin/bash", str(self.root / "tools/perf-harness.sh"),
@@ -72,6 +74,28 @@ esac
                      "| p50 | 10,000,000 | 10.000 |"):
             self.assertIn(text, report)
         self.assertEqual(len(report.split("```text\n")[1].split("```", 1)[0].splitlines()), 20)
+        self.assertIn("| Host OS / release / machine | `Darwin 27.0.0 arm64` |", report)
+        self.assertIn("| Active toolchain | `nightly-fixture-aarch64-host` |", report)
+        self.assertNotIn(self.env["PERF_PRIVATE_PATH"], report)
+        self.assertNotIn("overridden by", report)
+
+    def test_unavailable_metadata_does_not_discard_measurements(self):
+        for command, field in (("rustc", "Rust compiler"), ("rustup", "Active toolchain"),
+                               ("qemu-system-aarch64", "QEMU"), ("uname", "Host OS / release / machine")):
+            path = self.root / "bin" / command
+            original = path.read_text()
+            for status in (1, 127):
+                with self.subTest(command=command, status=status):
+                    path.write_text(f"#!/usr/bin/env bash\necho 'private metadata canary'\nexit {status}\n")
+                    run = self.run_harness()
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    report = self.report()
+                    text = report.read_text()
+                    self.assertIn(f"| {field} | `(unknown)` |", text)
+                    self.assertNotIn("private metadata canary", text)
+                    self.assertIn("| Iterations valid | 3 |", text)
+                    report.unlink()
+            path.write_text(original)
 
     def test_report_overwrite_refused_without_modification(self):
         self.assertEqual(self.run_harness().returncode, 0)

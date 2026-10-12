@@ -148,7 +148,7 @@ for marker in "${REQUIRED_MARKERS[@]}"; do
         rc=1
     fi
 done
-if grep -qE "tyrne panic|Translation fault|Permission fault|Data Abort|Prefetch Abort|Unallocated Instruction" "$LOG"; then
+if grep -qE "tyrne panic|Translation fault|Permission fault|Data Abort|Prefetch Abort|Undefined Instruction" "$LOG"; then
     echo "FAIL: a panic / CPU-fault class appeared in the trace" >&2
     rc=1
 fi

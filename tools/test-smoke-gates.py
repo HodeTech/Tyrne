@@ -18,7 +18,7 @@ EXIT = "tyrne: userspace task exited"
 COMPLETE = "tyrne: all tasks complete"
 FAULTS = (
     "tyrne panic", "Translation fault", "Permission fault", "Data Abort",
-    "Prefetch Abort", "Unallocated Instruction",
+    "Prefetch Abort", "Undefined Instruction",
 )
 
 

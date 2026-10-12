@@ -102,6 +102,28 @@ class ProtectionTests(unittest.TestCase):
         self.assertEqual(self.remote.writes(), [])
         self.assertEqual(self.remote.reads, 2)
 
+    def test_captured_live_rest_shape_preserves_full_policy(self):
+        path = Path(__file__).with_name("fixtures") / "main-protection-2026-10-12.json"
+        response = M.decode(path.read_text())
+        self.assertEqual(M.normalize(response, deepcopy(BASE["classic_rule"])), BASE)
+
+    def test_uncaptured_response_extensions_fail_closed(self):
+        # Actor/enforcement fields can carry policy; branch-summary metadata
+        # is not evidence that it belongs to this protection endpoint.
+        for location, field, value in (
+            ((), "name", "main"), ((), "protection_url", "https://api.github.com/protection"),
+            (("required_status_checks",), "enforcement_level", "non_admins"),
+            (("required_pull_request_reviews",), "dismissal_restrictions", {"users": [], "teams": [], "apps": []}),
+            (("required_pull_request_reviews",), "bypass_pull_request_allowances", {"users": [{"id": 1}], "teams": [], "apps": []}),
+        ):
+            response = raw(BASE)
+            target = response
+            for part in location:
+                target = target[part]
+            target[field] = value
+            with self.subTest(field=field), self.assertRaises(M.PolicyError):
+                M.normalize(response, BASE["classic_rule"])
+
     def test_baseline_drift_stops_before_evidence_or_write(self):
         self.remote.state["protection"]["required_linear_history"] = False
         self.rejected()

@@ -42,6 +42,10 @@ cd "$TREE"
 run_negative() {
     local diagnostic="$1"
     shift
+    [[ -n "$diagnostic" ]] || {
+        echo "FAIL: regression probe requires a nonempty diagnostic" >&2
+        exit 1
+    }
     local rc=0
     "$@" > "$PROBE_DIR/diagnostic.log" 2>&1 || rc=$?
     if [[ "$rc" -eq 0 ]]; then
@@ -76,6 +80,21 @@ run_negative() {
 
 case "$MODE" in
     --arm-host)
+        ARM_COMMAND=(cargo clippy --workspace --exclude tyrne-bsp-qemu-virt --all-targets -- -D warnings)
+        # Establish that this exact command accepts the unmodified private
+        # baseline. Otherwise an unrelated no_std failure could satisfy the
+        # negative assertion without being caused by the cfg mutation.
+        python3 - <<'PROBE'
+from pathlib import Path
+source = Path("userland/hello/src/main.rs").read_text()
+if source.count('all(target_arch = "aarch64", target_os = "none")') != 6:
+    raise SystemExit("FAIL: ARM probe expected exactly six hello target predicates")
+PROBE
+        if ! "${ARM_COMMAND[@]}" > "$PROBE_DIR/baseline.log" 2>&1; then
+            cat "$PROBE_DIR/baseline.log" >&2
+            echo "FAIL: unmodified ARM clippy baseline did not pass; refusing negative assertion" >&2
+            exit 1
+        fi
         # Restore only hello's six original arch-only predicates in the copy.
         # Keep build.rs and the syscall shim unchanged to isolate this hazard.
         python3 - <<'PROBE'
@@ -88,7 +107,7 @@ if source.count(gate) != 6:
 path.write_text(source.replace(gate, 'target_arch = "aarch64"'))
 PROBE
         # shellcheck disable=SC2016  # Backticks are literal compiler diagnostic data, not commands.
-        run_negative 'error[E0152]: found duplicate lang item `panic_impl`' cargo clippy --workspace --exclude tyrne-bsp-qemu-virt --all-targets -- -D warnings
+        run_negative 'error[E0152]: found duplicate lang item `panic_impl`' "${ARM_COMMAND[@]}"
         ;;
     --shell)
         cat > tools/ci-lint-probe.sh <<'PROBE'

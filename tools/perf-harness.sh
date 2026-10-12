@@ -248,15 +248,19 @@ run_with_timeout() {
 
 START_EPOCH=$(date +%s)
 START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-HOST_UNAME=$(uname -a)
+HOST_UNAME=$(uname -srm 2>/dev/null) || HOST_UNAME="(unknown)"
 # `head -n 1` would normally close stdin after one line, sending SIGPIPE to
 # the upstream `qemu-system-aarch64`; `set -o pipefail` then aborts. Use awk
 # with a `; exit` to consume only the first line without provoking SIGPIPE.
-QEMU_VERSION=$(qemu-system-aarch64 --version | awk 'NR==1 { print; exit }')
+QEMU_VERSION=$(qemu-system-aarch64 --version 2>/dev/null | awk 'NR==1 { print; exit }') || QEMU_VERSION="(unknown)"
 GIT_HEAD=$(cd "$REPO_ROOT" && git rev-parse HEAD 2>/dev/null || echo "(unknown)")
 GIT_BRANCH=$(cd "$REPO_ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(unknown)")
-RUST_VERSION=$(cd "$REPO_ROOT" && rustc -V)
-RUST_TOOLCHAIN=$(cd "$REPO_ROOT" && rustup show active-toolchain)
+RUST_VERSION=$(cd "$REPO_ROOT" && rustc -V 2>/dev/null) || RUST_VERSION="(unknown)"
+RUST_TOOLCHAIN=$(cd "$REPO_ROOT" && rustup show active-toolchain 2>/dev/null) || RUST_TOOLCHAIN="(unknown)"
+# The toolchain identifier retains the version/host triple; rustup's override
+# explanation can contain a private absolute checkout path.
+RUST_TOOLCHAIN=${RUST_TOOLCHAIN%% *}
+[[ -n "$RUST_TOOLCHAIN" ]] || RUST_TOOLCHAIN="(unknown)"
 GIT_TRACKED_STATE="unknown"
 if [[ "$GIT_HEAD" != "(unknown)" ]] && GIT_TRACKED_STATUS=$(cd "$REPO_ROOT" && git status --porcelain --untracked-files=no); then
     if [[ -n "$GIT_TRACKED_STATUS" ]]; then
@@ -536,7 +540,7 @@ if [[ -n "$REPORT_CONTEXT" ]]; then
         echo "| Rust compiler | \`${RUST_VERSION}\` |"
         echo "| Active toolchain | \`${RUST_TOOLCHAIN}\` |"
         echo "| QEMU | \`${QEMU_VERSION}\` |"
-        echo "| Host \`uname -a\` | \`${HOST_UNAME}\` |"
+        echo "| Host OS / release / machine | \`${HOST_UNAME}\` |"
         echo "| Wall-clock (full harness run) | ${WALL_S} s |"
         echo
         echo "## Methodology"
