@@ -484,3 +484,7 @@ Fresh `b21_step7_round2_code` and `b21_step7_round2_integration`, each requested
 ## Subsequent live registration
 
 After both fresh rounds, coordinator added exactly the ARM check from remotely green source bf20ec9. The full policy immediately before and after was compared against the prior five-check baseline: all six app bindings15368, strict and every non-status setting were preserved. This subsequent action does not rewrite either immutable review verdict. Final PR and first merged main remain pending.
+
+## Late correction follow-up (2026-10-12)
+
+The Step8 [fresh whole-delta Round2 code/security reviews](2026-10-12-t035-ci-hygiene-tail.md) both Approve `69ac515..7deb16e`, with no new finding. The exact two-diagnostic/exit101 correction passes actual Apple ARM E0152 and actual hosted Linux ARM unwind rejection; corrected run38187736985 passes all seven jobs. All original step7 reports/observations above remain unchanged. The history-only development merge `cfc8872` incorporates the already-merged kickoff PR#47; before/after full trees equal7deb, preserving reviewed SHAs. Final PR and first-main evidence remain separate.
