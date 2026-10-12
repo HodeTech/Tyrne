@@ -6,7 +6,7 @@
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
-- **Informs:** none
+- **Informs:** [T-056](T-056-docs-consistency-automation.md)
 - **ADRs required:** [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md) (Accepted 2026-10-12; reviewed execution and corpus policy)
 
 ---
@@ -65,3 +65,4 @@ Verify each statement against its source of truth first (`.cargo/config.toml`, `
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: panic=abort kernel/BSP-only, alias canonicalization and eight narrow corrections. Approved replacement: target-wide flags including userland, recommended spellings with valid historical aliases/extensions, adjacent missing_docs/audit-vet/smoke truth and no lint-level change. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-12 | Codex (AI agent), coordinator cross-reference check | ROOT-01: added the T-056 Informs backlink to match its newly explicit prerequisite/surface reference, following start-task step 9; no dependency scope or task state changed. |

@@ -6,7 +6,7 @@
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-032](T-032-panic-family-denies-hal-bsp.md)
-- **Informs:** none
+- **Informs:** [T-056](T-056-docs-consistency-automation.md)
 - **ADRs required:** [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md) (Accepted 2026-10-12; reviewed execution and corpus policy); [ADR-0042](../../../decisions/0042-descriptive-test-names.md) (Accepted; supersedes ADR-0041 before the naming edit)
 
 ---
@@ -82,3 +82,4 @@ The test count is approximate (365 `#[test]` attributes by `grep`; 345 by a scra
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: naming alternatives without explicit motivating reference, automatic register-dump follow-up and a one-line unimplemented deny option. Approved replacement: Accepted ADR-0042 guidance plus testing References/downstream search; current panic behavior without automatic follow-up; review-only unimplemented and actual deny/logging/fault scope, with no lint/runtime change. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-12 | Codex (AI agent), coordinator cross-reference check | ROOT-01: added the T-056 Informs backlink to match its newly explicit prerequisite/surface reference, following start-task step 9; no dependency scope or task state changed. |
