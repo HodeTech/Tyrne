@@ -111,11 +111,11 @@ Not applicable — this ADR settles documentation and CI policy; there is no ker
 ### Dependency chain
 
 1. Explicit maintainer Acceptance after the [write-adr](../../.agents/skills/write-adr/SKILL.md) careful re-read.
-2. [T-054](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md) establishes purpose identities and repairs live references.
-3. [T-048](../analysis/tasks/phase-b2/T-048-phase-b-task-corpus-sync.md) and [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) reconcile task/review indexes and baseline links.
-4. [T-055](../analysis/tasks/phase-b2/T-055-adr-append-only-corrections.md) reconciles the existing ADR metadata anomalies with append-only record corrections.
-5. [T-047](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md) separates live roadmap state from historical snapshots.
-6. [T-052](../analysis/tasks/phase-b2/T-052-standards-docs-reality-sync.md) and [T-053](../analysis/tasks/phase-b2/T-053-standards-docs-mechanical-fixes.md) make standards truthful and opening fences tagged.
+2. [T-048](../analysis/tasks/phase-b2/T-048-phase-b-task-corpus-sync.md) and [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) reconcile task/review indexes and baseline links.
+3. [T-055](../analysis/tasks/phase-b2/T-055-adr-append-only-corrections.md) reconciles the existing ADR metadata anomalies with append-only record corrections.
+4. [T-052](../analysis/tasks/phase-b2/T-052-standards-docs-reality-sync.md) and [T-053](../analysis/tasks/phase-b2/T-053-standards-docs-mechanical-fixes.md) make standards truthful and opening fences tagged.
+5. [T-054](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md) establishes purpose identities and repairs live references.
+6. [T-047](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md) separates live roadmap state from historical snapshots.
 7. [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) implements the checker, isolated fixtures, usage documentation and required CI step after the corpus starts green. Verify it on macOS locally and Linux in hosted CI.
 
 The decision takes effect on Acceptance; the operational gate is delivered and verified by T-056, not by filing this proposal.
