@@ -33,22 +33,22 @@ Stay on `development`; negative probes use disposable copies, never alternate br
 
 The scope includes release kernel clippy and release EL0 smoke now. The current hello program ignores a rejected console call and exits cleanly, so release smoke can require the greeting's absence plus task exit/completion without changing userland or the syscall gate. T-065 later re-keys these expectations to its explicit console feature; T-067 remains the separate adversarial-image task. No release runtime coverage is claimed until the actual local and hosted runs pass.
 
-**Sequence implementation status (2026-10-12):** Steps 1–8 are implemented, checked, committed and reviewed twice by fresh independent agents. All eight tasks are In Review in [PR #48](https://github.com/HodeTech/Tyrne/pull/48) for the maintainer. The first PR-event run 38189254381 at `acd00133742235f02dae54e5f3f02116b4a02cfa` passed all seven jobs and six required contexts; subsequent documentation commits are checked separately. The [phase record](../../../roadmap/phases/phase-b2.md) maps all twelve Track B.2-1 findings to deliveries; each task links full reviews and source-bound evidence. The late T-036 diagnostic-race fix is included in Step 8's fresh second round and corrected hosted run 38187736985. Six app-bound required checks are live; the full versioned policy matches read-back. First merged-main runs and performance dispatch remain merge-dependent; no sequence implementation is deferred. This status does not complete other tracks or close Phase B.2.
+**Sequence completion status (2026-10-12):** Steps 1–8 are Done after the maintainer merged [PR #48](https://github.com/HodeTech/Tyrne/pull/48) at `c16997e003fbd1726d1205734380394781c52002` and authorized T-030–T-037 promotion, date_done 2026-10-12. Each step was committed and reviewed twice by fresh independent agents. First merged-main [CI 38217531542](https://github.com/HodeTech/Tyrne/actions/runs/38217531542) passes all seven jobs, including native ARM/Miri and debug/release guests; [performance dispatch 38217799773](https://github.com/HodeTech/Tyrne/actions/runs/38217799773) passes on clean main with 20 valid/0 failed samples. Six required app-bound checks remain live and the complete versioned policy matches read-back. The [post-merge retrospective](../../reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) and [exact-byte main report](../../reports/perf-baseline-2026-10-12-t035-main-dispatch-check.md) retain permanent evidence. This completes Track B.2-1 and prerequisite T-037, without closing other tracks or Phase B.2.
 
-The [supplied PR48 review reconciliation](../../reports/2026-10-12-pr-48-supplied-review-reconciliation.md) tracks all 17 additional findings, corrections and evidence boundaries. Follow-up A completed both fresh code/security rounds; follow-up B completed both fresh code/integration rounds. Both second rounds Approve their respective cumulative source with zero new findings and verified first-round corrections. The corrected [hosted performance snapshot](../../reports/perf-baseline-2026-10-12-t035-pr48-p99-followup-hosted-check.md) is bound to clean source `646ba33`; PR48 records final publication-tip CI separately. Task statuses and merge-dependent evidence remain unchanged.
+The [supplied PR48 review reconciliation](../../reports/2026-10-12-pr-48-supplied-review-reconciliation.md) tracks all 17 additional findings, corrections and evidence boundaries. Follow-up A completed both fresh code/security rounds; follow-up B completed both fresh code/integration rounds. Both second rounds Approve their respective cumulative source with zero new findings and verified first-round corrections. The corrected [hosted performance snapshot](../../reports/perf-baseline-2026-10-12-t035-pr48-p99-followup-hosted-check.md) is bound to clean source `646ba33`; PR48 records final publication-tip CI separately. Pre-merge source identities remain unchanged; the completion status above supersedes earlier task/merge-pending states.
 
 ## Index
 
 | ID | Title | Track | Status | Depends on |
 |----|-------|-------|--------|------------|
-| [T-030](T-030-ci-release-profile-gate.md) | Gate the release profile in CI (build, test, release-only regression tests) | B.2-1 | In Review | — |
-| [T-031](T-031-ci-userland-clippy-and-shellcheck.md) | Clippy the userland crates and shellcheck the tooling scripts in CI | B.2-1 | In Review | — |
-| [T-032](T-032-panic-family-denies-hal-bsp.md) | Deny panic-family lints in `tyrne-hal` and `tyrne-bsp-qemu-virt` | B.2-1 | In Review | — |
-| [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 (+B.2-3) | In Review | — |
-| [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | In Review | T-030, T-033 |
-| [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | In Review | T-034, T-036 |
-| [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | In Review | T-037 |
-| [T-037](T-037-userland-bare-metal-cfg-gate.md) | Fix the bare-metal target gate in the userland crates | B.2-3 | In Review | — |
+| [T-030](T-030-ci-release-profile-gate.md) | Gate the release profile in CI (build, test, release-only regression tests) | B.2-1 | Done | — |
+| [T-031](T-031-ci-userland-clippy-and-shellcheck.md) | Clippy the userland crates and shellcheck the tooling scripts in CI | B.2-1 | Done | — |
+| [T-032](T-032-panic-family-denies-hal-bsp.md) | Deny panic-family lints in `tyrne-hal` and `tyrne-bsp-qemu-virt` | B.2-1 | Done | — |
+| [T-033](T-033-qemu-tooling-smp-and-timeout.md) | Add `--smp N` and a usage-checked `--timeout` to the QEMU tooling | B.2-1 (+B.2-3) | Done | — |
+| [T-034](T-034-ci-qemu-smoke-job.md) | Add a merge-gating `qemu-smoke` CI job | B.2-1 | Done | T-030, T-033 |
+| [T-035](T-035-ci-hygiene-tail.md) | Track and land the CI hygiene tail (perf-harness schedule, merge gates as code) | B.2-1 | Done | T-034, T-036 |
+| [T-036](T-036-ci-arm64-host-check-job.md) | Add an arm64 host-check CI job *(polish; optional for exit)* | B.2-1 | Done | T-037 |
+| [T-037](T-037-userland-bare-metal-cfg-gate.md) | Fix the bare-metal target gate in the userland crates | B.2-3 | Done | — |
 | [T-038](T-038-console-write-x2-clobber.md) | Mark `x2` as clobbered in the `console_write` syscall shim | B.2-3 | Ready | T-037 |
 | [T-039](T-039-console-write-bounded-spin-and-length-cap.md) | Bound `console_write`'s per-byte spin and cap its length | B.2-3 | Draft | — |
 | [T-040](T-040-mapperflush-asid-discriminant.md) | Add an AS/ASID discriminant to `MapperFlush` | B.2-3 | Draft | — |
@@ -139,6 +139,21 @@ flowchart LR
     T047[T-047 roadmap sync] --> T074
     T054 --> T074
 ```
+
+## Remaining work after Track B.2-1
+
+There are 46 tasks: 8 Done, 30 Ready and 8 Draft. The 38 remaining tasks have primary ownership below; shared items such as T-064 documentation do not add a second task. T-056 is optional polish; the other 37 remain phase-exit work under their individual criteria. No new implementation is started by this bookkeeping update.
+
+| Scope | Remaining tasks | Count |
+|-------|-----------------|------:|
+| B.2-2 documentation cascade | T-045–T-056 | 12 |
+| B.2-3 correctness and robustness | T-038–T-044 | 7 |
+| B.2-4 code quality and API design | T-057–T-068 | 12 |
+| B.2-5 unsafe-audit and doc comments | T-069–T-072; T-064 also supplies shared docs | 4 |
+| B.2-6 performance decisions | T-073 | 1 |
+| Readiness and phase closure | T-074, T-075 | 2 |
+
+**Next candidate:** HIGH [T-038](T-038-console-write-x2-clobber.md), Ready after T-037; no new ADR required, but UNSAFE-2026-0033 amendment, distinct security review and userland/QEMU verification are mandatory. Then prioritize the remaining small correctness fixes T-041–T-044 and high-visibility T-051, following the existing waves below. T-039/T-040 and other decision-bearing tasks need their recorded decisions before implementation. The full ADR-0040 scope checkpoint follows CI and HIGH-correctness work, not this CI wave alone.
 
 ## Recommended order
 

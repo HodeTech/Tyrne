@@ -7,7 +7,7 @@ The roadmap is **the plan** — what we intend to build and in what order. It an
 
 The plan is separate from the work. Individual tasks and reviews live under [`../analysis/`](../analysis/) and are cross-linked from here. See [ADR-0013](../decisions/0013-roadmap-and-planning.md) for the rationale behind this split.
 
-**Track B.2-1 implementation (2026-10-12):** The [eight-step sequence](../analysis/tasks/phase-b2/README.md) is implemented on `development`, with both fresh review rounds per step, verified fixes and local/hosted evidence. Tasks remain In Review for the final maintainer PR; the [phase file](phases/phase-b2.md) maps all twelve opening findings to their implementation/review records. The whole Phase B.2 exit bar still gates C and D.
+**Track B.2-1 completion (2026-10-12):** The [eight-step sequence](../analysis/tasks/phase-b2/README.md) is merged in [PR #48](https://github.com/HodeTech/Tyrne/pull/48); T-030–T-037 are Done with maintainer authorization. Both fresh rounds per step and verified fixes are recorded. First-main CI and default-branch performance dispatch passed; the [post-merge retrospective](../analysis/reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) records the evidence and remaining scope. Next candidate: HIGH T-038 (Ready, not started). The whole Phase B.2 exit bar still gates C and D.
 
 ## What lives here
 

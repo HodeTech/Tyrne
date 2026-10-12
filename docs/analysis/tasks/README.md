@@ -19,7 +19,7 @@ tasks/
 
 Task IDs (`T-NNN`) are sequential **across the whole project**, not restarted per phase. The phase folder structure is for reading convenience, not for namespacing IDs.
 
-**Phase B.2 Track B.2-1 (2026-10-12):** The [approved eight-step sequence](phase-b2/README.md) is implemented on `development`, including optional T-036 and prerequisite T-037. Each step has two fresh independent rounds; verified findings are fixed and committed. All eight tasks remain In Review for final maintainer review. PR-specific, first-merged-main and default-branch dispatch evidence are recorded only when they exist; other Phase B.2 tasks retain their own scope/status.
+**Phase B.2 Track B.2-1 (2026-10-12):** The [approved eight-step sequence](phase-b2/README.md) is merged in [PR #48](https://github.com/HodeTech/Tyrne/pull/48), including optional T-036 and prerequisite T-037. T-030–T-037 are Done with date_done 2026-10-12 and explicit maintainer authorization. Each step has two fresh rounds and verified corrections; first-main CI and default-branch performance dispatch passed. The [post-merge retrospective](../reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) records completion and remaining scope. Phase B.2 stays Active with 38 tasks remaining; HIGH T-038 is the next Ready candidate, not started.
 
 ## Status vocabulary
 
