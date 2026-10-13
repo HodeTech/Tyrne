@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import stat
 import string
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 import unicodedata
 from urllib.parse import unquote
 
@@ -81,6 +81,8 @@ class BlockLine(NamedTuple):
     body_start: int
     parts: tuple
     boundary: bool
+    paragraph: Optional[int] = None
+    kind: str = "literal"
 
 
 @dataclass
@@ -164,7 +166,8 @@ def block_body(line, active, paragraph=False, details=False):
         body = continuation(line, parts)
         if body is not None:
             offset, extra = container_parts(body, paragraph and (not outdented_list or outdented_quote))
-            if paragraph and outdented_list and not extra and body.strip(" \t\r\n") and not paragraph_interrupt(body):
+            if (paragraph and (outdented_list or outdented_quote) and not extra and
+                    body.strip(" \t\r\n") and not paragraph_interrupt(body, setext=False)):
                 result = body, list(active), False  # Lazy item continuation.
             else:
                 result = body[offset:], parts + extra, bool(extra)
@@ -173,17 +176,20 @@ def block_body(line, active, paragraph=False, details=False):
         outdented_list |= kind == "list"
         outdented_quote |= kind == "quote"
     offset, parts = container_parts(line, paragraph and (not outdented_list or outdented_quote))
-    if paragraph and active and not parts and line.strip(" \t\r\n") and not paragraph_interrupt(line):
+    if (paragraph and active and not parts and line.strip(" \t\r\n") and
+            not paragraph_interrupt(line, setext=False)):
         result = line, list(active), False  # Lazy quote/list continuation.
     else:
         result = line[offset:], parts, bool(parts)
     return result if details else result[:2]
 
 
-def paragraph_interrupt(body):
+def paragraph_interrupt(body, setext=True):
     """Recognize leaf syntax that ends an existing paragraph's inline block."""
     body = body.rstrip("\r\n")
-    if re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|>|(?:=+|-+)[ \t]*$)", body) or opening_fence(body):
+    if re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|>)", body) or opening_fence(body):
+        return True
+    if setext and re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", body):
         return True
     if any(re.fullmatch(r" {0,3}(?:" + re.escape(char) + r"[ \t]*){3,}", body) for char in "*-_"):
         return True
@@ -196,6 +202,59 @@ def paragraph_interrupt(body):
     return bool(tag and (tag[2].lower() in HTML_BLOCK_NAMES or
                         (tag[1] == "<" and tag[2].lower() in HTML_RAW_BLOCK_NAMES and
                          (tag.end() == len(stripped) or stripped[tag.end()] in " \t>"))))
+
+
+class ParagraphState:
+    """Classify actual paragraph extents once for every inline consumer.
+
+    Literal blocks clear the state in the block walker. A lazy continuation
+    retains its full container identity, but cannot supply a setext underline.
+    Masked inline content never becomes a manufactured source blank line.
+    """
+
+    def __init__(self):
+        self.start = None
+        self.parts = ()
+
+    @property
+    def active(self):
+        """Whether ordinary paragraph text can still continue."""
+        return self.start is not None
+
+    def clear(self):
+        """End the active paragraph at a real block boundary."""
+        self.start = None
+
+    def record(self, begin, end, body_start, parts, opened, body, source, metadata=False):
+        """Return one source event, consuming a heading paragraph exactly once."""
+        parts = tuple(parts)
+        if opened or parts != self.parts:
+            self.clear()
+        self.parts = parts
+        body = body.rstrip("\r\n")
+        paragraph = None
+        if metadata:
+            kind = "paragraph"
+        elif not body.strip(" \t"):
+            kind = "blank"
+        elif re.match(r" {0,3}#{1,6}(?:[ \t]|$)", body):
+            kind = "atx"
+        elif (self.active and re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", body) and
+              continuation(source.expandtabs(4), parts) is not None):
+            kind = "setext"
+            paragraph = self.start
+        elif paragraph_interrupt(body, setext=False):
+            kind = "block"
+        else:
+            kind = "paragraph"
+        boundary = kind != "paragraph" or not self.active
+        if kind == "paragraph":
+            if not self.active:
+                self.start = begin
+            paragraph = self.start
+        else:
+            self.clear()
+        return BlockLine(begin, end, body_start, parts, boundary, paragraph, kind)
 
 
 class BlockLayout:
@@ -212,17 +271,13 @@ class BlockLayout:
             return
         self.lines = []
         active = []
-        paragraph = previous_heading = False
+        paragraph = ParagraphState()
         start = 0
         for line in physical_lines(text, keepends=True):
-            body, parts, opened = block_body(line, active, paragraph, details=True)
-            boundary = (opened or parts != active or previous_heading or
-                        not body.strip(" \t\r\n") or paragraph_interrupt(body))
-            self.lines.append(BlockLine(start, start + len(line), start + len(line) - len(body),
-                                        tuple(parts), boundary))
+            body, parts, opened = block_body(line, active, paragraph.active, details=True)
+            self.lines.append(paragraph.record(start, start + len(line), start + len(line) - len(body),
+                                               parts, opened, body, line))
             active = parts
-            paragraph = bool(body.strip(" \t\r\n")) and not paragraph_interrupt(body)
-            previous_heading = bool(re.match(r" {0,3}#{1,6}(?:[ \t]|$)", body))
             start += len(line)
 
 
@@ -322,13 +377,12 @@ def blocks(text):
     rows = []
     raw_html = []
     events = []
-    previous_heading = False
+    paragraph_state = ParagraphState()
     lines = physical_lines(text, keepends=True)
     for line_no, line in enumerate(lines, 1):
         begin = offset
         offset += len(line)
-        events.append(BlockLine(begin, offset, begin, tuple(active), previous_heading))
-        previous_heading = False
+        events.append(BlockLine(begin, offset, begin, tuple(active), True))
         visual = line.expandtabs(4)
         if opened:
             char, length, parts = opened
@@ -341,6 +395,7 @@ def blocks(text):
                     opened = None
                 output.append(blank(line))
                 paragraph = False
+                paragraph_state.clear()
                 continue
         if comment and continuation(visual, comment_parts) is None:
             # HTML blocks end with their container even without a closing
@@ -348,6 +403,7 @@ def blocks(text):
             comment = False
             active = []
             paragraph = False
+            paragraph_state.clear()
         if table:
             parts, width, header_line = table
             body = continuation(line, parts)
@@ -359,6 +415,7 @@ def blocks(text):
                 html.cursor = offset
                 html.protected.clear()
                 paragraph = indented = False
+                paragraph_state.clear()
                 continue
             table = None
         if html.spans and html.spans[-1][1] > begin:
@@ -366,7 +423,8 @@ def blocks(text):
             # later physical lines cannot open code blocks or containers.
             output.append(line)
             html.scan(begin, offset)
-            paragraph = True
+            events[-1] = paragraph_state.record(begin, offset, begin, active, False, "", line, metadata=True)
+            paragraph = paragraph_state.active
             indented = False
             continue
         if not comment and line_no < len(lines):
@@ -385,15 +443,14 @@ def blocks(text):
                     html.cursor = offset
                     html.protected.clear()
                     paragraph = indented = False
+                    paragraph_state.clear()
                     continue
         if comment:
             body = continuation(visual, comment_parts)
             active = list(comment_parts)
         else:
             raw_body, raw_parts, opened_container = block_body(line, active, paragraph, details=True)
-            events[-1] = BlockLine(begin, offset, begin + len(line) - len(raw_body), tuple(raw_parts),
-                                   events[-1].boundary or opened_container or raw_parts != active or
-                                   paragraph_interrupt(raw_body))
+            events[-1] = BlockLine(begin, offset, begin + len(line) - len(raw_body), tuple(raw_parts), True)
             body, active = block_body(visual, active, paragraph)
         body = body.rstrip("\r\n")
         if comment or re.match(r" {0,3}<!--", body):
@@ -405,6 +462,7 @@ def blocks(text):
                     comment_parts = list(active)
                 comment = True
                 paragraph = False
+                paragraph_state.clear()
                 continue
             comment = False
             line = line[:comment_start] + blank(line[comment_start:closing + 3]) + line[closing + 3:]
@@ -416,6 +474,7 @@ def blocks(text):
             raw_html.append((begin, end))
             output.append(line)
             paragraph = indented = False
+            paragraph_state.clear()
             continue
         spaces = len(body) - len(body.lstrip(" "))
         match = opening_fence(body)
@@ -424,18 +483,23 @@ def blocks(text):
             fences.append((line_no, match[2].strip()))
             output.append(blank(line))
             paragraph = indented = False
+            paragraph_state.clear()
         elif spaces >= 4 and (indented or not paragraph):
             output.append(blank(line))
             indented = True
+            paragraph_state.clear()
         elif not body.strip(" \t"):
             output.append(line)
-            paragraph = False
+            events[-1] = paragraph_state.record(begin, offset, events[-1].body_start,
+                                               raw_parts, opened_container, raw_body, line)
+            paragraph = paragraph_state.active
             html.scan(begin, offset)
         else:
             output.append(line)
             indented = False
-            paragraph = not bool(re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|[-*_]{3,}[ \t]*$)", body))
-            previous_heading = bool(re.match(r" {0,3}#{1,6}(?:[ \t]|$)", body))
+            events[-1] = paragraph_state.record(begin, offset, events[-1].body_start,
+                                               raw_parts, opened_container, raw_body, line)
+            paragraph = paragraph_state.active
             html.scan(begin, offset)
     return "".join(output), fences, html.spans, rows, raw_html, BlockLayout(text, events)
 
@@ -458,8 +522,7 @@ class CodeSpans:
             self.runs.setdefault(match.end() - match.start(), []).append(match.start())
         self.boundaries = []
         for line in self.layout.lines:
-            body = text[line.body_start:line.end].rstrip("\r\n")
-            if line.boundary or not body.strip(" \t"):
+            if line.boundary:
                 self.boundaries.append(line.start)
         self.boundaries.append(len(text))
 
@@ -1088,13 +1151,12 @@ class Markdown:
             offset = event.body_start - line.start()
             quotes = sum(kind == "quote" for kind, _ in event.parts)
             list_marker = event.boundary and any(kind == "list" for kind, _ in event.parts)
-            body = line[0][offset:]
             if quotes != quote_depth or list_marker:
                 paragraph = False
             quote_depth = quotes
             match = re.match(r" {0,3}\[", line[0][offset:])
             if not match:
-                paragraph = bool(body.rstrip("\r\n").strip(" \t")) and not bool(re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|(?:=+|-+)[ \t]*$)", body))
+                paragraph = event.kind == "paragraph"
                 continue
             start = line.start() + offset + match.end() - 1
             closing = self.close(text, start, index)
@@ -1242,21 +1304,30 @@ class Markdown:
 
     def _headings(self, text):
         used = set()
-        bodies = [text[line.body_start:line.end].rstrip(" \t\r\n") for line in self.layout.lines]
-        for index, body in enumerate(bodies):
-            match = re.match(r" {0,3}#{1,6}(?:[ \t]+|$)(.*)$", body)
+        paragraph = None
+        pieces = []
+        for line in self.layout.lines:
+            body = text[line.body_start:line.end].rstrip(" \t\r\n")
+            if line.kind == "paragraph":
+                if line.paragraph != paragraph:
+                    pieces = []
+                paragraph = line.paragraph
+                # Inline masks may erase a whole physical line without
+                # creating a source blank or ending its actual paragraph.
+                if body.strip(" \t"):
+                    pieces.append(body.strip(" \t"))
+                continue
+            match = re.match(r" {0,3}#{1,6}(?:[ \t]+|$)(.*)$", body) if line.kind == "atx" else None
             if match:
                 title = re.sub(r"[ \t]+#+[ \t]*$", "", match[1])
-            elif re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", body) and index:
-                previous = bodies[index - 1]
-                if not previous.strip(" \t") or previous.lstrip(" \t").startswith(("|", "#", "- ", "* ", "+ ")):
-                    continue
-                begin = index - 1
-                while begin and bodies[begin - 1].strip(" \t") and not re.match(r" {0,3}[#|]", bodies[begin - 1]):
-                    begin -= 1
-                title = " ".join(line.strip(" \t") for line in bodies[begin:index])
+            elif line.kind == "setext" and line.paragraph == paragraph and pieces:
+                title = " ".join(pieces)
             else:
+                paragraph = None
+                pieces = []
                 continue
+            paragraph = None
+            pieces = []
             base = slug(title)
             anchor = base
             number = 0

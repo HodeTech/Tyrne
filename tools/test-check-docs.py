@@ -101,6 +101,105 @@ class LinkTests(unittest.TestCase):
     def test_heading_markup_and_inline_code_keep_underscores(self):
         self.check("## A `write_bytes` and **bold** [label](target.md)\n[x](#a-write_bytes-and-bold-label)\n")
 
+    def test_setext_headings_stop_at_prior_completed_headings(self):
+        text = 'First\n---\nSecond\n---\nSecond\n---\n\n[a](#first) [b](#second) [c](#second-1) [phantom](#first-----second)\n'
+        result = self.check(text, ['fragment'])
+        self.assertEqual([(8, 'Missing Markdown/HTML anchor: first-----second')],
+                         [(item.line, item.message) for item in result.findings])
+
+    def test_setext_headings_respect_list_sibling_and_quote_boundaries(self):
+        for body in ('1. First\n2. Second\n   ---\n',
+                     '- First\n- Second\n  ---\n',
+                     'First\n> Second\n> ---\n',
+                     '> First\n> > Second\n> > ---\n'):
+            with self.subTest(body=body):
+                result = self.check(body + '\n[real](#second) [phantom](#first-second)\n', ['fragment'])
+                self.assertEqual([(5, 'Missing Markdown/HTML anchor: first-second')],
+                                 [(item.line, item.message) for item in result.findings])
+
+    def test_setext_underlines_cannot_be_lazy_container_continuations(self):
+        for body, anchors in (('> First\n---\n', ('first',)),
+                              ('- First\n---\n', ('first',)),
+                              ('> First\nSecond\n===\n', ('first-second', 'second')),
+                              ('- First\nSecond\n===\n', ('first-second', 'second'))):
+            with self.subTest(body=body):
+                first = len(body.splitlines()) + 2
+                text = body + '\n' + ''.join('[phantom](#' + name + ')\n' for name in anchors)
+                result = self.check(text, ['fragment'] * len(anchors))
+                self.assertEqual([(first + index, 'Missing Markdown/HTML anchor: ' + name)
+                                  for index, name in enumerate(anchors)],
+                                 [(item.line, item.message) for item in result.findings])
+
+    def test_setext_heading_cannot_include_a_prior_thematic_break(self):
+        result = self.check('First\n***\nSecond\n---\n\n[real](#second) [phantom](#first--second)\n', ['fragment'])
+        self.assertEqual([(6, 'Missing Markdown/HTML anchor: first--second')],
+                         [(item.line, item.message) for item in result.findings])
+
+    def test_setext_heading_keeps_actual_soft_paragraph_continuations(self):
+        for body, anchor in (('First\nSecond\n---\n', 'first-second'),
+                             ('> First\n> Second\n> ---\n', 'first-second'),
+                             ('- First\n  Second\n  ---\n', 'first-second'),
+                             ('> First\nSecond\n> ---\n', 'first-second'),
+                             ('First\n2. Second\n---\n', 'first-2-second')):
+            with self.subTest(body=body):
+                self.check(body + '\n[real](#' + anchor + ')\n')
+
+    def test_nested_quote_lazy_paragraph_keeps_complete_inline_comment(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for source in ('- > prose <!--\n  2. [literal](missing.md) -->\n',
+                           '- > prose <!--\n  continued [literal](missing.md) -->\n',
+                           '- > prose <!--\n  > 2. [literal](missing.md) -->\n',
+                           '> prose <!--\n2. [literal](missing.md) -->\n'):
+                with self.subTest(ending=repr(ending), source=source):
+                    self.check(source.replace('\n', ending))
+            for source, line in (('- > prose <!--\n  1. [real](missing.md) -->\n', 2),
+                                 ('- > prose <!--\n\n  2. [real](missing.md) -->\n', 3)):
+                with self.subTest(ending=repr(ending), source=source):
+                    result = self.check(source.replace('\n', ending), ['path'])
+                    self.assertEqual([(line, 'Missing or case-mismatched local target: docs/missing.md')],
+                                     [(item.line, item.message) for item in result.findings])
+
+    def test_nested_quote_lazy_comment_cannot_create_html_anchor(self):
+        for ending in ('\n', '\r', '\r\n'):
+            with self.subTest(ending=repr(ending)):
+                result = self.check('- > prose <!--\n  2. <span id="ghost"></span> -->\n\n[x](#ghost)\n'.replace('\n', ending), ['fragment'])
+                self.assertEqual([(4, 'Missing Markdown/HTML anchor: ghost')],
+                                 [(item.line, item.message) for item in result.findings])
+
+    def test_nested_quote_lazy_paragraph_keeps_cross_line_code_span(self):
+        for ending in ('\n', '\r', '\r\n'):
+            with self.subTest(ending=repr(ending)):
+                self.check('- > prose `\n  2. [literal](missing.md) `\n'.replace('\n', ending))
+
+    def test_many_consecutive_setext_headings_keep_bounded_scan(self):
+        text = ''.join('Heading ' + str(index) + '\n---\n' for index in range(5000))
+        self.write('README.md', text + '\n[last](#heading-4999)\n')
+        result = subprocess.run([sys.executable, '-B', str(SCRIPT), '--root', str(self.root), '--json'],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual([], json.loads(result.stdout)['findings'])
+
+    def test_lazy_setext_text_cannot_split_inline_comment_or_code(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for source in ('> prose <!--\n===\n[literal](missing.md) -->\n',
+                           '- prose <!--\n===\n[literal](missing.md) -->\n',
+                           '- > prose <!--\n  ===\n  [literal](missing.md) -->\n',
+                           '> prose `\n===\n[literal](missing.md) `\n'):
+                with self.subTest(ending=repr(ending), source=source):
+                    self.check(source.replace('\n', ending))
+            for source in ('> prose <!--\n> ===\n> [real](missing.md) -->\n',
+                           '> prose <!--\n>\n> [real](missing.md) -->\n'):
+                with self.subTest(ending=repr(ending), source=source):
+                    result = self.check(source.replace('\n', ending), ['path'])
+                    self.assertEqual([(3, 'Missing or case-mismatched local target: docs/missing.md')],
+                                     [(item.line, item.message) for item in result.findings])
+
+    def test_setext_heading_keeps_masked_inline_comment_continuation(self):
+        for ending in ('\n', '\r', '\r\n'):
+            with self.subTest(ending=repr(ending)):
+                heading = 'Alpha <!-- first\nhidden\n-->Beta\n---\n'
+                self.check((heading + heading + '\n[first](#alpha-beta) [second](#alpha-beta-1)\n').replace('\n', ending))
+
     def test_setext_heading_and_explicit_html_anchors(self):
         self.check('Setext title\n============\n<a name="custom"></a><span id="Ünicode"></span>\n[x](#setext-title) [y](#custom) [z](#%C3%9Cnicode)\n')
 
