@@ -11,7 +11,9 @@ These checks execute the implementation working tree based on e8104e3, before it
 - [host-test.stdout.log](host-test.stdout.log)
 - [host-test.stderr.log](host-test.stderr.log)
 
-Raw streams are retained without normalization, including intentionally empty captures. See the [reconciliation report](../2026-10-13-t055-adr-correction-reconciliation.md) and [preflight scope](../2026-10-13-t055-adr-correction-preflight.md). Both fresh implementation-review rounds remain pending.
+Raw streams are retained without normalization, including intentionally empty captures. See the [reconciliation report](../2026-10-13-t055-adr-correction-reconciliation.md) and [preflight scope](../2026-10-13-t055-adr-correction-preflight.md). The original snapshot precedes both fresh implementation-review rounds; later checkpoints are recorded separately below.
 
 - [static-verification.json](static-verification.json): preservation/index/raw-hash checks at the implementation snapshot.
 - [navigation.json](navigation.json): bounded existing-parser diagnostic, distinct from the future stdlib T-056 implementation.
+
+- [r1-correction-verification.json](r1-correction-verification.json): post-fix checks, original-capture binding and separate corrected source hashes; immutable initial evidence is preserved.

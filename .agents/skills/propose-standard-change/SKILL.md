@@ -23,11 +23,11 @@ when-to-use: Whenever a rule in `docs/standards/` needs to change. Covers additi
    - If no ADR explicitly motivated the rule, the current standard is effectively an implicit decision that never had its ADR. The first step is to write the ADR that captures it — then supersede it — rather than silently changing the standard.
 
 3. **Decide ADR path.**
-   - **Amendment of existing ADR.** The old ADR is still largely right; it just needs to be updated or clarified. Use the *amendment* pattern — edit the ADR in place with a Proposed-amendment note, get it accepted, then update the standard.
+   - **Factual clarification of an existing Accepted ADR.** Preserve the original body and append a dated rider stating the correction and its evidence, following [ADR-0025 Rule 2](../../../docs/decisions/0025-adr-governance-amendments.md#rule-2--riders-are-not-failures-their-frequency-is-a-signal). Review the rider before updating the standard. A rider must not silently introduce a substantive rule change under the old ADR's Accepted status. Proposed drafts remain editable.
    - **Supersession.** The old decision is being reversed or significantly changed. Use [supersede-adr](../supersede-adr/SKILL.md): write a new ADR that supersedes the old one.
    - **New ADR, no supersession.** The change is additive — a new principle, a new constraint — that the old ADRs did not address. Use [write-adr](../write-adr/SKILL.md) to record the new decision.
 
-4. **Author the ADR first.** Standards follow decisions. Do not change the standard file until the ADR is `Accepted`. Drafting both in parallel is fine; committing the standard change before the ADR is not.
+4. **Author the ADR first.** Standards follow decisions. For a substantive new or changed decision, obtain the maintainer's explicit approval and make the motivating ADR `Accepted` before changing the standard file. For a factual clarification of an already Accepted decision, review and record the append-only rider first. Drafting in parallel is fine; committing the standard change before its decision or correction record is not.
 
 5. **Update the standard file.** Once the ADR is Accepted:
    - Edit `docs/standards/<file>.md`.
@@ -53,7 +53,7 @@ when-to-use: Whenever a rule in `docs/standards/` needs to change. Covers additi
 ## Acceptance criteria
 
 - [ ] Motivating ADR written (or identified if pre-existing).
-- [ ] ADR is `Accepted` before the standard file is modified.
+- [ ] Motivating decision is `Accepted` before the standard file is modified; a substantive new or changed decision has explicit maintainer approval, and any factual clarification rider is reviewed and recorded first.
 - [ ] Standard file change minimal; unchanged adjacent rules untouched.
 - [ ] References at the bottom of the standard point to the new ADR.
 - [ ] Downstream effects searched; affected docs updated or tracked.
