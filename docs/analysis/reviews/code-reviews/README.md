@@ -54,6 +54,8 @@ The ADR-0040 approval follow-up in this index is explicitly an independent appro
 | 2026-10-13 | T-049 review discovery, immutable historical navigation and fresh Miri/coverage; both fresh rounds complete, Low C01 corrected and verified, no unresolved finding | [2026-10-13-t049-review-corpus-reconciliation.md](2026-10-13-t049-review-corpus-reconciliation.md) |
 | 2026-10-13 | T-050 entry documents, guides/glossary/skills and copyright; both fresh code/security rounds Approve, one Low in each corrected and verified, zero unresolved delta findings | [2026-10-13-t050-entry-document-refresh.md](2026-10-13-t050-entry-document-refresh.md) |
 
+| 2026-10-13 | T-055 append-only ADR/source/index/procedure corrections; both fresh code/security rounds Approve, two unique R1 Low findings fixed and verified, zero new R2 or unresolved findings | [2026-10-13-t055-adr-corrections.md](2026-10-13-t055-adr-corrections.md) |
+
 ## Companion plans
 
 Companion plans describe review execution; they do not supply independent verdicts.

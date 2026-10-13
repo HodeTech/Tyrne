@@ -17,3 +17,7 @@ Raw streams are retained without normalization, including intentionally empty ca
 - [navigation.json](navigation.json): bounded existing-parser diagnostic, distinct from the future stdlib T-056 implementation.
 
 - [r1-correction-verification.json](r1-correction-verification.json): post-fix checks, original-capture binding and separate corrected source hashes; immutable initial evidence is preserved.
+
+**Later canonical boundary:** both fresh rounds complete, T-055 In Review. [Code](../../reviews/code-reviews/2026-10-13-t055-adr-corrections.md) and [security](../../reviews/security-reviews/2026-10-13-t055-adr-corrections.md) preserve all actual reports. Original captures/snapshots remain immutable and separate from later publication checks; no additional runtime execution is implied.
+
+- [publication-verification.json](publication-verification.json): separate canonical retention/scope/lifecycle/preservation and bounded navigation checks; original snapshots are unchanged.
