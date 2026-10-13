@@ -397,6 +397,36 @@ class LinkTests(unittest.TestCase):
         self.check(r'\\<a href="missing.md">real</a>', ["path"])
         self.check('\\<!-- literal\n<a href="missing.md">real</a>\n', ["path"])
 
+    def test_multiline_html_attributes_cannot_create_headings_or_consume_suffixes(self):
+        for source in ('<div title="\n# Ghost\n">text</div>\n\n[x](#ghost)\n',
+                       '<div title="\n# Ghost\n">text</div>\n\n# Ghost\n\n[x](#ghost-1)\n'):
+            with self.subTest(source=source):
+                self.check(source, ["fragment"])
+        self.check('<div title="\n# Ghost\n">text</div>\n\n# Real\n\n[x](#real)\n')
+
+    def test_multiline_html_attributes_do_not_define_references(self):
+        self.check('<div title="\n[ref]: missing.md\n">text</div>\n')
+        self.check('<div title="\n[ref]: missing.md\n">text</div>\n\n'
+                   '[x][ref]\n\n[ref]: target.md\n')
+
+    def test_attribute_fences_cannot_hide_or_substitute_following_real_links(self):
+        for marker in ('```', '~~~'):
+            for link in ('[x](missing.md)', '<a href="missing.md">x</a>'):
+                with self.subTest(marker=marker, link=link):
+                    result = self.check('<div title="\n' + marker + '\n">text</div>\n\n' +
+                                        link + '\n\n```text\n[literal](also-missing.md)\n```\n', ["path"])
+                    self.assertEqual(5, result.findings[0].line)
+                    self.assertEqual('Missing or case-mismatched local target: docs/missing.md',
+                                     result.findings[0].message)
+
+    def test_multiline_metadata_keeps_real_html_attributes_and_code_escape_controls(self):
+        self.check('<span\n title="\n# Ghost\n" id="real"></span>\n\n[x](#real)\n')
+        result = self.check('<a\n title="\n~~~\n" href="missing.md">x</a>\n', ["path"])
+        self.assertEqual(4, result.findings[0].line)
+        self.check('```html\n<div title="\n```\n[real](missing.md)\n', ["path"])
+        self.check('`<div title="literal">`\n[x](#literal)\n', ["fragment"])
+        self.check('\\<div title="\n# Real\n">text</div>\n\n[x](#real)\n')
+
     def test_html_attribute_decoding_is_once_and_not_markdown_escaping(self):
         for tag, attr in (("a", "href"), ("img", "src")):
             with self.subTest(tag=tag):

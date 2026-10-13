@@ -150,7 +150,11 @@ def blocks(text):
     comment = False
     paragraph = False
     indented = False
+    html = HTMLContexts(text)
+    offset = 0
     for line_no, line in enumerate(physical_lines(text, keepends=True), 1):
+        begin = offset
+        offset += len(line)
         visual = line.expandtabs(4)
         if opened:
             char, length, parts = opened
@@ -164,6 +168,14 @@ def blocks(text):
                 output.append(blank(line))
                 paragraph = False
                 continue
+        if html.spans and html.spans[-1][1] > begin:
+            # A tag begun in prose owns its complete quoted attributes. Its
+            # later physical lines cannot open code blocks or containers.
+            output.append(line)
+            html.scan(begin, offset)
+            paragraph = True
+            indented = False
+            continue
         body, active = block_body(visual, active)
         body = body.rstrip("\r\n")
         if comment or re.match(r" {0,3}<!--", body):
@@ -191,11 +203,13 @@ def blocks(text):
         elif not body.strip():
             output.append(line)
             paragraph = False
+            html.scan(begin, offset)
         else:
             output.append(line)
             indented = False
             paragraph = not bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|[-*_]{3,}\s*$)", body))
-    return "".join(output), fences
+            html.scan(begin, offset)
+    return "".join(output), fences, html.spans
 
 
 BACKTICKS = re.compile(r"`+")
@@ -457,6 +471,66 @@ def comments(text):
     return "".join(output)
 
 
+class HTMLContexts:
+    """Discover prose tags before their attribute lines reach block parsing.
+
+    The block walker calls this only outside actual code. Inline code,
+    comments and link metadata still take precedence over a tag opener.
+    """
+
+    def __init__(self, text):
+        self.text = text
+        self.metadata = without_containers(text)
+        self.index = CodeSpans(text)
+        self.cursor = 0
+        self.protected = {}
+        self.spans = []
+
+    def scan(self, begin, end):
+        text = self.text
+        cursor = max(self.cursor, begin)
+        while cursor < end:
+            if cursor in self.protected:
+                cursor = self.protected.pop(cursor)
+                continue
+            if text[cursor] == "\\" and cursor + 1 < len(text):
+                cursor += 2
+                continue
+            if text[cursor] == "`":
+                closing = self.index.end(cursor)
+                cursor = closing or BACKTICKS.match(text, cursor).end()
+                continue
+            if text.startswith("<!--", cursor):
+                closing = text.find("-->", cursor + 4)
+                cursor = closing + 3 if closing >= 0 else len(text)
+                continue
+            if text[cursor] == "<" and HTML_START.match(text, cursor):
+                tag = HTML_TAG.match(text, cursor)
+                if tag:
+                    self.spans.append((cursor, tag.end()))
+                    cursor = tag.end()
+                    continue
+            if text[cursor] == "[":
+                try:
+                    closing = close_label(text, cursor, self.index)
+                    if closing is not None:
+                        after = closing + 1
+                        if self.metadata[after:after + 1] == "(":
+                            _, finish = inline_destination(self.metadata, after)
+                            self.protected[after] = finish
+                        elif self.metadata[after:after + 1] == ":":
+                            start = spaces(self.metadata, after + 1)
+                            _, finish = destination(self.metadata, start)
+                            following = spaces(self.metadata, finish)
+                            if following > finish and following < len(text) and self.metadata[following] in "\"'(":
+                                finish = title_end(self.metadata, following)
+                            self.protected[after] = finish
+                except ValueError:
+                    pass  # Actual definition/inline parsing diagnoses it.
+            cursor += 1
+        self.cursor = cursor
+
+
 def plain_emphasis(characters, literal):
     """Remove matched underscore emphasis without altering literal tokens."""
     removed = set()
@@ -692,7 +766,7 @@ class Markdown:
         self.links = []
         self.anchors = set()
         self.findings = []
-        self.block_text, self.fences = blocks(text)
+        self.block_text, self.fences, self.html_spans = blocks(text)
         self.block_text = comments(self.block_text)
         self.references = {}
         visible = list(self.block_text)
@@ -721,12 +795,16 @@ class Markdown:
         output[start:end] = blank(original[start:end])
 
     def _definitions(self, visible):
-        text = without_containers(self.block_text)
+        definition_text = list(self.block_text)
+        for begin, end in self.html_spans:
+            self.erase(definition_text, begin, end, self.block_text)
+        definition_text = "".join(definition_text)
+        text = without_containers(definition_text)
         index = CodeSpans(text)
         consumed = 0
         paragraph = False
         quote_depth = 0
-        for line in re.finditer(r"[^\n]*(?:\n|$)", self.block_text):
+        for line in re.finditer(r"[^\n]*(?:\n|$)", definition_text):
             if line.start() < consumed or not line[0]:
                 continue
             offset, quotes, list_marker = container(line[0])
@@ -832,6 +910,7 @@ class Markdown:
             if char == "<" and HTML_START.match(text, cursor):
                 tag = HTML_TAG.match(text, cursor)
                 if tag:
+                    self.erase(heading_text, cursor, tag.end(), text)
                     cursor = tag.end()
                     continue
                 if HTML_LINK_START.match(text, cursor):
