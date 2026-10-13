@@ -80,12 +80,15 @@ Execute each item before moving to the next. Do **not** assume any item is alrea
 
 ### 4. Write `boot.s`
 
-Minimum content (aarch64 EL1 example):
+Minimum stack/FP/BSS skeleton for a target already confirmed to enter at aarch64 EL1. Mask DAIF before unsafe setup; install vectors and finish the target boot checklist before unmasking. This is not a complete reference-BSP boot implementation:
 
 ```asm
     .section .text.boot, "ax"
     .global _start
 _start:
+    /* 0. Mask debug, SError, IRQ and FIQ before stack/FP/BSS setup */
+    msr     daifset, #0xf
+
     /* 1. Set stack pointer */
     adrp    x0, __stack_top
     add     x0, x0, :lo12:__stack_top
@@ -111,7 +114,7 @@ _start:
     b       2b
 ```
 
-Adjust for EL2→EL1 transition if the target enters at EL2 (add `msr hcr_el2, …` / `eret` sequence before step 1).
+For EL2 entry, follow the target’s Accepted boot-flow ADR and complete the EL2→EL1 policy before using this EL1 skeleton. A bare HCR/ERET insertion is not sufficient: interrupt masks, stack selection, timer access, trap controls and transition context depend on the verified target. The reference [ADR-0024](../../../docs/decisions/0024-el-drop-policy.md) and [boot.s](../../../bsp-qemu-virt/src/boot.s) show the existing QEMU policy; do not assume another board has the same entry state.
 
 ### 5. Implement `cpu.rs`
 
@@ -130,7 +133,7 @@ Implement `tyrne_hal::Console` for the target UART. Follow the existing `Pl011Ua
 
 `kernel_entry` must:
 1. Initialise the console and print the greeting (`tyrne: hello from kernel_main`).
-2. Call `tyrne_kernel::sched` to register tasks and start the scheduler.
+2. Initialize the target-specific prerequisites and use `tyrne_kernel::sched` to register/start the selected smoke workload. That workload must emit its completion marker after doing its declared work.
 3. Never return (`-> !`).
 
 Provide a `#[panic_handler]` that writes to the console and loops.
@@ -147,27 +150,33 @@ Model on [`bsp-qemu-virt/linker.ld`](../../../bsp-qemu-virt/linker.ld). At minim
 
 Create `tools/run-<target>.sh`. For QEMU targets, model on [`tools/run-qemu.sh`](../../../tools/run-qemu.sh):
 
-- Include the `--int-log` flag (`-d int -D /tmp/qemu_int.log`) for silent-hang debugging.
+- Include an exception-log option for silent-hang debugging. The reference `--int-log` uses `-d int -D <logfile>`, with `${TMPDIR:-/tmp}/qemu_int.<pid>.log` printed at startup; use the printed path. Smoke `--int` instead uses `-d int,unimp`.
 - Document the QEMU machine flags in the script header.
 
 For real hardware, document the flashing command (e.g. `openocd`, `rpiboot`, `cargo flash`).
 
 ### 10. Verify the smoke test
 
-Boot the kernel and confirm:
+Boot the selected workload and confirm this minimal serial-success shape; `...` elides workload-specific lines:
 
 ```text
 tyrne: hello from kernel_main
 tyrne: starting cooperative scheduler
-tyrne: task A — iteration 0
-tyrne: task B — iteration 0
 ...
-tyrne: task A done; spinning
+tyrne: all tasks complete
 ```
 
-If the kernel hangs silently, run with `--int-log` (QEMU) or attach a JTAG debugger (real hardware) and check for the following before anything else:
+Exact intervening/trailing lines depend on the kernel version and target workload; see the [README Quick start](../../../README.md#quick-start) for the verified reference trace. This minimal porting check does not establish full reference EL0/IPC parity: the reference [smoke.sh](../../../tools/smoke.sh) separately gates debug/release console, userspace exit/completion and fault classes. Retain evidence for whichever workload the target ADR declares.
 
-1. Exception log: `grep "Taking exception" /tmp/qemu_int.log`
+If the kernel hangs silently, run with `--int-log` (QEMU) or attach a JTAG debugger (real hardware). After quitting QEMU, inspect its printed path:
+
+```sh
+grep "Taking exception" '<path-printed-by-run-script>'
+```
+
+Check the following before anything else:
+
+1. Exception log at the printed PID-scoped path — which exception fired?
 2. CPACR_EL1 — is FPEN set? (ESR EC=0x07 = FP/SIMD trap)
 3. SP misalignment — AAPCS64 stack-alignment fault?
 4. BSS not zeroed — statics have garbage values?
@@ -200,7 +209,7 @@ Trailer: `Refs: ADR-NNNN` (the boot-flow ADR from step 1).
 ## Anti-patterns
 
 - **Skipping the boot-flow ADR.** Every BSP has target-specific boot decisions; writing code before documenting them produces undocumented assumptions.
-- **Copying `boot.s` without checking the EL.** QEMU `virt` enters EL1; RPi4 enters EL2. The CPACR_EL1 sequence is only needed if the kernel runs at EL1; at EL2 you need CPTR_EL2.
+- **Copying `boot.s` without checking the EL.** Confirm the actual target entry state. The EL1 skeleton configures CPACR_EL1 after EL1 entry; EL2 setup and the transition require the target’s Accepted boot policy, not a single substitute register write.
 - **Using `#[inline(never)]` instead of `#[unsafe(naked)]` for the context switch.** The compiler will still emit a prologue. See `docs/standards/unsafe-policy.md §5a`.
 - **Omitting d8–d15 from `Aarch64TaskContext`.** NEON is enabled at boot; the compiler may allocate d8–d15 in any function. Omitting them silently corrupts task state at higher optimisation levels.
 - **Not zeroing BSS.** Rust guarantees `.bss` is zero; if the hardware or QEMU does not zero it, every static initialised to zero will have garbage values.

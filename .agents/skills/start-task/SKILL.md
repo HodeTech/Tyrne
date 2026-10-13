@@ -8,7 +8,7 @@ when-to-use: When the next task in the active milestone becomes ready to pick up
 
 ## Inputs
 
-- The **phase and milestone** the task belongs to (e.g. `A`, `A2`).
+- The **phase and milestone/bridge Track** the task belongs to (e.g. `A` / `A2`, or `B.2` / `B.2-2`). Path IDs are lowercase without dots: C → `phase-c` / `phase-c.md`; B.2 → `phase-b2` / `phase-b2.md`. Bridge Tracks B.2-1…B.2-6 are distinct from Phase B milestones B0–B6.
 - A **short imperative title** (e.g. "Capability table foundation").
 - Enough context to write a useful user story: who wants this, what they want, why.
 - The **dependencies** — prior tasks (T-NNN) that must be `Done` before this one starts, if any.
@@ -18,7 +18,7 @@ when-to-use: When the next task in the active milestone becomes ready to pick up
 
 1. **Read the current roadmap state.**
    - Check [`docs/roadmap/current.md`](../../../docs/roadmap/current.md).
-   - Confirm the phase and milestone exist in [`docs/roadmap/phases/phase-<letter>.md`](../../../docs/roadmap/phases/).
+   - Confirm the phase and milestone exist in [`docs/roadmap/phases/phase-<id>.md`](../../../docs/roadmap/phases/).
    - If the milestone is not on the roadmap, stop and ask the maintainer — a missing milestone is a structural change and needs an ADR per [ADR-0013](../../../docs/decisions/0013-roadmap-and-planning.md).
 
 2. **Assign the next T-NNN.**
@@ -27,7 +27,7 @@ when-to-use: When the next task in the active milestone becomes ready to pick up
    - IDs are sequential across the whole project, not restarted per phase.
    - **Single-writer assumption.** Two concurrent task-creation flows can both observe the same "highest existing T-NNN" and allocate the same ID. v1 relies on a *single active writer* per branch: run this skill on a branch rebased onto `development`, and if at merge time another `T-NNN-*.md` with your chosen id has landed, re-run the numbering step (list again, pick a fresh highest+1, `git mv` the file, update every internal reference). A ledger-based reservation mechanism may arrive later; for now, the single-writer convention is the contract.
 
-3. **Create the task file** at `docs/analysis/tasks/phase-<letter>/T-NNN-<kebab-slug>.md`.
+3. **Create the task file** at `docs/analysis/tasks/phase-<id>/T-NNN-<kebab-slug>.md`.
    - Copy from [`docs/analysis/tasks/TEMPLATE.md`](../../../docs/analysis/tasks/TEMPLATE.md).
    - Fill the frontmatter fields: `Phase`, `Milestone`, `Status`, `Created`, `Author`, `Dependencies`, `Informs`, `ADRs required`. No placeholder values left from the template.
 
@@ -38,9 +38,9 @@ when-to-use: When the next task in the active milestone becomes ready to pick up
    - If the task is being picked up for immediate work, move to `In Progress`.
    - Do not jump straight to `In Review` or `Done`.
 
-6. **Update the phase's task index** at `docs/analysis/tasks/phase-<letter>/README.md`. Add the new task to its table.
+6. **Update the phase's task index** at `docs/analysis/tasks/phase-<id>/README.md`. Add the new task to its table.
 
-7. **Update the phase plan** at `docs/roadmap/phases/phase-<letter>.md` if the task is mentioned by id in the milestone's `Tasks under <Mx>` list.
+7. **Update the phase plan** at `docs/roadmap/phases/phase-<id>.md` if the task is mentioned by id in the milestone's `Tasks under <Mx>` list.
 
 8. **Update [`docs/roadmap/current.md`](../../../docs/roadmap/current.md)** if the status is `In Progress`.
    - The `Active task` line points at the new file.
@@ -58,7 +58,7 @@ when-to-use: When the next task in the active milestone becomes ready to pick up
 
 ## Acceptance criteria
 
-- [ ] New file at `docs/analysis/tasks/phase-<letter>/T-NNN-<slug>.md`.
+- [ ] New file at `docs/analysis/tasks/phase-<id>/T-NNN-<slug>.md`.
 - [ ] Frontmatter fields are filled — no placeholders from the template.
 - [ ] User story section answers *who / what / why* in one sentence.
 - [ ] Acceptance criteria are concrete and testable (3–8 items; at most 10).

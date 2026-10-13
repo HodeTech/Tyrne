@@ -15,12 +15,12 @@ The plan is separate from the work. Individual tasks and reviews live under [`..
 |------|---------|
 | [`README.md`](README.md) | This file. |
 | [`phases/README.md`](phases/README.md) | Index of phase files with a one-paragraph summary each. |
-| [`phases/phase-<letter>.md`](phases/) | Detailed breakdown of one phase, with its milestones and acceptance criteria. |
+| [`phases/phase-<id>.md`](phases/) | Detailed breakdown of one phase, with its milestones and acceptance criteria. |
 | [`current.md`](current.md) | Short pointer to the active phase, milestone, and task. Updated often. |
 
 ## What does **not** live here
 
-- **Individual task user stories** — they live under [`../analysis/tasks/phase-<letter>/`](../analysis/tasks/).
+- **Individual task user stories** — they live under [`../analysis/tasks/phase-<id>/`](../analysis/tasks/).
 - **Reviews** — they live under [`../analysis/reviews/<type>/`](../analysis/reviews/).
 - **Design rationale for architectural choices** — [`../decisions/`](../decisions/) (ADRs).
 - **Procedural rules** — [`../standards/`](../standards/).
@@ -37,6 +37,7 @@ The plan is separate from the work. Individual tasks and reviews live under [`..
 - **Phase IDs** are letters (A, B, C, …), in execution order, stable once published. A **bridge phase** inserted after publication carries a dotted ID so later letters are not renumbered (`B.2`, between B and C; see [ADR-0040](../decisions/0040-phase-b2-consolidation-bridge.md)).
 - **Milestone IDs** are `<phase><N>` (A1, A2, …), stable once the milestone becomes active. A bridge phase's sub-units are **Tracks** (`B.2-1` … `B.2-6`), not milestones, so they cannot collide with `B0`–`B6`.
 - **Task IDs** (`T-NNN`) are stable across the whole project and live under [`../analysis/tasks/`](../analysis/tasks/).
+- **Path IDs** are lowercase without dots: phase C maps to `phase-c` / `phase-c.md`; bridge B.2 maps to `phase-b2` / `phase-b2.md`. The `phase-<id>` templates above cover both.
 
 See [ADR-0013](../decisions/0013-roadmap-and-planning.md) for the full identifier and change-process rules.
 

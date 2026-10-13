@@ -13,7 +13,7 @@ See [ADR-0013](../decisions/0013-roadmap-and-planning.md) for the rationale.
 
 Tasks are the unit of work. Each one is a short markdown file following the user-story shape in [`tasks/TEMPLATE.md`](tasks/TEMPLATE.md).
 
-- Tasks live under `tasks/phase-<letter>/` — the phase folder tells you which milestone the task is part of.
+- Tasks live under `tasks/phase-<id>/`. A lettered phase C maps to `phase-c`; the dotted bridge B.2 maps to `phase-b2` and its plan `phase-b2.md`. The phase/milestone or bridge Track is recorded in task metadata.
 - Task IDs (`T-NNN`) are sequential across the whole project; they do not restart per phase.
 - See [`tasks/README.md`](tasks/README.md) for the index, ID schema, status vocabulary, and lifecycle.
 
