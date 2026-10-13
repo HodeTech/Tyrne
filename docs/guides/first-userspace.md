@@ -112,7 +112,7 @@ At boot, the [reference BSP](../../bsp-qemu-virt/src/main.rs):
 
 1. Loads the raw image and stack into a fresh address space through `load_image`, producing `LoadedImage`.
 2. Creates a task through `task_create_from_image` and seeds its own table with a `DebugConsole` / `CONSOLE_WRITE` capability at the hello handle.
-3. Enqueues it through `add_user_task`, binding address-space/table handles, the image/stack window and a per-task kernel `SP_EL1` stack.
+3. Enqueues it through `add_user_task`, binding the address-space handle, a raw capability-table pointer, the image/stack window and a per-task kernel `SP_EL1` stack. The table must outlive the task, with no live mutable borrow across a context switch; these pointer obligations belong to the trusted registration caller.
 4. Activates the task's `TTBR0_EL1`, clears `EPD0`, and uses the one-shot `enter_el0` trampoline to ERET with scrubbed EL0-visible registers.
 5. Dispatches console input through the lower-EL synchronous `VBAR_EL1+0x400` vector and the task's own capability table/address-space translation.
 6. Handles exit with the unsafe module-level free function `tyrne_kernel::sched::task_exit_current`, which selects another task and never returns to the exiting one. It is not a `Scheduler` method or resource destructor.
