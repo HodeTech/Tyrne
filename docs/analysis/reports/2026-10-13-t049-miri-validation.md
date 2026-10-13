@@ -7,7 +7,7 @@
 - **Host:** Darwin 27.0.0 / arm64, Rust host `aarch64-apple-darwin`; Python 3.9.6 captured the process.
 - **Toolchain:** repository override `nightly-2026-01-15`; rustc `1.94.0-nightly`, commit `86a49fd71fecd25b0fd20247db0ba95eeceaba28` (2026-01-14), rustc LLVM 21.1.8; cargo `1.94.0-nightly (6d1bd93c4 2026-01-10)`.
 - **Raw output:** [miri.log](2026-10-13-t049-review-evidence/miri.log), SHA-256 `1ecc45d89c2cdc6caf8f0dd51af791c8fbd56a6a7fe90fc7c5e99c9f99c77d67`; [process/tool/environment metadata](2026-10-13-t049-review-evidence/miri.json).
-- **Review state:** implementation evidence; Round 1 completed and its quoted-proposal finding C01 is corrected; fresh complementary Round 2 remains pending. T-049 remains In Progress; no Done, hosted CI or main-merge claim.
+- **Review state:** [Both fresh primary/complementary rounds](../reviews/code-reviews/2026-10-13-t049-review-corpus-reconciliation.md) complete at `aa37e2c`; C01 corrected and independently verified. T-049 is In Review; no Done, hosted CI or main-merge claim.
 
 ## Invocation
 
