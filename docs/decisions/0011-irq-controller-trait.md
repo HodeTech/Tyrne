@@ -4,6 +4,8 @@
 - **Date:** 2026-04-20
 - **Deciders:** @cemililik
 
+> **Correction applied 2026-10-13, per [ADR-0036](0036-qemu-virt-gicv2-no-iommu-v1.md).** QEMU `virt` uses GICv2 in v1, not GICv3; the version-agnostic trait surface is unaffected. The original body is preserved.
+
 ## Context
 
 The fifth and final HAL trait in Phase 4b, after Console (ADR-0007), Cpu (ADR-0008), Mmu (ADR-0009), and Timer (ADR-0010). `IrqController` is the kernel's view of the board's interrupt controller: enable and disable specific lines, acknowledge the pending IRQ at ISR entry, and signal end-of-interrupt at exit. Everything else — driver-facing IRQ capability grants, wakeup delivery via asynchronous notifications — sits *above* this trait and converts kernel-side acknowledgements into userspace messages.

@@ -49,8 +49,12 @@ pub trait Timer: Send + Sync {
 
     /// Return the timer's resolution in nanoseconds.
     ///
-    /// Deadlines round to the nearest multiple of this value; finer
-    /// precision at the call site is silently lost.
+    /// This describes resolution, not a quantum for nearest-multiple
+    /// deadline rounding. The shared [`resolution_ns_for_freq`] helper
+    /// reports a nearest-integer tick period (at least 1 ns), while
+    /// [`ns_to_ticks`] rounds absolute deadlines up to ticks and saturates
+    /// at `u64::MAX`. The at-or-after conversion guarantee applies only
+    /// when the requested deadline's tick count is representable.
     fn resolution_ns(&self) -> u64;
 }
 

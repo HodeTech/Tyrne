@@ -58,6 +58,8 @@ Every kernel, HAL, driver, and service change is subject to these principles. Do
 
 **Applies to.** Any code in a kernel crate that references a register, an instruction, or a board-specific detail. That code belongs in a HAL trait implementation (i.e., a BSP), not in the kernel.
 
+<a id="p7--no-proprietary-blobs"></a>
+
 ### P7 — No proprietary binary blobs in the kernel
 
 **Statement.** Tyrne does not link, embed, or depend on proprietary binary firmware or drivers in the kernel. Open-source firmware that the board requires (e.g. Raspberry Pi boot firmware) may be documented and used *outside* the kernel, but no closed-source code is part of the Tyrne build.

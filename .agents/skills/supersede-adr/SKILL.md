@@ -1,7 +1,7 @@
 ---
 name: supersede-adr
 description: Override a prior Accepted ADR with a new one, updating both files so the forward and backward pointers are consistent.
-when-to-use: When a decision recorded in a prior ADR is being reversed or significantly changed. Not for minor clarifications (edit the original with a Proposed-amendment note instead).
+when-to-use: When a decision recorded in a prior ADR is being reversed or significantly changed. Not for minor clarifications (append a dated correction rider under ADR-0025 instead).
 ---
 
 # Supersede ADR
@@ -20,19 +20,26 @@ Before starting, the agent must have:
 1. **Read the old ADR in full.** Understand what it claimed, what alternatives it considered, and what consequences it accepted. Do not supersede what you have not read.
 
 2. **Decide: supersession or amendment?**
-   - **Amendment** (not this skill): small clarifications, typo fixes, reference updates. Edit the original ADR in place.
+   - **Amendment** (not this skill): small clarifications, typo fixes, reference updates. For an Accepted ADR, append a dated correction/pointer rider under [ADR-0025 Rule 2](../../../docs/decisions/0025-adr-governance-amendments.md#rule-2--riders-are-not-failures-their-frequency-is-a-signal), preserving the original body. Proposed drafts remain editable.
    - **Supersession** (this skill): the decision outcome changes, the considered options change meaningfully, or the consequences shift enough that a reader should understand a new decision has been made.
 
 3. **Write the new ADR** using the [write-adr](../write-adr/SKILL.md) skill.
-   - In the **Context** section of the new ADR, explicitly say:
-     > This ADR supersedes [ADR-NNNN: Title](NNNN-slug.md). The earlier decision…
-     Then explain what was decided originally and what has changed to warrant the new decision.
+   - In the **Context** section of the new ADR, explicitly say (template; substitute the actual sibling filename):
+
+```markdown
+This ADR supersedes [ADR-NNNN: Title](NNNN-slug.md). The earlier decision…
+```
+
+   Then explain what was decided originally and what has changed to warrant the new decision.
    - In the **References** section, link the superseded ADR.
 
 4. **Update the old ADR's header.**
    - Change `Status:` from `Accepted` to `Superseded by MMMM` (where MMMM is the new ADR's number).
-   - Add a `> **Superseded.**` callout at the very top of the body, before the Context section:
-     > **Superseded by [ADR-MMMM: New Title](MMMM-new-slug.md) (YYYY-MM-DD).** The original decision below is preserved for the historical record.
+   - Add a callout at the very top of the body, before Context (template; substitute the actual sibling filename and date):
+
+```markdown
+> **Superseded by [ADR-MMMM: New Title](MMMM-new-slug.md) (YYYY-MM-DD).** The original decision below is preserved for the historical record.
+```
    - **Do not edit the original body.** The original reasoning is the historical record and must stay intact.
 
 5. **Update the ADR index** at [`docs/decisions/README.md`](../../../docs/decisions/README.md):
@@ -65,7 +72,7 @@ Before starting, the agent must have:
 - **Superseding without new information.** If nothing has changed, the old decision is still right and supersession is not needed.
 - **Silent overrides.** Making a contradicting decision in a new ADR without flipping the old one's status leaves the repo with two contradictory "Accepted" ADRs.
 - **Forgetting the back-pointer.** The old ADR must link forward to the new one; otherwise a reader following references misses the supersession.
-- **Using supersession for a minor fix.** That is an amendment, not a supersession. Edit in place.
+- **Using supersession for a minor fix.** That is an amendment, not a supersession. Append a dated correction/pointer to an Accepted record; preserve its body.
 
 ## References
 
