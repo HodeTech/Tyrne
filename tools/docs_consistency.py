@@ -242,6 +242,7 @@ def blocks(text):
     opened = None
     active = []
     comment = False
+    comment_parts = []
     paragraph = False
     indented = False
     html = HTMLContexts(text)
@@ -265,6 +266,12 @@ def blocks(text):
                 output.append(blank(line))
                 paragraph = False
                 continue
+        if comment and continuation(visual, comment_parts) is None:
+            # HTML blocks end with their container even without a closing
+            # marker. They cannot consume later prose outside a quote/list.
+            comment = False
+            active = []
+            paragraph = False
         if table:
             parts, width, header_line = table
             body = continuation(line, parts)
@@ -302,18 +309,24 @@ def blocks(text):
                     html.protected.clear()
                     paragraph = indented = False
                     continue
-        body, active = block_body(visual, active)
+        if comment:
+            body = continuation(visual, comment_parts)
+            active = list(comment_parts)
+        else:
+            body, active = block_body(visual, active)
         body = body.rstrip("\r\n")
         if comment or re.match(r" {0,3}<!--", body):
-            begin = 0 if comment else line.index("<!--")
-            closing = line.find("-->", begin)
+            comment_start = 0 if comment else line.index("<!--")
+            closing = line.find("-->", comment_start)
             if closing < 0:
                 output.append(blank(line))
+                if not comment:
+                    comment_parts = list(active)
                 comment = True
                 paragraph = False
                 continue
             comment = False
-            line = line[:begin] + blank(line[begin:closing + 3]) + line[closing + 3:]
+            line = line[:comment_start] + blank(line[comment_start:closing + 3]) + line[closing + 3:]
             body, active = block_body(line.expandtabs(4), active)
             body = body.rstrip("\r\n")
         spaces = len(body) - len(body.lstrip(" "))
@@ -339,8 +352,8 @@ def blocks(text):
 
 
 BACKTICKS = re.compile(r"`+")
-BLANK_LINE = re.compile(r"\n[ \t]*\n")
-SPACES = re.compile(r"[ \t]*(?:\n[ \t]*)?")
+BLANK_LINE = re.compile(r"\n[ \t]*\r?\n")
+SPACES = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?")
 HTML_START = re.compile(r"</?[A-Za-z][\w:-]*(?:\s|/?>)")
 HTML_TAG = re.compile(r"<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>")
 
@@ -368,6 +381,10 @@ class CodeSpans:
             offset += len(line)
         self.boundaries.append(len(text))
 
+    def boundary(self, start):
+        """Return the next block boundary, excluding one at the opener."""
+        return self.boundaries[bisect_right(self.boundaries, start)] if start < len(self.text) else len(self.text)
+
     def end(self, start):
         match = BACKTICKS.match(self.text, start)
         if not match:
@@ -375,10 +392,31 @@ class CodeSpans:
         length = match.end() - start
         positions = self.runs.get(length, ())
         following = bisect_right(positions, start)
-        boundary = self.boundaries[bisect_right(self.boundaries, start)] if start < len(self.text) else len(self.text)
+        boundary = self.boundary(start)
         if following < len(positions) and positions[following] < boundary:
             return positions[following] + length
         return None
+
+
+class CommentSpans:
+    """Index inline comment ends once; raw block comments belong to blocks()."""
+
+    def __init__(self, text, index):
+        self.text = text
+        self.index = index
+        self.closings = [match.start() for match in re.finditer("-->", text)]
+
+    def end(self, start):
+        # CommonMark also admits these two short inline comment forms.
+        for short in ("<!-->", "<!--->"):
+            if self.text.startswith(short, start):
+                return start + len(short)
+        following = bisect_right(self.closings, start + 3)
+        if following < len(self.closings):
+            end = self.closings[following] + 3
+            if end <= self.index.boundary(start):
+                return end
+        return None  # An incomplete inline opener is ordinary literal text.
 
 
 def code_end(text, start, index=None):
@@ -548,6 +586,7 @@ def comments(text):
     """Mask actual comments; code, HTML attributes and link metadata are literal."""
     output = list(text)
     index = CodeSpans(text)
+    comment_index = CommentSpans(text, index)
     metadata = without_containers(text)
     protected = {}
     cursor = 0
@@ -588,10 +627,10 @@ def comments(text):
             except ValueError:
                 pass  # The actual inline/definition pass emits the source finding.
         if text.startswith("<!--", cursor):
-            closing = text.find("-->", cursor + 4)
-            end = closing + 3 if closing >= 0 else len(text)
-            output[cursor:end] = blank(text[cursor:end])
-            cursor = end
+            end = comment_index.end(cursor)
+            if end is not None:
+                output[cursor:end] = blank(text[cursor:end])
+            cursor = end if end is not None else cursor + 4
             continue
         cursor += 1
     return "".join(output)
@@ -608,6 +647,7 @@ class HTMLContexts:
         self.text = text
         self.metadata = without_containers(text)
         self.index = CodeSpans(text)
+        self.comments = CommentSpans(text, self.index)
         self.cursor = 0
         self.protected = {}
         self.spans = []
@@ -627,8 +667,8 @@ class HTMLContexts:
                 cursor = closing or BACKTICKS.match(text, cursor).end()
                 continue
             if text.startswith("<!--", cursor):
-                closing = text.find("-->", cursor + 4)
-                cursor = closing + 3 if closing >= 0 else len(text)
+                closing = self.comments.end(cursor)
+                cursor = closing if closing is not None else cursor + 4
                 continue
             if text[cursor] == "<" and HTML_START.match(text, cursor):
                 tag = HTML_TAG.match(text, cursor)
@@ -1001,6 +1041,7 @@ class Markdown:
     def _inlines(self, visible, heading_text):
         text = "".join(visible)
         index = CodeSpans(text)
+        comment_index = CommentSpans(text, index)
         cursor = 0
         destinations = {}
         labels = []
@@ -1041,11 +1082,15 @@ class Markdown:
                 cursor = BACKTICKS.match(text, cursor).end()
                 continue
             if text.startswith("<!--", cursor):
-                closing = text.find("-->", cursor + 4)
-                end = closing + 3 if closing >= 0 else len(text)
-                self.erase(visible, cursor, end, text)
-                self.erase(heading_text, cursor, end, text)
-                cursor = end
+                end = comment_index.end(cursor)
+                if end is not None:
+                    self.erase(visible, cursor, end, text)
+                    self.erase(heading_text, cursor, end, text)
+                else:
+                    # HTMLParser otherwise treats the literal opener as an
+                    # unclosed comment and hides subsequent actual HTML.
+                    self.erase(visible, cursor, cursor + 1, text)
+                cursor = end if end is not None else cursor + 4
                 continue
             if char == "<" and HTML_START.match(text, cursor):
                 tag = HTML_TAG.match(text, cursor)

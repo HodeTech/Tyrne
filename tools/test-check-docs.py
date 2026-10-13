@@ -487,6 +487,118 @@ class LinkTests(unittest.TestCase):
                 document = docs.Markdown('docs/source.md', header + body)
                 self.assertEqual(rows, len(document.table_rows))
 
+    def test_real_line_endings_keep_link_and_reference_continuations(self):
+        sources = ('[x](\n target.md)\n', '[x](target.md\n "title")\n',
+                   '[x](target.md\n)\n', '[x][r]\n\n[r]:\n target.md\n "title"\n')
+        for ending in ('\n', '\r', '\r\n'):
+            for source in sources:
+                with self.subTest(ending=repr(ending), source=source):
+                    self.check(source.replace('\n', ending))
+
+    def test_blank_line_titles_cannot_hide_real_targets_for_any_line_ending(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for whitespace in ('', ' \t'):
+                with self.subTest(ending=repr(ending), whitespace=whitespace):
+                    source = '[x](target.md "first\n' + whitespace + '\n[real](missing.md)\nlast")\n'
+                    result = self.check(source.replace('\n', ending), ['link-syntax', 'path'])
+                    self.assertEqual([(1, 'Unclosed or blank-line-separated link title'),
+                                      (3, 'Missing or case-mismatched local target: docs/missing.md')],
+                                     [(x.line, x.message) for x in result.findings])
+
+    def test_blank_line_labels_remain_plain_prose_for_any_line_ending(self):
+        for ending in ('\n', '\r', '\r\n'):
+            with self.subTest(ending=repr(ending)):
+                result = self.check('[first\n \t\nlast](missing.md)\n'.replace('\n', ending))
+                self.assertEqual(0, result.local_targets)
+
+    def test_parent_inline_comments_cannot_cross_rendered_table_boundaries(self):
+        header = '| A | B |\n| --- | --- |\n'
+        for ending in ('\n', '\r', '\r\n'):
+            for row, expected in (('| text | text |\n', [(7, 'docs/missing.md')]),
+                                  ('| [bad](table-missing.md) | text |\n',
+                                   [(4, 'docs/table-missing.md'), (7, 'docs/missing.md')])):
+                with self.subTest(ending=repr(ending), row=row):
+                    source = 'prose <!--\n' + header + row + '-->\n\n[real](missing.md)\n'
+                    result = self.check(source.replace('\n', ending), ['path'] * len(expected))
+                    self.assertEqual([(line, 'Missing or case-mismatched local target: ' + target)
+                                      for line, target in expected],
+                                     [(x.line, x.message) for x in result.findings])
+        self.check('prose \\<!--\n' + header + '| text | text |\n-->\n\n[real](missing.md)\n', ['path'])
+        self.check('<!--\n' + header + '| [literal](missing.md) | text |\n-->\n\n[real](missing.md)\n', ['path'])
+        self.check('prose <!--\nordinary literal\n-->\n\n[real](missing.md)\n', ['path'])
+
+    def test_incomplete_inline_comments_do_not_hide_markdown_or_html_links(self):
+        for source, line in (('prose <!-- [bad](missing.md)\n', 1),
+                             ('| A | B |\n| --- | --- |\n| text <!-- [bad](missing.md) | text |\n', 3),
+                             ('prose <!--\n\n<a href="missing.md">real</a>\n', 3)):
+            with self.subTest(source=source):
+                result = self.check(source, ['path'])
+                self.assertEqual((line, 'Missing or case-mismatched local target: docs/missing.md'),
+                                 (result.findings[0].line, result.findings[0].message))
+
+    def test_short_inline_comments_end_before_following_navigation(self):
+        for comment in ('<!-->', '<!--->', '<!---->'):
+            for source, line in (('prose ' + comment + ' [bad](missing.md)\n', 1),
+                                 ('| A | B |\n| --- | --- |\n| text ' + comment +
+                                  ' [bad](missing.md) | text |\n', 3)):
+                with self.subTest(comment=comment, source=source):
+                    result = self.check(source, ['path'])
+                    self.assertEqual(line, result.findings[0].line)
+                    self.assertEqual('Missing or case-mismatched local target: docs/missing.md',
+                                     result.findings[0].message)
+
+    def test_complete_inline_comments_keep_soft_break_and_literal_controls(self):
+        self.check('prose <!-- [literal](missing.md)\nordinary --> [real](target.md)\n')
+        self.check('| A | B |\n| --- | --- |\n| text <!-- [literal](missing.md) --> | text |\n')
+        self.check('`<!--` [real](target.md)\n')
+        self.check('<span title="<!--">text</span> [real](target.md)\n')
+        self.check('[x](target.md "<!--") [real](target.md)\n')
+        self.check('# Literal <!--\n[x](#literal---)\n')
+
+    def test_inline_comments_stop_at_new_markdown_blocks(self):
+        for prefix in ('# ', '- ', '> ', '```text\n[literal](other-missing.md)\n```\n'):
+            with self.subTest(prefix=prefix):
+                source = 'prose <!--\n' + prefix + '[real](missing.md)\n\n-->\n'
+                result = self.check(source, ['path'])
+                self.assertEqual(5 if prefix.startswith('```') else 2, result.findings[0].line)
+                self.assertEqual('Missing or case-mismatched local target: docs/missing.md',
+                                 result.findings[0].message)
+
+    def test_block_comments_end_when_their_quote_or_list_container_ends(self):
+        for source in ('> <!--\n> [literal](other-missing.md)\n\n[real](missing.md)\n',
+                       '- <!--\n  [literal](other-missing.md)\n\n[real](missing.md)\n'):
+            with self.subTest(source=source):
+                result = self.check(source, ['path'])
+                self.assertEqual(4, result.findings[0].line)
+        self.check('<!--\n\n[literal](missing.md)\n')
+
+    def test_block_comment_contents_cannot_change_their_own_container(self):
+        for prefix in ('> ', '  '):
+            with self.subTest(prefix=prefix):
+                opening = '> <!--\n' if prefix == '> ' else '- <!--\n'
+                source = (opening + prefix + '- [literal](other-missing.md)\n' +
+                          prefix + 'still [literal](other-missing.md)\n' +
+                          prefix + '-->\n\n[real](missing.md)\n')
+                result = self.check(source, ['path'])
+                self.assertEqual((6, 'Missing or case-mismatched local target: docs/missing.md'),
+                                 (result.findings[0].line, result.findings[0].message))
+
+    def test_incomplete_inline_comments_cannot_hide_later_html_metadata(self):
+        source = 'prose <!--\n\n<div title="\n# Ghost\n">text</div>\n\n[x](#ghost)\n'
+        result = self.check(source, ['fragment'])
+        self.assertEqual((7, 'Missing Markdown/HTML anchor: ghost'),
+                         (result.findings[0].line, result.findings[0].message))
+        self.check(source.replace('[x](#ghost)', '# Real\n\n[x](#real)'))
+
+    def test_many_incomplete_inline_comments_remain_bounded_and_check_real_links(self):
+        self.write('docs/source.md', 'text <!-- ' * 100_000 + '[bad](missing.md)\n')
+        result = self.cli('--root', str(self.root), '--json', timeout=5)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        findings = json.loads(result.stdout)['findings']
+        self.assertEqual([('docs/source.md', 1, 'path',
+                           'Missing or case-mismatched local target: docs/missing.md')],
+                         [(x['path'], x['line'], x['code'], x['message']) for x in findings])
+
     def test_escaped_markers_are_literal(self):
         self.check(r"\[literal](missing.md) \`unmatched [real](target.md)")
 
