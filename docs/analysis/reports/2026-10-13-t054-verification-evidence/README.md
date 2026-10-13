@@ -9,6 +9,8 @@ These are bounded coordinator diagnostics for [T-054](../../tasks/phase-b2/T-054
 - [implementation-verification.json](implementation-verification.json): actual initial post-content comparison, keyed to kickoff HEAD and owned worktree hashes. It is not rewritten after review.
 - [implementation-navigation.json](implementation-navigation.json): actual initial post-content visible-corpus navigation diagnostic. It uses the existing third-party Markdown diagnostic, not T-056's complete grammar.
 
+- [r1-correction-verification.json](r1-correction-verification.json) and [r1-correction-navigation.json](r1-correction-navigation.json): separate actual post-R1-correction captures at the implementation HEAD plus corrected worktree; the initial snapshots above remain immutable.
+
 From any working directory, invoke the script by its path:
 
 ~~~sh

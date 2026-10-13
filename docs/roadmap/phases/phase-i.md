@@ -63,7 +63,7 @@ The mobile milestone is explicitly a stretch goal. Reaching I4 makes Tyrne a cre
 
 ## ADR ledger for Phase I
 
-> **Identity workflow (2026-10-13).** Under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), each row below defines one stable milestone-plus-purpose planning identity. Assign the actual four-digit number only when filing via [write-adr](../../../.agents/skills/write-adr/SKILL.md); preserve the purpose identity as a historical alias in that record and link its ledger row to the filed ADR. Historical numeric aliases/notes below are evidence, not current allocations or reservations. Acceptance criteria above require the future filed record to be Accepted; the planning identity itself has no ADR status or implementation authorization.
+> **Identity workflow (2026-10-13).** Under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), each row below defines one stable milestone-plus-purpose planning identity. Assign the actual four-digit number only when filing via [write-adr](../../../.agents/skills/write-adr/SKILL.md); preserve the purpose identity as a historical alias in that record and link its ledger row to the filed ADR. Historical numeric aliases/notes below are evidence, not current allocations or reservations. The planning identity itself has no ADR status or implementation authorization.
 
 | Planned identity | Purpose | Milestone | Historical aliases / notes |
 |-----|---------|----------------|-------|
