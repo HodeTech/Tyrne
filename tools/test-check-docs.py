@@ -101,6 +101,95 @@ class LinkTests(unittest.TestCase):
     def test_heading_markup_and_inline_code_keep_underscores(self):
         self.check("## A `write_bytes` and **bold** [label](target.md)\n[x](#a-write_bytes-and-bold-label)\n")
 
+    def test_tabbed_list_setext_uses_visual_container_columns(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for body in ('-\tAlpha\n\t---\n', '-\tAlpha\n    ---\n',
+                         '- Alpha\n\t---\n', '-   Alpha\n    ---\n',
+                         '- Alpha\n  ---\n', '>\tAlpha\n>\t---\n'):
+                with self.subTest(ending=repr(ending), body=body):
+                    self.check((body + '\n[real](#alpha)\n').replace('\n', ending))
+            with self.subTest(ending=repr(ending), outdented=True):
+                result = self.check('-\tAlpha\n  ---\n\n[phantom](#alpha)\n'.replace('\n', ending), ['fragment'])
+                self.assertEqual([(4, 'Missing Markdown/HTML anchor: alpha')],
+                                 [(item.line, item.message) for item in result.findings])
+
+    def test_tabbed_list_paragraph_keeps_inline_literal_context(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for body in ('-\tprose <!--\n\t[literal](missing.md) -->\n',
+                         '-\tprose `\n\t[literal](missing.md) `\n'):
+                with self.subTest(ending=repr(ending), body=body):
+                    self.check(body.replace('\n', ending))
+            with self.subTest(ending=repr(ending), phantom=True):
+                result = self.check('-\tprose <!--\n\t<span id="ghost"></span> -->\n\n[phantom](#ghost)\n'.replace('\n', ending), ['fragment'])
+                self.assertEqual([(4, 'Missing Markdown/HTML anchor: ghost')],
+                                 [(item.line, item.message) for item in result.findings])
+
+    def test_outer_ordered_sibling_ends_nested_quote_inline_context(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for body in ('1. > prose <!--\n2. [real](missing.md) -->\n',
+                         '1. > prose `\n2. [real](missing.md)`\n',
+                         '1) > prose <!--\n2) [real](missing.md) -->\n',
+                         '1. > > prose <!--\n2. [real](missing.md) -->\n'):
+                with self.subTest(ending=repr(ending), body=body):
+                    result = self.check(body.replace('\n', ending), ['path'])
+                    self.assertEqual([(2, 'Missing or case-mismatched local target: docs/missing.md')],
+                                     [(item.line, item.message) for item in result.findings])
+            for body in ('1. > prose <!--\n   2. [literal](missing.md) -->\n',
+                         '1. > prose <!--\n   > 2. [literal](missing.md) -->\n'):
+                with self.subTest(ending=repr(ending), lazy=body):
+                    self.check(body.replace('\n', ending))
+            with self.subTest(ending=repr(ending), actual_anchor=True):
+                self.check('1. > prose <!--\n2. <span id="real"></span> -->\n\n[x](#real)\n'.replace('\n', ending))
+
+    def test_heading_markup_removal_preserves_adjacent_text(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for body, phantom in (('# Alpha<!--x-->Beta\n', 'alpha--------beta'),
+                                  ('Alpha<!--x-->Beta\n---\n', 'alpha--------beta'),
+                                  ('# Alpha<span>Beta</span>\n', 'alpha------beta'),
+                                  ('Alpha<span>Beta</span>\n---\n', 'alpha------beta')):
+                with self.subTest(ending=repr(ending), body=body):
+                    line = len(docs.physical_lines(body)) + 2
+                    result = self.check((body + '\n[real](#alphabeta) [phantom](#' + phantom + ')\n').replace('\n', ending), ['fragment'])
+                    self.assertEqual([(line, 'Missing Markdown/HTML anchor: ' + phantom)],
+                                     [(item.line, item.message) for item in result.findings])
+
+    def test_multiline_heading_comment_preserves_only_actual_spacing(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for before, after, anchor in (('', '', 'alphabeta'), (' ', '', 'alpha-beta'),
+                                          ('', ' ', 'alpha-beta'), (' ', ' ', 'alpha--beta')):
+                with self.subTest(ending=repr(ending), before=before, after=after):
+                    body = 'Alpha' + before + '<!--\nx\n-->' + after + 'Beta\n---\n'
+                    self.check((body + body + '\n[first](#' + anchor + ') [duplicate](#' + anchor + '-1)\n').replace('\n', ending))
+            with self.subTest(ending=repr(ending), phantom=True):
+                result = self.check('Alpha<!--\nx\n-->Beta\n---\n\n[phantom](#alpha-beta)\n'.replace('\n', ending), ['fragment'])
+                self.assertEqual([(6, 'Missing Markdown/HTML anchor: alpha-beta')],
+                                 [(item.line, item.message) for item in result.findings])
+
+    def test_heading_html_comment_literals_remain_code_or_escape_text(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for body, anchor in (('# `Alpha<!--x-->Beta`\n', 'alpha--x--beta'),
+                                  ('# `Alpha<span>Beta`\n', 'alphaspanbeta'),
+                                  ('# Alpha\\<span>Beta\n', 'alphaspanbeta'),
+                                  ('Alpha\nBeta\n---\n', 'alpha-beta'),
+                                  ('Alpha  Beta\n---\n', 'alpha--beta')):
+                with self.subTest(ending=repr(ending), body=body):
+                    self.check((body + '\n[real](#' + anchor + ')\n').replace('\n', ending))
+
+    def test_existing_list_outdent_can_start_a_different_ordered_delimiter(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for body in ('1. prose <!--\n2) [real](missing.md) -->\n',
+                         '1) prose <!--\n2. [real](missing.md) -->\n',
+                         '1. > prose <!--\n2) [real](missing.md) -->\n',
+                         '1) > prose <!--\n2. [real](missing.md) -->\n'):
+                with self.subTest(ending=repr(ending), body=body):
+                    result = self.check(body.replace('\n', ending), ['path'])
+                    self.assertEqual([(2, 'Missing or case-mismatched local target: docs/missing.md')],
+                                     [(item.line, item.message) for item in result.findings])
+            for body in ('> 1. prose <!--\n2) [literal](missing.md) -->\n',
+                         '> 1) prose <!--\n2. [literal](missing.md) -->\n'):
+                with self.subTest(ending=repr(ending), missing_outer_quote=body):
+                    self.check(body.replace('\n', ending))
+
     def test_setext_headings_stop_at_prior_completed_headings(self):
         text = 'First\n---\nSecond\n---\nSecond\n---\n\n[a](#first) [b](#second) [c](#second-1) [phantom](#first-----second)\n'
         result = self.check(text, ['fragment'])

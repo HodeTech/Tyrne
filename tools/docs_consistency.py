@@ -75,6 +75,11 @@ class TableRow(NamedTuple):
     width: int
 
 
+class Container(NamedTuple):
+    kind: str
+    width: int
+
+
 class BlockLine(NamedTuple):
     start: int
     end: int
@@ -109,6 +114,22 @@ def physical_lines(text, keepends=False):
             for match in PHYSICAL_LINE.finditer(text) if match[0]]
 
 
+def source_offset(line, column):
+    """Map structural columns to original text, consuming a partial tab once.
+
+    Classification retains residual virtual spaces in the visual view;
+    source consumers retain original text after the structural prefix.
+    """
+    if "\t" not in line:
+        return column
+    width = 0
+    for index, char in enumerate(line):
+        if width >= column:
+            return index
+        width += 4 - width % 4 if char == "\t" else 1
+    return len(line)
+
+
 def container_parts(line, paragraph=False):
     """Parse ordered quote/list prefixes, retaining excess code indentation."""
     offset = 0
@@ -116,7 +137,7 @@ def container_parts(line, paragraph=False):
     while True:
         match = QUOTE_PREFIX.match(line, offset)
         if match:
-            parts.append(("quote", match.end() - offset))
+            parts.append(Container("quote", match.end() - offset))
             offset = match.end()
             paragraph = False  # A newly opened quote has a fresh block.
             continue
@@ -129,7 +150,7 @@ def container_parts(line, paragraph=False):
             break  # A soft ordered marker remains source text, including its prefix.
         padding = len(match[1])
         width = match.end() - offset if padding <= 4 else match.end() - offset - padding + 1
-        parts.append(("list", width))
+        parts.append(Container("list", width))
         offset += width
         paragraph = False
     return offset, parts
@@ -137,15 +158,19 @@ def container_parts(line, paragraph=False):
 
 def continuation(line, parts):
     """Remove a previously opened container; None means it has ended."""
+    if "\t" in line:
+        visual = line.expandtabs(4)
+        body = continuation(visual, parts)
+        return None if body is None else line[source_offset(line, len(visual) - len(body)):]
     offset = 0
-    for kind, width in parts:
-        if kind == "quote":
+    for part in parts:
+        if part.kind == "quote":
             match = QUOTE_PREFIX.match(line, offset)
             if not match:
                 return None
             offset = match.end()
-        elif line[offset:offset + width] == " " * width:
-            offset += width
+        elif line[offset:offset + part.width] == " " * part.width:
+            offset += part.width
         elif EMPTY_LINE.match(line, offset):
             offset = len(line.rstrip("\r\n"))
         else:
@@ -159,23 +184,40 @@ def block_body(line, active, paragraph=False, details=False):
     Ordered non-1 markers cannot interrupt an open paragraph, but can start
     a sibling after outdent or a new list after the paragraph has ended.
     """
+    if "\t" in line:
+        visual = line.expandtabs(4)
+        body, parts, opened = block_body(visual, active, paragraph, details=True)
+        result = line[source_offset(line, len(visual) - len(body)):], parts, opened
+        return result if details else result[:2]
     parts = list(active)
     outdented_list = False
     outdented_quote = False
+    sibling_parent = False
+
+    def paragraph_only(body):
+        sibling = sibling_parent and LIST_PREFIX.match(body)
+        return paragraph and not sibling
+
     while parts:
         body = continuation(line, parts)
         if body is not None:
-            offset, extra = container_parts(body, paragraph and (not outdented_list or outdented_quote))
+            offset, extra = container_parts(body, paragraph_only(body))
             if (paragraph and (outdented_list or outdented_quote) and not extra and
                     body.strip(" \t\r\n") and not paragraph_interrupt(body, setext=False)):
                 result = body, list(active), False  # Lazy item continuation.
             else:
                 result = body[offset:], parts + extra, bool(extra)
             return result if details else result[:2]
-        kind = parts.pop()[0]
-        outdented_list |= kind == "list"
-        outdented_quote |= kind == "quote"
-    offset, parts = container_parts(line, paragraph and (not outdented_list or outdented_quote))
+        part = parts.pop()
+        outdented_list |= part.kind == "list"
+        outdented_quote |= part.kind == "quote"
+        if part.kind == "list":
+            sibling_parent = True
+        else:
+            # A list inside an unmatched quote is not a sibling parent at
+            # the remaining level; its paragraph may continue lazily.
+            sibling_parent = False
+    offset, parts = container_parts(line, paragraph_only(line))
     if (paragraph and active and not parts and line.strip(" \t\r\n") and
             not paragraph_interrupt(line, setext=False)):
         result = line, list(active), False  # Lazy quote/list continuation.
@@ -274,8 +316,10 @@ class BlockLayout:
         paragraph = ParagraphState()
         start = 0
         for line in physical_lines(text, keepends=True):
-            body, parts, opened = block_body(line, active, paragraph.active, details=True)
-            self.lines.append(paragraph.record(start, start + len(line), start + len(line) - len(body),
+            visual = line.expandtabs(4)
+            body, parts, opened = block_body(visual, active, paragraph.active, details=True)
+            body_start = start + source_offset(line, len(visual) - len(body))
+            self.lines.append(paragraph.record(start, start + len(line), body_start,
                                                parts, opened, body, line))
             active = parts
             start += len(line)
@@ -407,7 +451,8 @@ def blocks(text):
         if table:
             parts, width, header_line = table
             body = continuation(line, parts)
-            if body is not None and (line_no == header_line + 1 or not table_interrupt(body)):
+            visual_body = continuation(visual, parts)
+            if body is not None and (line_no == header_line + 1 or not table_interrupt(visual_body)):
                 if line_no != header_line + 1:
                     cells, _ = table_cells(body, begin + len(line) - len(body))
                     rows.append(TableRow(line_no, cells, False, header_line, width))
@@ -429,8 +474,9 @@ def blocks(text):
             continue
         if not comment and line_no < len(lines):
             raw_body, raw_parts = block_body(line, active, paragraph)
+            visual_body, _ = block_body(visual, active, paragraph)
             following = continuation(lines[line_no], raw_parts)
-            if following is not None and not table_interrupt(raw_body) and not raw_body.startswith(("    ", "\t")):
+            if following is not None and not table_interrupt(visual_body) and not visual_body.startswith("    "):
                 cells, header_pipe = table_cells(raw_body, begin + len(line) - len(raw_body))
                 delimiters, delimiter_pipe = table_cells(following, 0)
                 if ((header_pipe or delimiter_pipe) and cells and len(cells) == len(delimiters) and
@@ -491,14 +537,14 @@ def blocks(text):
         elif not body.strip(" \t"):
             output.append(line)
             events[-1] = paragraph_state.record(begin, offset, events[-1].body_start,
-                                               raw_parts, opened_container, raw_body, line)
+                                               raw_parts, opened_container, body, line)
             paragraph = paragraph_state.active
             html.scan(begin, offset)
         else:
             output.append(line)
             indented = False
             events[-1] = paragraph_state.record(begin, offset, events[-1].body_start,
-                                               raw_parts, opened_container, raw_body, line)
+                                               raw_parts, opened_container, body, line)
             paragraph = paragraph_state.active
             html.scan(begin, offset)
     return "".join(output), fences, html.spans, rows, raw_html, BlockLayout(text, events)
@@ -727,7 +773,7 @@ def without_containers(text, layout=None):
     return "".join(lines)
 
 
-def comments(text, layout=None):
+def comments(text, layout=None, ignored=None):
     """Mask actual comments; code, HTML attributes and link metadata are literal."""
     output = list(text)
     index = CodeSpans(text, layout)
@@ -775,6 +821,8 @@ def comments(text, layout=None):
             end = comment_index.end(cursor)
             if end is not None:
                 output[cursor:end] = blank(text[cursor:end])
+                if ignored is not None:
+                    ignored.append((cursor, end))
             cursor = end if end is not None else cursor + 4
             continue
         cursor += 1
@@ -1093,15 +1141,18 @@ class Markdown:
         for begin, end, _ in raw_fragments:
             self.erase(block_text, begin, end, self.block_text)
         self.block_text = "".join(block_text)
-        self.block_text = comments(self.block_text, self.layout)
+        ignored = []
+        self.block_text = comments(self.block_text, self.layout, ignored)
         self.references = references if references is not None else {}
         visible = list(self.block_text)
         if not inline_only:
             self._definitions(visible)
         heading_text = list("".join(visible))
+        for begin, end in ignored:
+            heading_text[begin:end] = [None] * (end - begin)
         self._inlines(visible, heading_text)
         if not inline_only:
-            self._headings("".join(heading_text))
+            self._headings(heading_text)
         for begin, end, raw in raw_fragments:
             visible[begin:end] = raw
         self.prose = "".join(visible)
@@ -1149,8 +1200,8 @@ class Markdown:
                 continue
             event = lines[line.start()]
             offset = event.body_start - line.start()
-            quotes = sum(kind == "quote" for kind, _ in event.parts)
-            list_marker = event.boundary and any(kind == "list" for kind, _ in event.parts)
+            quotes = sum(part.kind == "quote" for part in event.parts)
+            list_marker = event.boundary and any(part.kind == "list" for part in event.parts)
             if quotes != quote_depth or list_marker:
                 paragraph = False
             quote_depth = quotes
@@ -1247,7 +1298,7 @@ class Markdown:
                 end = comment_index.end(cursor)
                 if end is not None:
                     self.erase(visible, cursor, end, text)
-                    self.erase(heading_text, cursor, end, text)
+                    heading_text[cursor:end] = [None] * (end - cursor)
                 else:
                     # HTMLParser otherwise treats the literal opener as an
                     # unclosed comment and hides subsequent actual HTML.
@@ -1257,7 +1308,7 @@ class Markdown:
             if char == "<" and HTML_START.match(text, cursor):
                 tag = HTML_TAG.match(text, cursor)
                 if tag:
-                    self.erase(heading_text, cursor, tag.end(), text)
+                    heading_text[cursor:tag.end()] = [None] * (tag.end() - cursor)
                     cursor = tag.end()
                     continue
                 if HTML_LINK_START.match(text, cursor):
@@ -1303,32 +1354,50 @@ class Markdown:
             cursor += 1
 
     def _headings(self, text):
+        """Project visible heading text without turning erased spans into spaces.
+
+        None retains an original source position with zero rendered width,
+        including line endings inside actual comments or HTML metadata.
+        """
         used = set()
         paragraph = None
         pieces = []
         for line in self.layout.lines:
-            body = text[line.body_start:line.end].rstrip(" \t\r\n")
+            start = line.body_start
+            end = line.end
+            while end > start and self.text[end - 1] in "\r\n":
+                end -= 1
+            content_end = end
+            while end > start and self.text[end - 1] in " \t":
+                end -= 1
+            while start < end and self.text[start] in " \t":
+                start += 1
+            body = "".join(char for char in text[start:end] if char is not None)
             if line.kind == "paragraph":
                 if line.paragraph != paragraph:
                     pieces = []
                 paragraph = line.paragraph
-                # Inline masks may erase a whole physical line without
-                # creating a source blank or ending its actual paragraph.
-                if body.strip(" \t"):
-                    pieces.append(body.strip(" \t"))
+                pieces.append(body)
+                if any(char in ("\r", "\n") for char in text[content_end:line.end]):
+                    pieces.append(" ")  # Only a visible soft break separates text.
                 continue
-            match = re.match(r" {0,3}#{1,6}(?:[ \t]+|$)(.*)$", body) if line.kind == "atx" else None
+            raw = self.text[start:end]
+            match = re.match(r"#{1,6}(?:[ \t]+|$)(.*)$", raw) if line.kind == "atx" else None
             if match:
-                title = re.sub(r"[ \t]+#+[ \t]*$", "", match[1])
+                # Closing markers are source syntax, not a hash exposed by
+                # removing an inline tag/comment around literal heading text.
+                closing = re.search(r"[ \t]+#+[ \t]*$", match[1])
+                title_end = start + match.start(1) + (closing.start() if closing else len(match[1]))
+                title = "".join(char for char in text[start + match.start(1):title_end] if char is not None)
             elif line.kind == "setext" and line.paragraph == paragraph and pieces:
-                title = " ".join(pieces)
+                title = "".join(pieces)
             else:
                 paragraph = None
                 pieces = []
                 continue
             paragraph = None
             pieces = []
-            base = slug(title)
+            base = slug(title.strip(" \t\r\n"))
             anchor = base
             number = 0
             while anchor in used:
