@@ -14,13 +14,13 @@ A template crate and guide for writing a userspace driver task. A driver holds a
 
 ### Sub-breakdown
 
-1. **ADR-0047 — Driver task structure.** Single-threaded vs. multi-threaded; how does a driver receive IRQ notifications (endpoint + notify); error / restart semantics.
+1. **[ADR-E1-driver-task-structure](#adr-e1-driver-task-structure) — Driver task structure.** Single-threaded vs. multi-threaded; how does a driver receive IRQ notifications (endpoint + notify); error / restart semantics.
 2. **Template crate** `tyrne-driver-template/` — a skeleton a new driver copies from.
 3. **Guide** `docs/guides/write-a-driver.md`.
 
 ### Acceptance criteria
 
-- ADR-0047 Accepted.
+- The filed record for [ADR-E1-driver-task-structure](#adr-e1-driver-task-structure) is Accepted.
 - Template compiles and documents the driver's service interface.
 
 ## Milestone E2 — Log service
@@ -29,13 +29,13 @@ A userspace service that receives log records from kernel and other userspace ta
 
 ### Sub-breakdown
 
-1. **ADR-0048 — Log wire format.** Binary (postcard / custom TLV); versioned; structured key-value per [logging-and-observability.md](../../standards/logging-and-observability.md).
+1. **[ADR-E2-log-wire-format](#adr-e2-log-wire-format) — Log wire format.** Binary (postcard / custom TLV); versioned; structured key-value per [logging-and-observability.md](../../standards/logging-and-observability.md).
 2. **`tyrne-log` facade** in the kernel — the `log!` / `info!` / `warn!` macros encoded in the facade.
 3. **Log service task** — listens on its endpoint, reads records, renders to the console.
 
 ### Acceptance criteria
 
-- ADR-0048 Accepted.
+- The filed record for [ADR-E2-log-wire-format](#adr-e2-log-wire-format) is Accepted.
 - Kernel logs route through the service rather than direct UART writes (the boot console remains as emergency fallback).
 
 ## Milestone E3 — Service manager / supervisor
@@ -44,13 +44,13 @@ A task that starts, watches, and restarts other tasks per a config. The foundati
 
 ### Sub-breakdown
 
-1. **ADR-0049 — Supervision strategy.** Always-restart / N-failures-then-give-up / operator-controlled.
+1. **[ADR-E3-supervision-strategy](#adr-e3-supervision-strategy) — Supervision strategy.** Always-restart / N-failures-then-give-up / operator-controlled.
 2. **Supervisor task** that reads a config (compile-time initial, filesystem-based later).
 3. **Fault-endpoint plumbing** — each supervised task has its fault endpoint held by the supervisor.
 
 ### Acceptance criteria
 
-- ADR-0049 Accepted.
+- The filed record for [ADR-E3-supervision-strategy](#adr-e3-supervision-strategy) is Accepted.
 - A deliberately-crashing test task is restarted by the supervisor per the configured policy.
 
 ## Milestone E4 — Storage driver
@@ -59,13 +59,13 @@ QEMU: virtio-blk. Pi 4: SD card via the SDHCI-like controller on BCM2711. The dr
 
 ### Sub-breakdown
 
-1. **ADR-0050 — Block-device service interface.** Synchronous / asynchronous read-write; sector size; capability model.
+1. **[ADR-E4-block-device-interface](#adr-e4-block-device-interface) — Block-device service interface.** Synchronous / asynchronous read-write; sector size; capability model.
 2. **`tyrne-driver-virtio-blk`** — the first real non-trivial driver.
 3. **`tyrne-driver-sdhci-bcm2711`** — the Pi 4 counterpart (may be stubbed until later).
 
 ### Acceptance criteria
 
-- ADR-0050 Accepted.
+- The filed record for [ADR-E4-block-device-interface](#adr-e4-block-device-interface) is Accepted.
 - A userspace client can read and write sectors through the storage service.
 
 ## Milestone E5 — Simple filesystem
@@ -74,13 +74,13 @@ A read-mostly filesystem service on top of E4. Initial choice may be read-only (
 
 ### Sub-breakdown
 
-1. **ADR-0051 — Filesystem choice.** Build a simple one, port an existing crate (`littlefs`, `ext4`-via-crate, a log-structured FS like F2FS-style for flash-friendly wear-levelling), or start with a read-only block layout and add write support incrementally. Weighed against portability, `no_std + alloc` compatibility, crash-consistency guarantees, and the smart-home target's preference for flash-friendly wear-levelling.
+1. **[ADR-E5-filesystem-choice](#adr-e5-filesystem-choice) — Filesystem choice.** Build a simple one, port an existing crate (`littlefs`, `ext4`-via-crate, a log-structured FS like F2FS-style for flash-friendly wear-levelling), or start with a read-only block layout and add write support incrementally. Weighed against portability, `no_std + alloc` compatibility, crash-consistency guarantees, and the smart-home target's preference for flash-friendly wear-levelling.
 2. **Filesystem service task** implementing the chosen approach.
 3. **Storage capability flow** — the filesystem service has the block-device capability; it grants named-file capabilities to clients.
 
 ### Acceptance criteria
 
-- ADR-0051 Accepted.
+- The filed record for [ADR-E5-filesystem-choice](#adr-e5-filesystem-choice) is Accepted.
 - A userspace client can open, read, and (at minimum) list files through the filesystem service.
 
 ## Milestone E6 — Network stack integration
@@ -89,13 +89,13 @@ A read-mostly filesystem service on top of E4. Initial choice may be read-only (
 
 ### Sub-breakdown
 
-1. **ADR-0052 — Network stack choice.** smoltcp is the probable answer; this ADR commits to it or to an alternative, covering `no_std + alloc` compatibility, license, and maintenance.
+1. **[ADR-E6-network-stack](#adr-e6-network-stack) — Network stack choice.** smoltcp is the probable answer; this ADR commits to it or to an alternative, covering `no_std + alloc` compatibility, license, and maintenance.
 2. **`tyrne-driver-virtio-net`** driver.
 3. **Network service task** wrapping the stack with a capability-gated interface.
 
 ### Acceptance criteria
 
-- ADR-0052 Accepted.
+- The filed record for [ADR-E6-network-stack](#adr-e6-network-stack) is Accepted.
 - Loopback works; a test client completes a TCP three-way handshake with a server on the host.
 
 ### Phase E closure
@@ -104,16 +104,20 @@ Business review. The system now has enough plumbing to support a real end-user d
 
 ## ADR ledger for Phase E
 
-| ADR | Purpose | Expected state | Note |
-|-----|---------|----------------|------|
-| ADR-0047 | Driver task structure | E1 | renumbered 2026-05-22, was ADR-0037 (cascade from the Phase C/D renumbering, which shifted onto Phase E's old range) |
-| ADR-0048 | Log wire format | E2 | renumbered 2026-05-22, was ADR-0038 (cascade) |
-| ADR-0049 | Supervision strategy | E3 | renumbered 2026-05-22, was ADR-0039 (cascade) |
-| ADR-0050 | Block-device service interface | E4 | renumbered 2026-05-22, was ADR-0040 (cascade) |
-| ADR-0051 | Filesystem choice | E5 | renumbered 2026-05-22, was ADR-0041 (cascade) |
-| ADR-0052 | Network stack choice | E6 | renumbered 2026-05-22, was ADR-0042 (cascade). ADR-0052 is now uniquely Phase E's E6: the phase-h/phase-i cascade was completed in this same pass (H → 0063–0065, I → 0066–0068) — see the §Downstream-renumbering note below. |
+> **Identity workflow (2026-10-13).** Under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), each row below defines one stable milestone-plus-purpose planning identity. Assign the actual four-digit number only when filing via [write-adr](../../../.agents/skills/write-adr/SKILL.md); preserve the purpose identity as a historical alias in that record and link its ledger row to the filed ADR. Historical numeric aliases/notes below are evidence, not current allocations or reservations. Acceptance criteria above require the future filed record to be Accepted; the planning identity itself has no ADR status or implementation authorization.
 
-Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
+| Planned identity | Purpose | Milestone | Historical aliases / notes |
+|-----|---------|----------------|------|
+| <a id="adr-e1-driver-task-structure"></a>ADR-E1-driver-task-structure | Driver task structure | E1 | Historical aliases (superseded 2026-10-13): ADR-0047; renumbered 2026-05-22, was ADR-0037 (cascade from the Phase C/D renumbering, which shifted onto Phase E's old range) |
+| <a id="adr-e2-log-wire-format"></a>ADR-E2-log-wire-format | Log wire format | E2 | Historical aliases (superseded 2026-10-13): ADR-0048; renumbered 2026-05-22, was ADR-0038 (cascade) |
+| <a id="adr-e3-supervision-strategy"></a>ADR-E3-supervision-strategy | Supervision strategy | E3 | Historical aliases (superseded 2026-10-13): ADR-0049; renumbered 2026-05-22, was ADR-0039 (cascade) |
+| <a id="adr-e4-block-device-interface"></a>ADR-E4-block-device-interface | Block-device service interface | E4 | Historical aliases (superseded 2026-10-13): ADR-0050; renumbered 2026-05-22, was ADR-0040 (cascade) |
+| <a id="adr-e5-filesystem-choice"></a>ADR-E5-filesystem-choice | Filesystem choice | E5 | Historical aliases (superseded 2026-10-13): ADR-0051; renumbered 2026-05-22, was ADR-0041 (cascade) |
+| <a id="adr-e6-network-stack"></a>ADR-E6-network-stack | Network stack choice | E6 | Historical aliases (superseded 2026-10-13): ADR-0052; renumbered 2026-05-22, was ADR-0042 (cascade). ADR-0052 is now uniquely Phase E's E6: the phase-h/phase-i cascade was completed in this same pass (H → 0063–0065, I → 0066–0068) — see the §Downstream-renumbering note below. |
+
+The former tentative-number workflow is superseded by the dated identity workflow above; filed ADR numbers remain stable history per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
+
+> **Historical snapshot clarification (2026-10-13).** The 2026-05-22 note below is retained verbatim as evidence of that pass. Its tentative allocations, ceilings and live-file counts are historical, superseded by the stable identities above.
 
 > **Downstream-renumbering note (2026-05-22).** The Phase C/D ADR-number collision fix shifted the entire forward ADR chain up by ten slots, and Phase F gained a new milestone (F5 — secure field update, ADR-0057). Phases **C, D, E, F, G, H, and I** were all renumbered/extended in this pass so the full forward chain is collision-free and ascends with phase order: Phase G's ceiling is **ADR-0062** (G5), and the cascade was carried through **H → 0063–0065** and **I → 0066–0068** (which also freed ADR-0057 for the new Phase F5 placeholder). The new overall ceiling is **ADR-0068** (Phase I's I3). All these numbers remain tentative per [ADR-0013](../../decisions/0013-roadmap-and-planning.md); none collides with a live ADR file (highest live is ADR-0035; the supersession ADR-0036 is the only newly-written one).
 

@@ -1,5 +1,7 @@
 # Phase C — Multi-core
 
+> **Planning clarification (2026-10-13).** Live planned ADRs use the stable purpose identities in this file's ledger under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md). This supersedes only the tentative-number/re-sequencing statements in the dated 2026-10-11 snapshot below. The Phase B.2 implementation gate remains unchanged; real governance ADR-0040 remains numeric.
+
 > **Status (2026-10-11): next — gated by [Phase B.2](phase-b2.md)** ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)). Phase C was marked "active" on 2026-06-01 but no milestone, task or ADR was ever opened. While Phase B.2 is open, no Phase C milestone opens and no Phase C implementation task leaves `Draft`; scoping drafts and `Proposed` ADRs are allowed (see task T-074, the Phase C readiness sweep). The two SMP-critical entry gates in §"Review-derived work items" remain **Phase C** work; only the misleading `pmm.rs` comment is corrected earlier, under T-042. ADR numbers quoted in this file (ADR-0040…0044) are tentative placeholders: the real ADR-0040 is the Phase B.2 governance ADR, and task T-054 re-sequences them.
 
 **Exit bar:** Two or more cores running concurrently, scheduled preemptively, with working cross-core IPC.
@@ -16,7 +18,7 @@ Bring secondary cores online via PSCI `CPU_ON`. Each core arrives at a kernel en
 
 ### Sub-breakdown
 
-1. **ADR-0040 — Secondary core start protocol.** *(Tentative number: the real ADR-0040 is the Phase B.2 governance ADR; see the ledger note below and T-054.)* PSCI vs. spin-table. Entry point for secondaries (shared with primary or separate). Rendezvous semantics (when the primary considers a secondary "up").
+1. **[ADR-C1-secondary-core-start](#adr-c1-secondary-core-start) — Secondary core start protocol.** PSCI vs. spin-table. Entry point for secondaries (shared with primary or separate). Rendezvous semantics (when the primary considers a secondary "up").
 2. **`Cpu` trait v3 extension** — adds `start_core(core_id, entry, context)` and `core_count()`; probably as a sibling `MultiCore` trait to keep `Cpu` v2 stable.
 3. **Secondary-core asm entry** in `bsp-qemu-virt` — minimal per-core stack setup before Rust.
 4. **Per-core state struct** introduced here (fully fleshed out in C2).
@@ -24,7 +26,7 @@ Bring secondary cores online via PSCI `CPU_ON`. Each core arrives at a kernel en
 
 ### Acceptance criteria
 
-- The C1 secondary-core-start ADR (tentatively numbered ADR-0040; see the ledger note below and T-054) Accepted.
+- The filed record for [ADR-C1-secondary-core-start](#adr-c1-secondary-core-start) is Accepted.
 - `Cpu::start_core` (or sibling trait) lands in `tyrne-hal`.
 - All configured cores reach the Rust-level rendezvous point on QEMU.
 
@@ -36,14 +38,14 @@ Every online core needs its own current-task pointer, IRQ-mask shadow, and sched
 
 ### Sub-breakdown
 
-1. **ADR-0041 — Per-core state access pattern.** `TPIDR_EL1` pointer vs. indexed lookup. Thread-local-like access to the current core's state.
+1. **[ADR-C2-per-core-state](#adr-c2-per-core-state) — Per-core state access pattern.** `TPIDR_EL1` pointer vs. indexed lookup. Thread-local-like access to the current core's state.
 2. **`PerCore<T>` abstraction** — kernel-provided primitive for per-core state with interior synchronization.
 3. **Current-task pointer** moved to per-core state.
 4. **Tests** — each core sees its own state; no accidental cross-core access.
 
 ### Acceptance criteria
 
-- ADR-0041 Accepted.
+- The filed record for [ADR-C2-per-core-state](#adr-c2-per-core-state) is Accepted.
 - Per-core state accessible from any core via the chosen pattern.
 - Tests cover the access invariants.
 
@@ -55,7 +57,7 @@ Replace the cooperative scheduler from A5 with a preemptive one driven by the ti
 
 ### Sub-breakdown
 
-1. **ADR-0042 — Scheduler topology.** Per-core queues with work stealing, vs. a single global queue with locking, vs. hybrid. Real-time guarantees (or the lack thereof).
+1. **[ADR-C3-scheduler-topology](#adr-c3-scheduler-topology) — Scheduler topology.** Per-core queues with work stealing, vs. a single global queue with locking, vs. hybrid. Real-time guarantees (or the lack thereof).
 2. **Timer tick wiring** — [`Timer`](../../../hal/src/timer.rs) arm-deadline fires an IRQ; [`IrqController`](../../../hal/src/irq_controller.rs) delivers it; ISR triggers the scheduler's tick handler.
 3. **Preemption points** — when and how a running task can be interrupted and the scheduler invoked.
 4. **Time slice** — configurable per-task or global for v1.
@@ -65,7 +67,7 @@ Replace the cooperative scheduler from A5 with a preemptive one driven by the ti
 
 ### Acceptance criteria
 
-- ADR-0042 Accepted.
+- The filed record for [ADR-C3-scheduler-topology](#adr-c3-scheduler-topology) is Accepted.
 - Preemption works: a CPU-bound userspace task is preempted by the tick and another runnable task gets CPU time.
 - Idle cores enter low-power WFI.
 - No scheduling-related deadlocks or priority inversions (v1 is single priority, so this is mostly vacuous; real-time concerns deferred).
@@ -78,14 +80,14 @@ A sender on core 0 sending to a receiver on core 1 works. The receiver wakes on 
 
 ### Sub-breakdown
 
-1. **ADR-0043 — Cross-core wakeup.** IPI-based (inter-processor interrupt) vs. polling. Latency expectations.
+1. **[ADR-C4-cross-core-wakeup](#adr-c4-cross-core-wakeup) — Cross-core wakeup.** IPI-based (inter-processor interrupt) vs. polling. Latency expectations.
 2. **IPI support** — new primitive on `IrqController` (or a sibling trait) to send an IPI to another core.
 3. **Endpoint rendezvous across cores** — the wait/wake path handles the cross-core case correctly.
 4. **Tests** — cross-core IPC round trip; behaviour when the receiver's core is idle (WFI'd); behaviour when both cores are busy.
 
 ### Acceptance criteria
 
-- ADR-0043 Accepted.
+- The filed record for [ADR-C4-cross-core-wakeup](#adr-c4-cross-core-wakeup) is Accepted.
 - IPI primitive implemented for QEMU virt (GICv2 SGI; QEMU virt is GICv2, GIC-400 on Pi 4 — the SGI mechanism applies to both; no IOMMU in v1, per ADR-0036).
 - Cross-core IPC has the same correctness guarantees as same-core IPC (atomic cap transfer, etc.).
 
@@ -97,14 +99,14 @@ When an address space is modified on one core, other cores with that address spa
 
 ### Sub-breakdown
 
-1. **ADR-0044 — TLB shootdown protocol.** Broadcast IPI vs. per-address targeted; whether to extend `Mmu` trait or add a sibling.
+1. **[ADR-C5-tlb-shootdown](#adr-c5-tlb-shootdown) — TLB shootdown protocol.** Broadcast IPI vs. per-address targeted; whether to extend `Mmu` trait or add a sibling.
 2. **`invalidate_tlb_cross_core` primitive** — probably on a sibling trait, since `Mmu` v1 is single-core.
 3. **Integration with address-space unmap paths.**
 4. **Tests** — cross-core unmap visibility is immediate; stale TLB entries never observed after shootdown.
 
 ### Acceptance criteria
 
-- ADR-0044 Accepted.
+- The filed record for [ADR-C5-tlb-shootdown](#adr-c5-tlb-shootdown) is Accepted.
 - Cross-core unmap is safely observable on all cores before the next memory access.
 
 ### Phase C closure
@@ -115,15 +117,17 @@ Business review. Phase D (Pi 4) or Phase D + E overlap becomes active.
 
 ## ADR ledger for Phase C
 
-| ADR | Purpose | Expected state | Note |
-|-----|---------|----------------|------|
-| ADR-0040 | Secondary core start protocol | C1 | renumbered 2026-06-01 from ADR-0037 (ADR-0037 consumed by Phase B6 for EL0 entry context / T-023); was previously renumbered 2026-05-22 from ADR-0027 (collided with Accepted ADR-0027 kernel-virtual-memory-layout) |
-| ADR-0041 | Per-core state access pattern | C2 | renumbered 2026-06-01 from ADR-0038 (ADR-0038 consumed by Phase B6 for `Mmu::translate` + user-access translation / T-025); was previously renumbered 2026-05-22 from ADR-0028 (collided with Accepted ADR-0028 address-space-data-structure) |
-| ADR-0042 | Scheduler topology (preemptive) | C3 | renumbered 2026-06-01 from ADR-0039 (ADR-0039 consumed by Phase B6 for the userland build pipeline / T-027); was previously renumbered 2026-05-22 from ADR-0029 (collided with Accepted ADR-0029 initial-userspace-image-format) |
-| ADR-0043 | Cross-core wakeup (IPI) | C4 | renumbered 2026-06-01 from ADR-0040; was renumbered 2026-05-22 from ADR-0030 (reserved by phase-b.md §B5 ledger for the syscall ABI) |
-| ADR-0044 | TLB shootdown protocol | C5 | renumbered 2026-06-01 from ADR-0041; was renumbered 2026-05-22 from ADR-0031 (reserved by phase-b.md §B5 ledger for the initial syscall set) |
+> **Identity workflow (2026-10-13).** Under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), each row below defines one stable milestone-plus-purpose planning identity. Assign the actual four-digit number only when filing via [write-adr](../../../.agents/skills/write-adr/SKILL.md); preserve the purpose identity as a historical alias in that record and link its ledger row to the filed ADR. Historical numeric aliases/notes below are evidence, not current allocations or reservations. Acceptance criteria above require the future filed record to be Accepted; the planning identity itself has no ADR status or implementation authorization.
 
-Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md). **Note (2026-10-11):** ADR-0040 was taken by the Phase B.2 governance ADR ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)), so every number in this table is now an ordinal placeholder that shifts by at least one and that still collides with Phase D's ledger; re-sequencing all phase ledgers is task T-054.
+| Planned identity | Purpose | Milestone | Historical aliases / notes |
+|-----|---------|----------------|------|
+| <a id="adr-c1-secondary-core-start"></a>ADR-C1-secondary-core-start | Secondary core start protocol | C1 | Historical aliases (superseded 2026-10-13): ADR-0040; renumbered 2026-06-01 from ADR-0037 (ADR-0037 consumed by Phase B6 for EL0 entry context / T-023); was previously renumbered 2026-05-22 from ADR-0027 (collided with Accepted ADR-0027 kernel-virtual-memory-layout) |
+| <a id="adr-c2-per-core-state"></a>ADR-C2-per-core-state | Per-core state access pattern | C2 | Historical aliases (superseded 2026-10-13): ADR-0041; renumbered 2026-06-01 from ADR-0038 (ADR-0038 consumed by Phase B6 for `Mmu::translate` + user-access translation / T-025); was previously renumbered 2026-05-22 from ADR-0028 (collided with Accepted ADR-0028 address-space-data-structure) |
+| <a id="adr-c3-scheduler-topology"></a>ADR-C3-scheduler-topology | Scheduler topology (preemptive) | C3 | Historical aliases (superseded 2026-10-13): ADR-0042; renumbered 2026-06-01 from ADR-0039 (ADR-0039 consumed by Phase B6 for the userland build pipeline / T-027); was previously renumbered 2026-05-22 from ADR-0029 (collided with Accepted ADR-0029 initial-userspace-image-format) |
+| <a id="adr-c4-cross-core-wakeup"></a>ADR-C4-cross-core-wakeup | Cross-core wakeup (IPI) | C4 | Historical aliases (superseded 2026-10-13): ADR-0043; renumbered 2026-06-01 from ADR-0040; was renumbered 2026-05-22 from ADR-0030 (reserved by phase-b.md §B5 ledger for the syscall ABI) |
+| <a id="adr-c5-tlb-shootdown"></a>ADR-C5-tlb-shootdown | TLB shootdown protocol | C5 | Historical aliases (superseded 2026-10-13): ADR-0044; renumbered 2026-06-01 from ADR-0041; was renumbered 2026-05-22 from ADR-0031 (reserved by phase-b.md §B5 ledger for the initial syscall set) |
+
+> **Historical numbering snapshot (2026-10-11; superseded by the 2026-10-13 identity workflow above).** Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md). **Note (2026-10-11):** ADR-0040 was taken by the Phase B.2 governance ADR ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md)), so every number in this table is now an ordinal placeholder that shifts by at least one and that still collides with Phase D's ledger; re-sequencing all phase ledgers is task T-054.
 
 ## Carry-forwards from Phase B (closed 2026-06-01)
 
@@ -229,10 +233,10 @@ Twenty-eight findings, all variations on the same theme the review's cross-cut/s
   Action: as the very first action of the panic handler — before reconstructing the UART — mask all four DAIF bits (`asm!("msr daifset, #0xf")`, mirroring `boot.s`'s idiom). Guarantees the diagnostic UART write and final halt loop are truly atomic and that no ISR runs in a kernel state the panic may have left inconsistent.
 - 🟡 **Panic handler halts only the panicking core; no cross-core halt/IPI exists, so surviving cores keep mutating shared kernel state a panic may have left inconsistent.**
   `bsp-qemu-virt/src/main.rs:1666-1701`.
-  Action: not called out anywhere in phase-c.md's carry-forwards or milestones today. Add an explicit "cross-core panic propagation" requirement to **Milestone C4** (which already introduces the IPI primitive for cross-core wakeup) — reuse that mechanism to broadcast a halt-all-cores signal from the panic handler once IPI support exists. Fine until then (v1 is genuinely single-core), but flag it now so ADR-0043's IPI design accounts for a "halt everyone" message type, not just wakeup.
+  Action: not called out anywhere in phase-c.md's carry-forwards or milestones today. Add an explicit "cross-core panic propagation" requirement to **Milestone C4** (which already introduces the IPI primitive for cross-core wakeup) — reuse that mechanism to broadcast a halt-all-cores signal from the panic handler once IPI support exists. Fine until then (v1 is genuinely single-core), but flag it now so [ADR-C4-cross-core-wakeup](#adr-c4-cross-core-wakeup)'s IPI design accounts for a "halt everyone" message type, not just wakeup.
 - ⚫ **EL0 non-SVC synchronous faults (illegal instruction, unmapped deref, alignment fault) halt the entire kernel via `panic_entry` — correctly tracked as K3-4/Phase E, but the SMP angle needs a documentation addendum.**
   `bsp-qemu-virt/src/vectors.s:60-77` (only `ESR_EL1.EC==SVC64` routes to dispatch); `bsp-qemu-virt/src/exceptions.rs:277-307` (`panic_entry`, unconditional `panic!`); `docs/roadmap/phases/phase-c.md:132` (K3-4 carry-forward).
-  Action: no change needed to close this item — it is already correctly tracked and deliberately deferred to Phase E. One addendum worth adding to the existing K3-4 carry-forward note now: under SMP, a panic on one core currently has no defined story for signalling/halting the *other* cores (today's single-core `loop { spin_loop() }` halts everything by being the only core). When Milestone C1/C2 land, the K3-4 write-up (or ADR-0041 per-core state) should say explicitly whether a same-core EL0 fault still takes the whole machine down post-SMP, or is scoped sooner.
+  Action: no change needed to close this item — it is already correctly tracked and deliberately deferred to Phase E. One addendum worth adding to the existing K3-4 carry-forward note now: under SMP, a panic on one core currently has no defined story for signalling/halting the *other* cores (today's single-core `loop { spin_loop() }` halts everything by being the only core). When Milestone C1/C2 land, the K3-4 write-up (or [ADR-C2-per-core-state](#adr-c2-per-core-state) per-core state) should say explicitly whether a same-core EL0 fault still takes the whole machine down post-SMP, or is scoped sooner.
 
 **Console / shared I/O state:**
 
@@ -247,7 +251,7 @@ Twenty-eight findings, all variations on the same theme the review's cross-cut/s
 
 - ⚫ **`Scheduler<C>`'s single global `current`/`idle`/`ready`/`contexts` shape is the review's explicit SMP-readiness inventory item for the scheduler's core data layout.**
   `kernel/src/sched/mod.rs:249-330` (Scheduler fields) and `:772-799` (`register_idle`).
-  Action: no action needed beyond what Milestones C2/C3 already plan. Recorded here to give the eventual ADR-0042 author a precise enumeration of exactly which `Scheduler<C>` fields need per-core partitioning vs. a shared lock (ready queue and `contexts` are natural lock-protected-shared or per-core-with-work-stealing candidates; `task_cap_tables`/`task_address_space_handles`/`task_user_windows` are read-mostly per-task metadata a `RwLock`-shaped primitive would suit).
+  Action: no action needed beyond what Milestones C2/C3 already plan. Recorded here to give the eventual [ADR-C3-scheduler-topology](#adr-c3-scheduler-topology) author a precise enumeration of exactly which `Scheduler<C>` fields need per-core partitioning vs. a shared lock (ready queue and `contexts` are natural lock-protected-shared or per-core-with-work-stealing candidates; `task_cap_tables`/`task_address_space_handles`/`task_user_windows` are read-mostly per-task metadata a `RwLock`-shaped primitive would suit).
 - 🟡 **Coverage-percentage and Miri baseline reports have not been refreshed since 2026-04-27, despite ~2.5x test growth and entirely new subsystems landing.**
   `docs/analysis/reports/2026-04-27-coverage-rerun.md`; `docs/analysis/reports/2026-04-23-miri-validation.md`.
   Action: produce a fresh `docs/analysis/reports/<date>-coverage-post-phase-b.md` (and a paired Miri narrative update) now that Phase B is closed — reuse the existing template and per-file triage method. Establishes the coverage floor Phase C's SMP work will be measured against.
@@ -262,7 +266,7 @@ Twenty-eight findings, all variations on the same theme the review's cross-cut/s
 
 - 🟡 **`cap_create_address_space`'s preflight-then-commit sequence is non-atomic across the whole function body, relying solely on "single-core cooperative" for correctness.**
   `kernel/src/mm/address_space.rs:586-603` and `:649-679`.
-  Action: same remediation family as the Epic-1 `Pmm` finding — this function needs to run under whatever per-CPU-lock primitive Milestone C3's `Cpu::without_interrupts` establishes before any code path can call it from more than one core. Worth noting explicitly in ADR-0042 or a companion capability-subsystem note, since this "preflight then commit across N steps" pattern likely recurs elsewhere in the object layer.
+  Action: same remediation family as the Epic-1 `Pmm` finding — this function needs to run under whatever per-CPU-lock primitive Milestone C3's `Cpu::without_interrupts` establishes before any code path can call it from more than one core. Worth noting explicitly in [ADR-C3-scheduler-topology](#adr-c3-scheduler-topology) or a companion capability-subsystem note, since this "preflight then commit across N steps" pattern likely recurs elsewhere in the object layer.
 - 🟡 **`task_loader.rs`'s `load_image` has the identical unlocked preflight-then-commit pattern as `cap_create_address_space`.**
   `kernel/src/obj/task_loader.rs:579-587` (frame-budget preflight) and the subsequent commit steps later in `load_image`'s body.
   Action: fold into the same remediation family as the finding above rather than a separate follow-up — both `cap_create_address_space` and `load_image` need to run under the Milestone C3 per-CPU-lock primitive before either can be called from more than one core concurrently. Name both call sites explicitly in the eventual capability-subsystem SMP-readiness ADR.
@@ -277,13 +281,13 @@ Twenty-eight findings, all variations on the same theme the review's cross-cut/s
   Action: replace `unreachable!()` with `return Err(IpcError::QueueFull)` — a single-line, zero-risk change identical to what `ipc_recv` already does for its analogous state — rather than waiting for Milestone C3 preemption work to make the race live. `IpcError::QueueFull` and its `SyscallError` composition already exist and are already tested for the ordinary QueueFull path.
 - 🟠 **`copy_from_user`/`copy_to_user`'s two-pass probe-then-copy is a TOCTOU window the moment address-space mutation can happen concurrently with a syscall.**
   `kernel/src/syscall/user_access.rs:198-249` and `:280-317`.
-  Action: this is explicitly the concern **Milestone C5** (TLB shootdown) partially addresses, but C5's acceptance criteria ("cross-core unmap is safely observable on all cores before the next memory access") describe post-unmap visibility, not protection of an in-flight probe-then-copy window against a *concurrent* unmap. When C4/C5 land, either (a) re-translate-and-recheck per byte-run atomically with the unmap path (hold a per-AS lock across the whole copy, not just the probe), or (b) make unmap defer physical-frame reuse until an RCU-like grace period / IPI-synchronized quiescence, so a stale translation used mid-copy still points at valid (if logically-unmapped) memory. Flag explicitly in the ADR-0044 (TLB shootdown) design doc — this is narrower and more security-relevant than plain TLB staleness.
+  Action: this is explicitly the concern **Milestone C5** (TLB shootdown) partially addresses, but C5's acceptance criteria ("cross-core unmap is safely observable on all cores before the next memory access") describe post-unmap visibility, not protection of an in-flight probe-then-copy window against a *concurrent* unmap. When C4/C5 land, either (a) re-translate-and-recheck per byte-run atomically with the unmap path (hold a per-AS lock across the whole copy, not just the probe), or (b) make unmap defer physical-frame reuse until an RCU-like grace period / IPI-synchronized quiescence, so a stale translation used mid-copy still points at valid (if logically-unmapped) memory. Flag explicitly in the [ADR-C5-tlb-shootdown](#adr-c5-tlb-shootdown) (TLB shootdown) design doc — this is narrower and more security-relevant than plain TLB staleness.
 - ⚪ **`copy_from_user`/`copy_to_user`'s two-pass probe-then-copy correctness rests on an explicit single-core assumption with no test (or test harness) to catch a Phase C violation.**
   `kernel/src/syscall/user_access.rs:201-203, 238-241, 308-309` (SAFETY comments).
   Action: file this explicitly as a test-debt/forward-flag item (mirroring ADR-0032's preemption forward-flags) so whatever ADR introduces cross-core page-table mutation must either (a) prove single-writer-per-AS still holds under SMP, or (b) add a re-validation-on-copy (not just on-probe) discipline, with a test that models the race via test-hal (e.g. a decorator MMU that mutates a mapping between a probe and copy call) before Milestone C3's scheduler work ships.
 - ⚪ **The file's single-core, DAIF-masked "no interleaving" soundness basis is not carried forward into the Phase C (SMP) plan.**
   `kernel/src/syscall/user_access.rs:236-241, 303-310`.
-  Action: add this file's interleaving invariant as an explicit Phase C carry-forward item (alongside SEC-T028-01/ADR-0034/K3-4 in this file), or add a code-level forward marker pointing at ADR-0044, so whoever lands C3/C4/C5 is forced to re-examine and re-prove (or re-synchronize, via the TLB-shootdown protocol) this file's two-pass translate-then-copy design before SMP ships.
+  Action: add this file's interleaving invariant as an explicit Phase C carry-forward item (alongside SEC-T028-01/ADR-0034/K3-4 in this file), or add a code-level forward marker pointing at [ADR-C5-tlb-shootdown](#adr-c5-tlb-shootdown), so whoever lands C3/C4/C5 is forced to re-examine and re-prove (or re-synchronize, via the TLB-shootdown protocol) this file's two-pass translate-then-copy design before SMP ships.
 - ⚪ **Running-task syscall context is assembled from three separate, non-atomic scheduler reads.**
   `bsp-qemu-virt/src/syscall.rs:169-171`.
   Action: before Phase C introduces cross-core mutation of scheduler task-bindings, either add a single `Scheduler` accessor that returns all three pieces from one borrow of `current`, or add an explicit comment naming "no interleaving between these three reads" as a precondition to be re-verified when SMP scheduling design lands.

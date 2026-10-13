@@ -253,7 +253,9 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
   **Action:** Add a top-of-file blockquote in the same style already used at `docs/decisions/0022-idle-task-and-typed-scheduler-deadlock.md:7-11`, recording that the shipped `KBASE` is `0xFFFF_FFFF_4008_0000` (not `0xFFFF_FFFF_8008_0000`) and a single offset (`KERNEL_HIGH_HALF_OFFSET`) replaces the two-offset model described below.
 
 - **[🟡 MEDIUM]** Phase C's 2026-06-01 ADR-number renumbering was not cascaded downstream, recreating a direct collision with Phase D's ADR ledger on ADR-0042/0043/0044 — `docs/roadmap/phases/phase-c.md:118-122` vs. `docs/roadmap/phases/phase-d.md:162-167`
-  **Action:** Re-run the cascading renumbering: shift Phase D (and E–I if they also now collide) up past Phase C's new ceiling (ADR-0044); add a "downstream-renumbering note" to phase-d.md analogous to the one already present in phase-e.md. Recurrence of Blocker D4-001/D4-002 from the 2026-05-22 master review.
+  **Action (approved 2026-10-12):** Follow [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md) / [T-054](../../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md): migrate all 32 planned C–I definitions and their live references by meaning to stable milestone-plus-purpose identities. Allocate numeric IDs only when filing, preserve historical aliases and reserved 0034, and retain explicitly unallocated decisions. No further numeric cascade.
+
+> **Historical proposed remediation (opening snapshot; superseded by ADR-0043).** **Action:** Re-run the cascading renumbering: shift Phase D (and E–I if they also now collide) up past Phase C's new ceiling (ADR-0044); add a "downstream-renumbering note" to phase-d.md analogous to the one already present in phase-e.md. Recurrence of Blocker D4-001/D4-002 from the 2026-05-22 master review.
 
 - **[🟡 MEDIUM]** phase-b.md's own B6 dependency-ordered task sequence self-contradicts "DONE"/"landed" against "In Review" for the same task in the same sentence, with no historical-record framing to disambiguate — `docs/roadmap/phases/phase-b.md:250,254,255`
   **Action:** Flip the three parenthetical task-status tags (steps 1, 5, 6) to "Done" with their merge PR numbers (T-022 → PR #36, T-027 → PR #41, T-028 → PR #42, matching current.md's own citations), or explicitly wrap the pre-closure narrative in a "preserved as historical record" framing the way the B5 section above it already does.
@@ -296,7 +298,7 @@ Phase B closed 2026-06-01, but the closure was never cascaded through the full d
 - current.md's live-state bullets match HEAD; the phase-b task index lists all 23 tasks with correct statuses; all nine "In Review" task frontmatters flip to Done with `date_done` entries.
 - CONTRIBUTING.md, SECURITY.md, and the affected standards docs (testing.md, error-handling.md, code-review.md, logging-and-observability.md, commit-style.md, code-style.md) match current CI/tooling reality.
 - All four review-family README indices include every Phase-B-closing entry.
-- The Phase C ADR ledger renumbering is cascaded to Phase D (and E–I if colliding).
+- All 32 C–I planned ADR definitions have unique stable purpose identities and resolved live references under ADR-0043; no live tentative numeric ledger allocation remains. Filed numbers, reserved 0034, historical aliases and explicitly unallocated decisions are preserved.
 - Every broken/stale relative link identified above is fixed.
 
 ---
@@ -606,7 +608,7 @@ None of the following are defects — they are the review's excellence-track obs
 - **Polish** — Mark each standard's volatile (CI/tooling-dependent) claims with an explicit enforcement-status tag, mirroring infrastructure.md's exemplary "Required (enforced today)" / "Planned (not yet enforced)" / "Advisory" split — the other five CI-referencing standards state their gates in flat prose, which is exactly where this review found staleness.
 - **Polish** — Give logging-and-observability.md an explicit implementation-status banner — the single largest gap between prescriptive tone and implementation reality in the standards folder.
 - **Polish** — Reconcile commit-style.md's scope enum with reality and add the CI gate the doc itself calls "planned", in one pass, so future scope drift doesn't re-accumulate the way it did between the list's original authoring and today's 38-commit `roadmap` usage.
-- **Polish** — Institutionalize a roadmap/task-corpus consistency check (diff each phase README's task index against `ls`, flag any task current.md calls "Done" whose own Status isn't, collect tentative ADR numbers across all phase files and flag duplicates) instead of relying on periodic master-review sweeps.
+- **Polish** — Institutionalize a roadmap/task-corpus consistency check (diff each phase README's task index against `ls`, flag any task current.md calls "Done" whose own Status isn't, validate unique planned ADR purpose definitions and their live references, rejecting tentative numeric ledger allocations) instead of relying on periodic master-review sweeps.
 - **Polish** — Formalize the `date_done` field in TEMPLATE.md — a template field is cheaper to keep correct than a prose convention that has to be independently rediscovered each time, and this exact gap let the Status-drift defect recur nine times in a row.
 - **Polish** — Add a lightweight relative-link checker to the docs corpus (no network calls, repo-relative-only) — near-zero-cost and would have caught two of the broken-link findings above automatically.
 - **Polish** — Add `<a id="...">` anchors immediately before each glossary headword so the 20 existing cross-references can land precisely, without changing the glossary's flat-list visual format.
