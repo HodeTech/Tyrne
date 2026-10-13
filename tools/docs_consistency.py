@@ -15,12 +15,14 @@ import stat
 import string
 from typing import NamedTuple
 import unicodedata
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote
 
 ROOT_FILES = ("README.md", "CLAUDE.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md")
 LOCAL_ONLY = ("docs/analysis/private", "docs/analysis/temp", "docs/analysis/technical-analysis")
 MAX_DOCUMENT_BYTES = 16 * 1024 * 1024
 MAX_NESTING = 64
+PHYSICAL_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n|$)")
+C0_SPACE = "".join(map(chr, range(33)))
 ESCAPE = re.compile(r"\\([" + re.escape(string.punctuation) + r"])")
 QUOTE_PREFIX = re.compile(r" {0,3}>[ \t]?")
 LIST_PREFIX = re.compile(r" {0,3}(?:[-+*]|\d{1,9}[.)])([ \t]+)")
@@ -74,7 +76,13 @@ class Report:
 
 def blank(text):
     """Erase syntax without shifting offsets or line endings."""
-    return "".join("\n" if c == "\n" else " " for c in text)
+    return "".join(c if c in "\r\n" else " " for c in text)
+
+
+def physical_lines(text, keepends=False):
+    """Split only LF, CR and CRLF; Unicode separators remain source content."""
+    return [match[0] if keepends else match[0].rstrip("\r\n")
+            for match in PHYSICAL_LINE.finditer(text) if match[0]]
 
 
 def container_parts(line):
@@ -142,7 +150,7 @@ def blocks(text):
     comment = False
     paragraph = False
     indented = False
-    for line_no, line in enumerate(text.splitlines(keepends=True), 1):
+    for line_no, line in enumerate(physical_lines(text, keepends=True), 1):
         visual = line.expandtabs(4)
         if opened:
             char, length, parts = opened
@@ -209,7 +217,7 @@ class CodeSpans:
         offset = 0
         previous_heading = False
         previous_quotes = 0
-        for line in text.splitlines(keepends=True):
+        for line in physical_lines(text, keepends=True):
             body_start, quotes, list_marker = container(line)
             body = line[body_start:].rstrip("\r\n")
             heading = bool(re.match(r" {0,3}#{1,6}(?:\s|$)", body))
@@ -379,10 +387,18 @@ def markdown_value(value):
                                else markdown_entity(match[0]), value)
 
 
+def navigation_value(link):
+    """Preserve Markdown scalars; apply HTML's URL-input cleanup explicitly."""
+    if link.kind == "markdown":
+        return markdown_value(link.destination)
+    value = link.destination.strip(C0_SPACE)
+    return value.translate({9: None, 10: None, 13: None})
+
+
 def without_containers(text):
     """Blank physical prefixes for continuation parsing without moving offsets."""
     lines = []
-    for line in text.splitlines(keepends=True):
+    for line in physical_lines(text, keepends=True):
         offset, _ = container_parts(line)
         lines.append(blank(line[:offset]) + line[offset:])
     return "".join(lines)
@@ -669,6 +685,9 @@ class Markdown:
     def __init__(self, path, text):
         self.path = str(path)
         self.text = text
+        # HTMLParser counts LF only. A lone CR becomes one LF at the same
+        # source offset; CRLF retains both characters and its one LF boundary.
+        text = re.sub(r"\r(?!\n)", "\n", text)
         self.newlines = [m.start() for m in re.finditer("\n", text)]
         self.links = []
         self.anchors = set()
@@ -745,7 +764,7 @@ class Markdown:
                 if rest.strip():
                     raise ValueError("Unsupported reference-definition continuation/title")
                 _, parts = container_parts(line[0])
-                for continued in self.block_text[line.end():end].splitlines(keepends=True):
+                for continued in physical_lines(self.block_text[line.end():end], keepends=True):
                     if continuation(continued, parts) is None:
                         raise ValueError("Reference continuation leaves its quote/list container")
                 consumed = end
@@ -859,7 +878,7 @@ class Markdown:
 
     def _headings(self, text):
         used = set()
-        bodies = [line[container(line)[0]:].rstrip() for line in text.splitlines()]
+        bodies = [line[container(line)[0]:].rstrip(" \t") for line in physical_lines(text)]
         for index, body in enumerate(bodies):
             match = re.match(r" {0,3}#{1,6}(?:[ \t]+|$)(.*)$", body)
             if match:
@@ -1017,7 +1036,8 @@ def scan_links(root):
             return document
         except UnicodeDecodeError as error:
             data = error.object
-            report.findings.append(Finding(key, data[:error.start].count(b"\n") + 1, "read", "Invalid UTF-8 source"))
+            line = len(re.findall(br"\r\n?|\n", data[:error.start])) + 1
+            report.findings.append(Finding(key, line, "read", "Invalid UTF-8 source"))
         except (OSError, ValueError, RuntimeError) as error:
             report.findings.append(Finding(key, 1, "read", str(error)))
         documents[key] = None
@@ -1039,15 +1059,18 @@ def scan_links(root):
             continue
         for link in document.links:
             try:
-                value = markdown_value(link.destination) if link.kind == "markdown" else link.destination
+                value = navigation_value(link)
                 if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", value) or value.startswith("//"):
                     continue
                 report.local_targets += 1
                 if re.search(r"%(?![0-9a-fA-F]{2})", value):
                     raise ValueError("Malformed percent encoding in local destination")
-                url = urlsplit(value)
-                target_text = unquote(url.path, encoding="utf-8", errors="strict")
-                fragment = unquote(url.fragment, encoding="utf-8", errors="strict")
+                # External schemes were already excluded. Partition local URL
+                # delimiters without urlsplit's version-dependent cleanup.
+                path_query, _, raw_fragment = value.partition("#")
+                raw_path = path_query.partition("?")[0]
+                target_text = unquote(raw_path, encoding="utf-8", errors="strict")
+                fragment = unquote(raw_fragment, encoding="utf-8", errors="strict")
                 target = resolve_path(root, path, target_text) if target_text else Path(path)
                 actual = root / target
                 if not actual.exists():
@@ -1064,7 +1087,7 @@ def scan_links(root):
                     target = resolve_path(root, target.as_posix() + "/dummy", "README.md")
                     actual = root / target
                 if line_reference:
-                    size = len(read_utf8(root, target).splitlines())
+                    size = len(physical_lines(read_utf8(root, target)))
                     begin = int(line_reference[1])
                     end = int(line_reference[2] or begin)
                     if not 1 <= begin <= end <= size:

@@ -130,6 +130,81 @@ class LinkTests(unittest.TestCase):
     def test_external_uris_never_fetched(self):
         self.check("[x](https://invalid.example/absent#bad) [y](mailto:no@example.invalid) [z](//invalid.example/missing)\n")
 
+    def test_markdown_destinations_preserve_leading_scalars_and_actual_targets(self):
+        for spelling, prefix in ((" ", " "), ("&#32;", " "), ("&#1;", "\x01"),
+                                 ("&#31;", "\x1f"), ("%20", " ")):
+            for form in ("[x](<{}foo.txt>)", "![x](<{}foo.txt>)",
+                         "[x][ref]\n\n[ref]: <{}foo.txt>"):
+                with self.subTest(spelling=spelling, form=form):
+                    source = form.format(spelling) + "\n"
+                    decoy = self.write("docs/foo.txt", "decoy")
+                    self.check(source, ["path", "path"] if "[ref]:" in source else ["path"])
+                    decoy.unlink()
+                    actual = self.write("docs/" + prefix + "foo.txt", "actual")
+                    self.check(source)
+                    actual.unlink()
+
+    def test_markdown_decoded_tabs_and_newlines_are_not_silently_deleted(self):
+        for spelling, scalar in (("&#9;", "\t"), ("&#10;", "\n"), ("&#13;", "\r")):
+            with self.subTest(spelling=spelling):
+                self.write("docs/ab.txt", "decoy")
+                self.check("[x](a" + spelling + "b.txt)\n", ["path"])
+                actual = self.write("docs/a" + scalar + "b.txt", "actual")
+                self.check("[x](a" + spelling + "b.txt)\n")
+                actual.unlink()
+
+    def test_html_url_normalization_is_explicit_and_percent_encoding_is_preserved(self):
+        self.write("docs/foo.txt", "actual")
+        for tag, attr in (("a", "href"), ("img", "src")):
+            for spelling in (" foo.txt ", "&#1;foo.txt&#31;", "f&#9;o&#10;o&#13;.txt"):
+                with self.subTest(tag=tag, spelling=spelling):
+                    self.check('<' + tag + ' ' + attr + '="' + spelling + '">\n')
+            self.check('<' + tag + ' ' + attr + '="%20foo.txt">\n', ["path"])
+            actual = self.write("docs/ foo.txt", "encoded actual")
+            self.check('<' + tag + ' ' + attr + '="%20foo.txt">\n')
+            actual.unlink()
+
+    def test_non_line_separators_cannot_manufacture_headings(self):
+        for scalar in ("\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"):
+            with self.subTest(scalar=repr(scalar)):
+                result = self.check("# one" + scalar + "# phantom\n\n[x](#phantom)\n", ["fragment"])
+                self.assertEqual(3, result.findings[0].line)
+
+    def test_source_line_fragments_use_only_cr_lf_and_crlf(self):
+        for scalar in ("\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"):
+            with self.subTest(scalar=repr(scalar)):
+                self.write("tools/sample.txt", "a" + scalar + "b")
+                self.check("[x](../tools/sample.txt#L1)\n")
+                self.check("[x](../tools/sample.txt#L2)\n", ["fragment"])
+        for ending in ("\n", "\r", "\r\n"):
+            with self.subTest(ending=repr(ending)):
+                self.write("tools/sample.txt", "a" + ending + "b" + ending)
+                self.check("[x](../tools/sample.txt#L1-L2)\n")
+                self.check("[x](../tools/sample.txt#L3)\n", ["fragment"])
+
+    def test_real_line_endings_share_heading_reference_fence_and_diagnostic_offsets(self):
+        for ending in ("\n", "\r", "\r\n"):
+            with self.subTest(ending=repr(ending)):
+                text = "# one\n# real\n\n[x](#real)\n".replace("\n", ending)
+                self.check(text)
+                text = '```text\n[literal](missing)\n```\n\n[x][ref]\n\n[ref]: target.md\n'.replace("\n", ending)
+                self.check(text)
+
+    def test_real_line_endings_keep_markdown_and_html_diagnostic_lines(self):
+        for ending in ("\n", "\r", "\r\n"):
+            with self.subTest(ending=repr(ending)):
+                result = self.check("before" + ending * 2 + "[x](missing)" + ending, ["path"])
+                self.assertEqual(3, result.findings[0].line)
+                result = self.check('<a' + ending + ' href="missing">x</a>' + ending, ["path"])
+                self.assertEqual(2, result.findings[0].line)
+
+    def test_invalid_utf8_uses_the_same_physical_line_model(self):
+        for ending in (b"\n", b"\r", b"\r\n"):
+            with self.subTest(ending=repr(ending)):
+                (self.root / "docs/bad.md").write_bytes(b"before" + ending * 2 + b"\xff")
+                result = docs.scan_links(self.root)
+                self.assertEqual([(3, "read")], [(x.line, x.code) for x in result.findings])
+
     def test_traversal_and_symlink_escape_fail(self):
         self.check("[x](../../outside.md)\n", ["path"])
         outside = Path(self.temp.name).parent / (self.root.name + " outside.md")
