@@ -6,13 +6,13 @@ The live pointer to selected work, task states and review triggers. Dated banner
 ## Live state — 2026-10-13
 
 - **Active phase:** [B.2 — Consolidation & Hardening](phases/phase-b2.md), mandatory whole-phase gate before C/D under [ADR-0040](../decisions/0040-phase-b2-consolidation-bridge.md). Phase C and D remain gated.
-- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps 0–9 completed their required review boundaries; Step 10 is active.
-- **Active task:** [T-047 — roadmap state and phase index](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md), In Progress; [preflight](../analysis/reports/2026-10-13-t047-roadmap-state-preflight.md). Implementation and both fresh paired rounds remain this step's gates.
+- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps 0–10 completed their required review boundaries; Step 11/T-056 parser is next.
+- **Active task:** [T-047 — roadmap state and phase index](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md), In Review after [both fresh code/security rounds](../analysis/reviews/code-reviews/2026-10-13-t047-roadmap-state-reconciliation.md), zero confirmed source findings; maintainer approval/merge pending.
 - **Working branch:** development, as requested by the maintainer.
 - **Last completed work:** Track B.2-1 plus prerequisite T-037 (T-030–T-037 overall), Done after [PR #48](https://github.com/HodeTech/Tyrne/pull/48) merged 2026-10-12 at `c16997e`; the [completion retrospective](../analysis/reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) retains merged-main evidence.
 - **Historical completion:** [T-029](../analysis/tasks/phase-b/T-029-perf-microbench.md), Phase 1 [PR #44](https://github.com/HodeTech/Tyrne/pull/44) and Phase 2 [PR #45](https://github.com/HodeTech/Tyrne/pull/45), both merged 2026-06-01. Its recovered dated banner is in the archive.
 - **Last completed milestone:** B6 / Phase B, closed by [PR #43](https://github.com/HodeTech/Tyrne/pull/43) on 2026-06-01 at `ca932ac`; b6-closure is merged and retired. No Phase B closure review remains pending.
-- **In review:** 10 selected B.2-2 tasks below, pending maintainer PR approval/merge. **In progress:** T-047. **Phase inventory:** 46 tasks — 8 Done, 19 Ready, 10 In Review, 1 In Progress, 8 Draft; see the [task index](../analysis/tasks/phase-b2/README.md).
+- **In review:** 11 selected B.2-2 tasks below, pending maintainer PR approval/merge. **In progress:** none. **Phase inventory:** 46 tasks — 8 Done, 19 Ready, 11 In Review, 8 Draft; see the [task index](../analysis/tasks/phase-b2/README.md).
 
 ### Selected task states
 
@@ -20,7 +20,7 @@ The live pointer to selected work, task states and review triggers. Dated banner
 |------|--------|
 | [T-045](../analysis/tasks/phase-b2/T-045-docs-overview-taskloader-arch-index.md) | In Review |
 | [T-046](../analysis/tasks/phase-b2/T-046-docs-subsystem-chapters-refresh.md) | In Review |
-| [T-047](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md) | In Progress |
+| [T-047](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md) | In Review |
 | [T-048](../analysis/tasks/phase-b2/T-048-phase-b-task-corpus-sync.md) | In Review |
 | [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) | In Review |
 | [T-050](../analysis/tasks/phase-b2/T-050-entry-docs-and-glossary-sync.md) | In Review |
@@ -33,8 +33,8 @@ The live pointer to selected work, task states and review triggers. Dated banner
 
 ### Next work and review triggers
 
-- **Next task to open:** [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md), parser/fixtures then required CI integration after T-047's actual both-round boundary. It is fully selected here while remaining optional for the general B.2 exit.
-- **Next review trigger:** T-047's committed implementation receives fresh code/security R1, confirmed fixes, then different fresh R2; repeat for each remaining plan step. Final integrated documentation/verification precedes the maintainer PR. T-051's SECURITY wording still requires maintainer review before merge.
+- **Next task to open:** [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md), parser/fixtures then required CI integration; T-047's actual both-round prerequisite now passes. It is fully selected here while remaining optional for the general B.2 exit.
+- **Next review trigger:** T-056 parser/fixtures receive fresh code/security R1, confirmed fixes, then different fresh R2; repeat for integration and the final plan step. Final integrated documentation/verification precedes the maintainer PR. T-051's SECURITY wording still requires maintainer review before merge.
 - **Following correctness work:** [T-038 — console_write x2 clobber](../analysis/tasks/phase-b2/T-038-console-write-x2-clobber.md) is Ready/HIGH and has not started. T-037 is Done; the documentation track does not clear this checkpoint. Eventual whole-phase closure reviews belong to [T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md); all B.2 exit gates still apply to C/D.
 
 ### Active decisions
@@ -43,7 +43,7 @@ The live pointer to selected work, task states and review triggers. Dated banner
 
 ### Last reviews
 
-- **2026-10-13:** latest completed step, [T-054 both fresh code/security rounds](../analysis/reviews/code-reviews/2026-10-13-t054-planned-adr-identities.md); one unique Low fixed and verified, no unresolved finding. Earlier B.2-2 steps are linked by the [code](../analysis/reviews/code-reviews/README.md) and [security](../analysis/reviews/security-reviews/README.md) indexes.
+- **2026-10-13:** latest completed step, [T-047 both fresh code/security rounds](../analysis/reviews/code-reviews/2026-10-13-t047-roadmap-state-reconciliation.md); zero confirmed or unresolved source findings. Earlier B.2-2 steps are linked by the [code](../analysis/reviews/code-reviews/README.md) and [security](../analysis/reviews/security-reviews/README.md) indexes.
 - **2026-10-12:** [Track B.2-1 completion retrospective](../analysis/reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md), after PR48 merge and verified merged-main gates.
 - **2026-07-15:** full-repository review, a local-only document that is not in the repository. [Phase B.2](phases/phase-b2.md) and its [task corpus](../analysis/tasks/phase-b2/README.md) are self-contained; no private-file link is needed to execute their contracts.
 - **2026-06-01:** [Phase B business closure](../analysis/reviews/business-reviews/2026-06-01-phase-b-closure.md), [consolidated seam security review](../analysis/reviews/security-reviews/2026-06-01-phase-b-closure.md), [T-028 EL0 security review](../analysis/reviews/security-reviews/2026-06-01-T-028-el0-userspace-wireup.md) and [B6 performance baseline](../analysis/reviews/performance-optimization-reviews/2026-06-01-B6-closure.md).

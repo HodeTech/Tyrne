@@ -56,6 +56,7 @@ The ADR-0040 approval follow-up in this index is explicitly an independent appro
 | 2026-10-13 | T-055 append-only ADR/source/index/procedure corrections; both fresh code/security rounds Approve, two unique R1 Low findings fixed and verified, zero new R2 or unresolved findings | [2026-10-13-t055-adr-corrections.md](2026-10-13-t055-adr-corrections.md) |
 | 2026-10-13 | T-052/T-053 standards and source/tooling reconciliation; both fresh paired rounds, zero source/seam findings | [2026-10-13-t052-t053-standards-reconciliation.md](2026-10-13-t052-t053-standards-reconciliation.md) |
 | 2026-10-13 | T-054 stable planned ADR identities; both fresh paired rounds Approve, one unique R1 Low fixed and verified, zero new R2 or unresolved findings | [2026-10-13-t054-planned-adr-identities.md](2026-10-13-t054-planned-adr-identities.md) |
+| 2026-10-13 | T-047 roadmap live/archive/B6/Phase-C reconciliation — both fresh paired rounds; zero source findings | [2026-10-13-t047-roadmap-state-reconciliation.md](2026-10-13-t047-roadmap-state-reconciliation.md) |
 
 ## Companion plans
 

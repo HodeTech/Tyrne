@@ -5,7 +5,7 @@
 - **Clean step base:** 20a0d25e69a0ce9872ee9dd58e7bd994f22230e1, development.
 - **Pre-content kickoff:** c989237a6a2b0a7ef946d1fbed5621b5e0c71941.
 - **Authority:** [approved plan](2026-10-12-phase-b2-track2-preflight-and-plan.md), [preflight](2026-10-13-t047-roadmap-state-preflight.md), Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), [T-047](../tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md).
-- **Delivery state:** committed implementation will receive both fresh paired rounds; In Progress, all eleven criteria unchecked. No reviewer/maintainer approval or task Done claimed.
+- **Delivery state:** both fresh paired rounds Approve frozen cumulative 20a0d25..8a89fd2; In Review, all eleven criteria checked. No maintainer approval or task Done claimed.
 
 ## Live state and preserved history
 
@@ -25,4 +25,4 @@ The [retained source comparator](2026-10-13-t047-verification-evidence/verify-ro
 
 The [navigation capture](2026-10-13-t047-verification-evidence/implementation-navigation.json) is separate: existing third-party rendering and approximate heading/line checks, with tracked plus visible untracked scope explicitly stated. It is not T-056 grammar/CI delivery, external-link validation, a runtime test or soundness proof. See [evidence instructions](2026-10-13-t047-verification-evidence/README.md) for invocation and limits.
 
-Both fresh paired review rounds and actual report cross-reading remain pending at this implementation boundary. Confirmed findings will be source-validated and corrected in commits; final canonical reports/lifecycle follow only their actual completion. Root remains sole writer on development; no runtime/config/unsafe-log/filed-ADR/phase-opening/external publication change is claimed. PR49 publication barrier remains.
+Both fresh paired review rounds and actual report cross-reading completed on frozen 8a89fd2, with zero confirmed source findings and no warranted corrective commit. [Full canonical code](../reviews/code-reviews/2026-10-13-t047-roadmap-state-reconciliation.md) and [security](../reviews/security-reviews/2026-10-13-t047-roadmap-state-reconciliation.md) reports retain all actual initial/final bytes. The [publication manifest](2026-10-13-t047-verification-evidence/publication-manifest.json) binds original captures, reviewed content and later coordinator lifecycle/discovery checks. Report-only source-locator QA is separate from source-finding accounting. Root remains sole writer on development; no runtime/config/unsafe-log/filed-ADR/phase-opening/external publication change is claimed. T-047 stops In Review/no date_done; T-056 follows automatically. PR49 publication barrier remains.

@@ -15,3 +15,7 @@ python3 docs/analysis/reports/2026-10-13-t047-verification-evidence/verify-roadm
 ~~~
 
 An absolute script path works from another cwd. Use --output /tmp/t047-comparison.json for a separate fresh result; do not overwrite original snapshots. Comparison errors or invalid/missing source fail nonzero. This is an intentionally step-bound diagnostic, not general T-056 functionality: later owning edits can legitimately change its frozen content, so reproduce historical results on the recorded source and compare the owned hashes. It inventories audit metadata, not source annotations or Rust soundness. Navigation uses the existing third-party diagnostic rather than proving complete Markdown grammar.
+
+- [publication-manifest.json](publication-manifest.json): actual completed four-report identities/initial-prefix retention, unchanged original captures and archive/B/C source, explicit later live-state lifecycle transition; coordinator verification, not a third independent round.
+- [publication-verification.json](publication-verification.json): separate actual final source/history comparison after authorized In Review bookkeeping.
+- [publication-navigation.json](publication-navigation.json): separate actual final visible-corpus navigation with the same third-party/approximate grammar limits.
