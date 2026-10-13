@@ -23,7 +23,7 @@ Terminology used throughout Tyrne. Entries are alphabetical, with the establishe
 **Badge.** A value attached to a capability in some capability systems so that a receiver can distinguish callers without trusting a message-supplied identity. In seL4, endpoint badges identify the sending capability. Tyrne has not implemented badges: [ADR-0018](decisions/0018-badge-scheme-and-reply-recv-deferral.md) defers their scheme and the combined reply/receive operation. See [Reply capability](#reply-capability).
 
 <a id="bridge-phase"></a>
-**Bridge phase.** A phase inserted between published phases using a dotted identifier so later phase letters stay stable. Tyrne's B.2 consolidation bridge sits between B and C and must close before C/D work begins. See [ADR-0040](decisions/0040-phase-b2-consolidation-bridge.md) and [Track](#track).
+**Bridge phase.** A phase inserted between published phases using a dotted identifier so later phase letters stay stable. Tyrne's B.2 consolidation bridge sits between B and C and must close before C/D milestones open or implementation tasks leave `Draft`. Phase C planning, including Proposed ADRs and the readiness sweep, remains permitted. See [ADR-0040](decisions/0040-phase-b2-consolidation-bridge.md) and [Track](#track).
 
 <a id="bsp-board-support-package"></a>
 **BSP (Board Support Package).** The concrete implementation of HAL trait surfaces for a specific board. A BSP plugs into the kernel at build time and provides drivers for on-board peripherals.
