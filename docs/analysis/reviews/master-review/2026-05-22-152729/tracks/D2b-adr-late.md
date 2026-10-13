@@ -228,12 +228,14 @@ resolving the "no file today" parenthetical.
 
 > **Navigation annotation, 2026-10-13:** the fenced reference definition is original quoted Markdown data, retained exactly. Functional evidence: [review-era ADR-0029 lines 39–42](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/decisions/0029-initial-userspace-image-format.md?plain=1#L39-L42) and [ADR-0027 dependency discussion](../../../../../decisions/0027-kernel-virtual-memory-layout.md#dependency-chain). This repairs archive navigation without changing the original finding.
 
-This link target is used in the §Decision outcome text (line 39) as *"the future [ADR-0034 (kernel-image section
-permissions)][adr-0034-placeholder] placeholder's responsibility"*. The anchor resolves to
+> **Parser-baseline follow-up, 2026-10-13 (T-049):** the two prose quotations below now explicitly delimit their original reference syntax as literal code. Their quoted text, finding, severity, suggested remediation and historical verdict remain unchanged; these are evidence examples, not new navigable references.
+
+This link target is used in the §Decision outcome text (line 39) as *`"the future [ADR-0034 (kernel-image section
+permissions)][adr-0034-placeholder] placeholder's responsibility"`*. The anchor resolves to
 `0027-kernel-virtual-memory-layout.md` as a whole file — not to the specific §Dependency chain section of ADR-0027
 that actually names ADR-0034. A reader following the link lands on ADR-0027 with no indication of where within it
 to find the ADR-0034 placeholder discussion. ADR-0028 (line 200) correctly uses the pattern:
-*"[ADR-0034 (kernel-image section permissions placeholder)][adr-0027 §Decision outcome]"* with no reference link
+*`"[ADR-0034 (kernel-image section permissions placeholder)][adr-0027 §Decision outcome]"`* with no reference link
 syntax, mentioning the exact section — more precise than ADR-0029's vague link.
 
 **Suggested fix.** Change the reference to use a section anchor:
