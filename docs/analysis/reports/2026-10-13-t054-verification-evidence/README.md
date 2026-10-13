@@ -18,3 +18,11 @@ python3 docs/analysis/reports/2026-10-13-t054-verification-evidence/verify-migra
 ~~~
 
 The example path assumes repository cwd; an absolute path works elsewhere. A fresh invocation reports the current HEAD/worktree and may include later bookkeeping paths; compare owned source hashes when reproducing the frozen content result. The optional --output /tmp/t054-comparison.json retains a separate new result. Exit status is nonzero when a comparison check fails. Missing Git objects/files or invalid evidence also fail rather than returning a green result. The source-bound semantic edit ledger is review evidence; it cannot prove that the original human meaning was interpreted correctly. Independent review checks that meaning against source.
+
+## Canonical publication checks
+
+- [publication-verification.json](publication-verification.json): separate current-worktree comparison after canonical report/lifecycle edits; reviewed content hashes remain those of a93926b.
+- [publication-navigation.json](publication-navigation.json): fresh visible-corpus diagnostic after canonical additions, with its actual source/scope and grammar limits.
+- [publication-manifest.json](publication-manifest.json): final actual report/prefix/capture/content hashes, lifecycle/scope and publication-check correspondence. Original snapshots above remain unchanged.
+
+Both fresh paired rounds Approve the corrected frozen source. Full actual reports are retained in the [code artifact](../../reviews/code-reviews/2026-10-13-t054-planned-adr-identities.md) and [security artifact](../../reviews/security-reviews/2026-10-13-t054-planned-adr-identities.md). These final captures are coordinator bookkeeping, not a third review round or T-056 delivery.

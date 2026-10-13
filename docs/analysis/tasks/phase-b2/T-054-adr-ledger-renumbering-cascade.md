@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Progress
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
@@ -25,12 +25,12 @@ Current ledger inventory (verify before editing): Phase C 5 rows (0040–0044), 
 
 ## Acceptance criteria
 
-- [ ] Record the maintainer-approved ADR-0043 stable-identity decision; do not execute another numeric cascade.
-- [ ] Migrate all 32 numbered C–I ledger definitions to unique milestone-plus-purpose identifiers (for example ADR-C1-secondary-core-start and the distinct ADR-F2-i2c-service / ADR-F2-spi-service). No live ledger definition retains a tentative numeric allocation.
-- [ ] Resolve every live prose/cross-phase reference by meaning to the unique definition and link its ledger location; never perform a global numeric replacement. Real filed references, especially ADR-0040, remain numeric.
-- [ ] Add dated per-ledger notes explaining removal of tentative numbers, actual allocation at filing and historical aliases. Preserve reserved 0034, explicitly unallocated object-lifecycle/G1.5/J decisions and dated old numeric evidence without treating aliases as current allocations.
-- [ ] Align phase-b2.md and the ADR index Numbering gaps note with the workflow. Verify the already-filed ADR-0040 Acceptance-time rider covers both numbering and the limited Track B.2-2 execution extension; do not rewrite its original body.
-- [ ] Record a reproducible source-bound check showing exactly 32 unique definitions, resolved live references and no tentative numeric ledger definitions. Count repeated references separately from definitions.
+- [x] Record the maintainer-approved ADR-0043 stable-identity decision; do not execute another numeric cascade.
+- [x] Migrate all 32 numbered C–I ledger definitions to unique milestone-plus-purpose identifiers (for example ADR-C1-secondary-core-start and the distinct ADR-F2-i2c-service / ADR-F2-spi-service). No live ledger definition retains a tentative numeric allocation.
+- [x] Resolve every live prose/cross-phase reference by meaning to the unique definition and link its ledger location; never perform a global numeric replacement. Real filed references, especially ADR-0040, remain numeric.
+- [x] Add dated per-ledger notes explaining removal of tentative numbers, actual allocation at filing and historical aliases. Preserve reserved 0034, explicitly unallocated object-lifecycle/G1.5/J decisions and dated old numeric evidence without treating aliases as current allocations.
+- [x] Align phase-b2.md and the ADR index Numbering gaps note with the workflow. Verify the already-filed ADR-0040 Acceptance-time rider covers both numbering and the limited Track B.2-2 execution extension; do not rewrite its original body.
+- [x] Record a reproducible source-bound check showing exactly 32 unique definitions, resolved live references and no tentative numeric ledger definitions. Count repeated references separately from definitions.
 
 ## Out of scope
 
@@ -48,11 +48,11 @@ Verify all 32 definitions and their references, the ADR-0040 rider and the numbe
 
 ## Definition of done
 
-- [ ] Every relative link in each touched file resolves.
-- [ ] `git diff --stat` is limited to `docs/roadmap/phases/*.md`, `docs/decisions/README.md`, this task file and `docs/roadmap/current.md`.
-- [ ] The duplicate check output is pasted into the review history.
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `roadmap`).
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] Every relative link in each touched file resolves.
+- [x] `git diff --stat` is limited to `docs/roadmap/phases/*.md`, `docs/decisions/README.md`, this task file and `docs/roadmap/current.md`.
+- [x] The duplicate check output is pasted into the review history.
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `roadmap`).
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
 **Step-scoped evidence allowance.** In addition to the named content files, the step may update this task, `docs/roadmap/current.md`, the B.2 task/track indexes, governing decision references, source-bound reports/raw evidence, canonical review artifacts and their indexes where necessary. Verify this allowance against the step commit range, not the full stacked branch. Record a demonstrated existing-scope reason for any further file.
 
@@ -67,6 +67,7 @@ Verify all 32 definitions and their references, the ADR-0040 rider and the numbe
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: either numeric cascade or slugs, including a no-old-number-string check. Approved replacement: all 32 semantic purpose definitions/references, separate historical aliases/filed numbers/unallocated decisions and verification of the already-filed Acceptance-time rider. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
-| 2026-10-13 | Codex (AI agent), implementation author | Step 9 kickoff after Step 8 both-round canonical boundary at `f8c9b7f34a28d0974cbc9e03f1ef8355dc2df4f3`. [Preflight](../../reports/2026-10-13-t054-identity-preflight.md) records full semantic planning review, all 32source definitions, explicit reference resolution and the additional write-adr procedural reason before mutation. Accepted ADR-0043 selects stable purposes, no numeric cascade/new ADR/phase opening. Status In Progress; criteria unchecked pending implementation and both fresh paired rounds. |
+| 2026-10-13 | Codex (AI agent), implementation author | Step 9 kickoff after Step 8 both-round canonical boundary at `f8c9b7f34a28d0974cbc9e03f1ef8355dc2df4f3`. [Preflight](../../reports/2026-10-13-t054-identity-preflight.md) records full semantic planning review, all 32 source definitions, explicit reference resolution and the additional write-adr procedural reason before mutation. Accepted ADR-0043 selects stable purposes, no numeric cascade/new ADR/phase opening. Status In Progress; criteria unchecked pending implementation and both fresh paired rounds. |
 | 2026-10-13 | Codex (AI agent), implementation author | [Implementation/evidence](../../reports/2026-10-13-t054-planned-adr-identity-migration.md): duplicate/source comparison `32 unique definitions; C5 D5 E6 F5 G5 H3 I3; 71 semantic reference source lines; 74 linked occurrences; 42 filed ADRs and 42 index record rows unchanged; errors 0`. All original purposes/milestones/complete notes preserved; numeric historical snapshots/filed citations remain distinct. In Progress/unchecked until both fresh paired review rounds and canonical publication. |
 | 2026-10-13 | Codex (AI agent), confirmed R1 correction | Primary R1-C01 and security T054-R1-S01 independently identify one unique Low: Phase I's new workflow note referred to nonexistent local acceptance criteria. Full-source validation confirmed it; removed only that fragment and retained no-status/no-authorization wording, with no new milestone criteria. [Separate corrected-source check](../../reports/2026-10-13-t054-verification-evidence/r1-correction-verification.json) preserves original snapshots; 32/71/74/42/42 and zero errors. In Progress; actual peer cross-reading/fix verification and fresh R2 pending. |
+| 2026-10-13 | Codex coordinator; four distinct independent reviewers | [Both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t054-planned-adr-identities.md) Approve cumulative `f8c9b7f..a93926b`. One unique R1 Low (R1-C01 / T054-R1-S01) fixed in a93926b and independently verified; zero new R2 or unresolved findings. Actual immutable peer initials and R1 finals fully cross-read; full final reports retained, source/capture hashes and separate publication checks recorded. All 11 criteria checked; In Review, no date_done or maintainer approval. T-047 starts next. |
