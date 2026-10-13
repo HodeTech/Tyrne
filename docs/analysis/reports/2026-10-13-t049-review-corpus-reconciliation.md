@@ -2,7 +2,7 @@
 
 - **Task / approved scope:** [T-049](../tasks/phase-b2/T-049-review-indices-sync.md), Step 5 of the [approved plan](2026-10-12-phase-b2-track2-preflight-and-plan.md), under [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md).
 - **Comparison / executed source:** clean `development` at `0ab0ba427ae97d5233afd01dfe7205b1ae8bc0c3`, after the kickoff at completed T-048 source `468812b8e765f655edcfcfca161586e609d2478f`. Archive/report changes described here are subsequent implementation edits; they are not claimed to exist at the executed source.
-- **State:** implementation prepared; T-049 In Progress. Two fresh complementary implementation-review rounds remain pending. No Done, main merge, hosted CI or old-review re-approval is claimed.
+- **State:** Round 1 completed; its one confirmed Low finding C01 is corrected. T-049 remains In Progress pending a new fresh complementary Round 2. No Done, main merge, hosted CI or old-review re-approval is claimed.
 - **Evidence:** [retained evidence directory](2026-10-13-t049-review-evidence/README.md), including [navigation/source-object ledger](2026-10-13-t049-review-evidence/navigation.json), [preparation reads](2026-10-13-t049-review-evidence/preflight-read-ledger.json) and [verification results](2026-10-13-t049-review-evidence/verification.json).
 
 ## Discovery and structural changes
@@ -40,3 +40,9 @@ The one-off comparison checked 25 historical bodies: original non-destination te
 Discovery membership is complete for 14 business, 21 security, eight performance files, and 27 code canonicals plus one companion plan. All 25 May-22 tracks and its manifest are linked. The one-off rendered-navigation diagnostic found no missing local paths or fragments across the review corpus and new report surfaces; exact snapshot counts and scope are in the verification JSON. It uses Python Markdown for a bounded diagnostic and independently checks heading/line targets. It is not the future T-056 parser, grammar or fixture suite. Raw-log hashes, process exits, 366/363 passing totals and two/zero ignored totals were independently checked.
 
 No Rust, build, toolchain, dependency or CI implementation changed. No new runtime/security behavior is claimed. Fresh review findings and verified corrections will be recorded before the task advances to In Review; final canonical publication must insert its code-index row inside the existing table, before the Companion plans section.
+
+## Round-1 correction and verification detail
+
+The primary five-role review requested changes for C01: the May-6 infrastructure track's proposed back-pointer had been rewritten relative to the archive, although its original destination was correct for the proposed `infrastructure.md` sentence. The exact original Markdown is now literal proposal data with adjacent dated archive navigation. The complementary evidence review approved its stated scope with no confirmed findings; neither report is broadened beyond its actual reading/verification scope. Original R1 findings/verdicts and subsequent verification will be retained in the canonical review.
+
+Default `git diff --check` reports the original captured Miri log's blank EOF line (543). Both raw runtime hashes remain unchanged; raw command output is not cosmetically normalized. The check over all non-log changes passes with the two retained raw logs excluded explicitly; the logs are verified byte-for-byte and by SHA-256 instead. This is a narrow raw-evidence formatting observation, not a globally clean default whitespace-check claim.

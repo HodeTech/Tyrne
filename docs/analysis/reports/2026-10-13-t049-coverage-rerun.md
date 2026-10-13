@@ -7,7 +7,7 @@
 - **Host:** Darwin 27.0.0 / arm64, Rust host `aarch64-apple-darwin`; Python 3.9.6 captured the process.
 - **Toolchain:** repository override `nightly-2026-01-15`; rustc `1.94.0-nightly`, commit `86a49fd71fecd25b0fd20247db0ba95eeceaba28` (2026-01-14), rustc LLVM 21.1.8; cargo `1.94.0-nightly (6d1bd93c4 2026-01-10)`.
 - **Raw output:** [coverage.log](2026-10-13-t049-review-evidence/coverage.log), SHA-256 `a22757c1f702bbf7d0b3a376ef1ce7e0785427833c63c2599a9695cb7d657a14`; [process/tool/environment metadata](2026-10-13-t049-review-evidence/coverage.json).
-- **Review state:** implementation evidence; two fresh independent implementation-review rounds remain pending. T-049 remains In Progress; no Done, hosted CI or main-merge claim.
+- **Review state:** implementation evidence; Round 1 completed and its quoted-proposal finding C01 is corrected; fresh complementary Round 2 remains pending. T-049 remains In Progress; no Done, hosted CI or main-merge claim.
 
 ## Invocation
 
