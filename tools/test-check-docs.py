@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 import docs_consistency as docs
@@ -136,6 +137,9 @@ class LinkTests(unittest.TestCase):
         (self.root / "docs" / "escape.md").symlink_to(outside)
         result = self.check("[x](escape.md)\n", ["input", "path"])
         self.assertTrue(result.findings)
+        (self.root / "docs/escape.md").unlink()
+        (self.root / "docs/loop.md").symlink_to("loop.md")
+        self.check("[x](loop.md)\n", ["input", "path"])
 
     def test_existing_local_only_notes_are_not_input_or_navigation(self):
         self.write("docs/analysis/private/notes.md", "[broken](missing.md)\n")
@@ -146,10 +150,86 @@ class LinkTests(unittest.TestCase):
         (self.root / "alias").symlink_to(self.root / "docs/analysis/private", target_is_directory=True)
         self.check("[private via alias](../alias/notes.md#anything)\n", ["path"])
 
+    def test_symlinked_input_roots_and_ancestors_are_never_read(self):
+        for index, prefix in enumerate(("docs", ".agents", ".agents/skills", "docs/nested")):
+            with self.subTest(prefix=prefix):
+                root = self.root / ("case-" + str(index))
+                root.mkdir()
+                (root / "README.md").write_text("# Public\n", encoding="utf-8")
+                outside = self.root / ("outside-" + str(index))
+                outside.mkdir()
+                (outside / "canary.md").write_text("[secret](private-canary.md)\n", encoding="utf-8")
+                if prefix == ".agents":
+                    (outside / "skills").mkdir()
+                    (outside / "skills/canary.md").write_text("[secret](private-canary.md)\n", encoding="utf-8")
+                link = root / prefix
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(outside, target_is_directory=True)
+                original = docs.read_utf8
+
+                def public_read(selected_root, path):
+                    self.assertFalse((selected_root / path).resolve().is_relative_to(outside.resolve()))
+                    return original(selected_root, path)
+
+                with patch.object(docs, "read_utf8", side_effect=public_read):
+                    result = docs.scan_links(root)
+                self.assertTrue(any(x.code == "input" for x in result.findings), result)
+
+    def test_local_only_input_aliases_never_read_canaries(self):
+        for index, prefix in enumerate(docs.LOCAL_ONLY):
+            with self.subTest(prefix=prefix):
+                root = self.root / ("private-alias-" + str(index))
+                root.mkdir()
+                (root / "README.md").write_text("# Public\n", encoding="utf-8")
+                private = root / prefix
+                private.mkdir(parents=True)
+                (private / "canary.md").write_text("[secret](missing.md)\n", encoding="utf-8")
+                link = root / ".agents/skills"
+                link.parent.mkdir()
+                link.symlink_to(private, target_is_directory=True)
+                original = docs.read_utf8
+
+                def public_read(selected_root, path):
+                    self.assertEqual("README.md", str(path))
+                    return original(selected_root, path)
+
+                with patch.object(docs, "read_utf8", side_effect=public_read):
+                    result = docs.scan_links(root)
+                self.assertTrue(any(x.code == "input" for x in result.findings), result)
+
+    def test_dangling_loop_and_private_input_aliases_fail_before_read(self):
+        for name, target in (("dangling", "absent"), ("loop", "docs"),
+                             ("private", "notes")):
+            with self.subTest(name=name):
+                root = self.root / name
+                root.mkdir()
+                (root / "README.md").write_text("# Public\n", encoding="utf-8")
+                if name == "private":
+                    target_dir = root / "notes"
+                    target_dir.mkdir()
+                    (target_dir / "canary.md").write_text("[secret](missing.md)\n", encoding="utf-8")
+                (root / "docs").symlink_to(target, target_is_directory=True)
+                original = docs.read_utf8
+
+                def public_read(selected_root, path):
+                    self.assertEqual("README.md", str(path))
+                    return original(selected_root, path)
+
+                with patch.object(docs, "read_utf8", side_effect=public_read):
+                    result = docs.scan_links(root)
+                self.assertTrue(any(x.code == "input" for x in result.findings), result)
+
     def test_archive_and_skills_are_always_checked(self):
         self.write("docs/archive/old.md", "[broken](missing.md)\n")
         self.write(".agents/skills/example/SKILL.md", "[broken](missing.md)\n")
         self.check("[valid](target.md)\n", ["path", "path"])
+
+    def test_public_markdown_is_not_excluded_by_generated_basename(self):
+        for name in (".git", ".venv", "__pycache__"):
+            with self.subTest(name=name):
+                path = self.write("docs/" + name + "/public.md", "[bad](missing.md)\n")
+                self.check("[valid](target.md)\n", ["path"])
+                path.unlink()
 
     def test_fences_match_character_and_minimum_length(self):
         self.check("""````text
@@ -166,7 +246,37 @@ class LinkTests(unittest.TestCase):
         self.check("````text\n[bad](missing.md)\n````\n[real](missing.md)\n", ["path"])
 
     def test_quote_and_list_fences_and_indented_code(self):
-        self.check("> ```text\n> [bad](missing.md)\n> ```\n\n- ~~~text\n  [bad](missing.md)\n  ~~~\n\n    [bad](missing.md)\n\n[real](target.md)\n")
+        self.check("> ```text\n> [bad](missing.md)\n> ```\n\n- ~~~text\n  [bad](missing.md)\n  ~~~\n\n      [bad](missing.md)\n\n[real](target.md)\n")
+        self.check("    [literal](missing.md)\n")
+
+    def test_list_relative_fence_closures_and_mixed_containers(self):
+        for indent in range(4):
+            with self.subTest(indent=indent):
+                self.check("- ```text\n  [literal](missing.md)\n" + " " * (2 + indent) +
+                           "```\n  [real](missing.md)\n", ["path"])
+        self.check("- > ```text\n  > [literal](missing.md)\n  > ```\n  > [real](missing.md)\n", ["path"])
+        self.check("> - ```text\n>   [literal](missing.md)\n>     ```\n>   [real](missing.md)\n", ["path"])
+
+    def test_excess_list_padding_retains_indented_code(self):
+        self.check("-     [literal](missing.md)\n")
+        self.check("- [real](missing.md)\n", ["path"])
+        self.check("- prose\n\n    [real](missing.md)\n", ["path"])
+        self.check("- prose\n\n      [literal](missing.md)\n")
+
+    def test_quoted_reference_continuations_keep_original_lines(self):
+        self.check('> [x][id]\n>\n> [id]:\n>   target.md\n>   "title"\n')
+        result = self.check("> [x][id]\n>\n> [id]:\n>   missing.md\n", ["path", "path"])
+        self.assertEqual([1, 3], [x.line for x in result.findings])
+        self.check("> [x][id]\n>\n> [id]:\ntarget.md\n", ["reference", "link-syntax"])
+
+    def test_empty_angle_reference_and_missing_destination_are_distinct(self):
+        self.check('[x][id]\n\n[id]: <>\n')
+        self.check('[x][id]\n\n[id]: <> "title"\n')
+        self.check('[x][id]\n\n[id]:\n', ["reference", "link-syntax"])
+
+    def test_image_marker_uses_backslash_parity(self):
+        self.check(r"[outer \\![image](target.md)](target.md)")
+        self.check(r"[outer \![inner](target.md)](target.md)", ["link-syntax"])
 
     def test_indented_paragraph_continuation_is_not_code(self):
         self.check("Paragraph\n    [real](missing.md)\n", ["path"])
@@ -200,6 +310,36 @@ class LinkTests(unittest.TestCase):
         self.check('<a href="target.md#target">target</a><img src="img.png">\n')
         self.check('<a href="missing.md">bad</a>\n', ["path"])
 
+    def test_titles_and_attributes_do_not_create_links_anchors_or_comments(self):
+        self.check('[x](target.md "<a href=\'missing.md\'>")\n')
+        self.check('[x](target.md "<span id=\'fake\'>")\n[y](#fake)\n', ["fragment"])
+        self.check('[x](target.md "literal <!--")\n[bad](missing.md)\n', ["path"])
+        self.check('<span title="<!--">text</span>\n[bad](missing.md)\n', ["path"])
+        self.check('[x][id]\n\n[id]: target.md "literal <!--"\n\n[bad](missing.md)\n', ["path"])
+        self.check(r'\<span id="fake"> [x](#fake)', ["fragment"])
+        self.check(r'\<a href="missing.md">literal</a>')
+        self.check(r'\\<a href="missing.md">real</a>', ["path"])
+        self.check('\\<!-- literal\n<a href="missing.md">real</a>\n', ["path"])
+
+    def test_html_attribute_decoding_is_once_and_not_markdown_escaping(self):
+        for tag, attr in (("a", "href"), ("img", "src")):
+            with self.subTest(tag=tag):
+                decoy = self.write("docs/a&b.md", "# Héllo\n")
+                text = '<' + tag + ' ' + attr + '="a&amp;amp;b.md#h%C3%A9llo">\n'
+                self.check(text, ["path"])
+                decoy.unlink()
+                actual = self.write("docs/a&amp;b.md", "# Héllo\n")
+                self.check(text)
+                actual.unlink()
+                actual = self.write("docs/a\\!b.md", "# Target\n")
+                self.check('<' + tag + ' ' + attr + '="a\\!b.md">\n')
+                actual.unlink()
+
+    def test_heading_code_and_literal_underscores_survive_markup(self):
+        self.check('# `<word>`\n# `_secret_`\n# `_secret_`\n# __bold__\n# \\_literal\\_\n'
+                   '[a](#word) [b](#_secret_) [c](#_secret_-1) [d](#bold) [e](#_literal_)\n')
+        self.check('# `_secret_`\n[x](#secret)\n', ["fragment"])
+
     def test_malformed_relevant_forms_do_not_disappear(self):
         for text in ("[x](<target.md)", "[x](target.md bad title)", "[x](target.md", "[x][missing", "[id]: <target.md"):
             with self.subTest(text=text):
@@ -228,10 +368,33 @@ class LinkTests(unittest.TestCase):
         after = {str(p.relative_to(self.root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in self.root.rglob("*") if p.is_file()}
         self.assertEqual(before, after)
 
-    def cli(self, *args, cwd=None):
+    def cli(self, *args, cwd=None, timeout=20):
         return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd,
-                              capture_output=True, text=True, timeout=20,
+                              capture_output=True, text=True, timeout=timeout,
                               env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PATH=""))
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "Host has no FIFO support")
+    def test_special_files_are_rejected_without_blocking(self):
+        fifo = self.root / "docs/blocked.md"
+        os.mkfifo(fifo)
+        result = self.cli("--root", str(self.root), "--json", timeout=2)
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["findings"])
+        fifo.unlink()
+        target = self.root / "docs/blocked.txt"
+        os.mkfifo(target)
+        self.write("README.md", "[source](docs/blocked.txt#L1)\n")
+        result = self.cli("--root", str(self.root), "--json", timeout=2)
+        self.assertEqual(1, result.returncode, result.stderr)
+
+    def test_large_titles_and_unmatched_runs_terminate_with_correct_results(self):
+        self.write("docs/source.md", '[x](target.md "' + "a" * 2_000_000 + '")\n')
+        self.assertEqual(0, self.cli("--root", str(self.root)).returncode)
+        self.write("docs/source.md", " ".join("`" * i + "x" for i in range(1, 1001)) +
+                   "\n[bad](missing.md)\n")
+        result = self.cli("--root", str(self.root), "--json")
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(["path"], [x["code"] for x in json.loads(result.stdout)["findings"]])
 
     def test_cli_fixture_root_outside_cwd_without_git(self):
         result = self.cli("--root", str(self.root), "--json", cwd=self.root.parent)

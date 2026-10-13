@@ -11,6 +11,7 @@ from html.parser import HTMLParser
 import os
 from pathlib import Path
 import re
+import stat
 import string
 from typing import NamedTuple
 import unicodedata
@@ -21,6 +22,11 @@ LOCAL_ONLY = ("docs/analysis/private", "docs/analysis/temp", "docs/analysis/tech
 MAX_DOCUMENT_BYTES = 16 * 1024 * 1024
 MAX_NESTING = 64
 ESCAPE = re.compile(r"\\([" + re.escape(string.punctuation) + r"])")
+QUOTE_PREFIX = re.compile(r" {0,3}>[ \t]?")
+LIST_PREFIX = re.compile(r" {0,3}(?:[-+*]|\d{1,9}[.)])([ \t]+)")
+EMPTY_LINE = re.compile(r"[ \t]*(?:\r?\n)?$")
+ENTITY = re.compile(r"&(?:#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]+);")
+HTML_LINK_START = re.compile(r"<(?:a|img)\s", re.I)
 
 
 class Finding(NamedTuple):
@@ -33,6 +39,7 @@ class Finding(NamedTuple):
 class Link(NamedTuple):
     line: int
     destination: str
+    kind: str = "markdown"
 
 
 @dataclass
@@ -53,21 +60,60 @@ def blank(text):
     return "".join("\n" if c == "\n" else " " for c in text)
 
 
-def container(line):
-    """Return body offset and quote depth; normalize one list marker."""
+def container_parts(line):
+    """Parse ordered quote/list prefixes, retaining excess code indentation."""
     offset = 0
-    quotes = 0
+    parts = []
     while True:
-        match = re.match(r" {0,3}>[ \t]?", line[offset:])
+        match = QUOTE_PREFIX.match(line, offset)
+        if match:
+            parts.append(("quote", match.end() - offset))
+            offset = match.end()
+            continue
+        match = LIST_PREFIX.match(line, offset)
         if not match:
             break
-        quotes += 1
-        offset += match.end()
-    match = re.match(r" {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+", line[offset:])
-    list_indent = match.end() if match else 0
-    if match:
-        offset += match.end()
-    return offset, quotes, list_indent
+        padding = len(match[1])
+        width = match.end() - offset if padding <= 4 else match.end() - offset - padding + 1
+        parts.append(("list", width))
+        offset += width
+    return offset, parts
+
+
+def container(line):
+    offset, parts = container_parts(line)
+    return offset, sum(kind == "quote" for kind, _ in parts), sum(
+        width for kind, width in parts if kind == "list")
+
+
+def continuation(line, parts):
+    """Remove a previously opened container; None means it has ended."""
+    offset = 0
+    for kind, width in parts:
+        if kind == "quote":
+            match = QUOTE_PREFIX.match(line, offset)
+            if not match:
+                return None
+            offset = match.end()
+        elif line[offset:offset + width] == " " * width:
+            offset += width
+        elif EMPTY_LINE.match(line, offset):
+            offset = len(line.rstrip("\r\n"))
+        else:
+            return None
+    return line[offset:]
+
+
+def block_body(line, active):
+    parts = list(active)
+    while parts:
+        body = continuation(line, parts)
+        if body is not None:
+            offset, extra = container_parts(body)
+            return body[offset:], parts + extra
+        parts.pop()
+    offset, parts = container_parts(line)
+    return line[offset:], parts
 
 
 def blocks(text):
@@ -75,14 +121,28 @@ def blocks(text):
     output = []
     fences = []
     opened = None
+    active = []
     comment = False
     paragraph = False
     indented = False
     for line_no, line in enumerate(text.splitlines(keepends=True), 1):
-        offset, quotes, list_indent = container(line)
-        body = line[offset:].rstrip("\r\n")
-        if not opened and (comment or re.match(r" {0,3}<!--", body)):
-            begin = 0 if comment else line.index("<!--", offset)
+        visual = line.expandtabs(4)
+        if opened:
+            char, length, parts = opened
+            body = continuation(visual, parts)
+            if body is None:
+                opened = None
+            else:
+                closing = re.match(r" {0,3}([`~]+)[ \t]*$", body.rstrip("\r\n"))
+                if closing and set(closing[1]) == {char} and len(closing[1]) >= length:
+                    opened = None
+                output.append(blank(line))
+                paragraph = False
+                continue
+        body, active = block_body(visual, active)
+        body = body.rstrip("\r\n")
+        if comment or re.match(r" {0,3}<!--", body):
+            begin = 0 if comment else line.index("<!--")
             closing = line.find("-->", begin)
             if closing < 0:
                 output.append(blank(line))
@@ -91,31 +151,16 @@ def blocks(text):
                 continue
             comment = False
             line = line[:begin] + blank(line[begin:closing + 3]) + line[closing + 3:]
-            offset, quotes, list_indent = container(line)
-            body = line[offset:].rstrip("\r\n")
+            body, active = block_body(line.expandtabs(4), active)
+            body = body.rstrip("\r\n")
         spaces = len(body) - len(body.lstrip(" "))
-        if opened:
-            char, length, quote_depth, list_depth = opened
-            raw_spaces = len(line) - len(line.lstrip(" "))
-            container_ended = (quotes < quote_depth or
-                               (list_depth and line.strip() and not quotes and
-                                raw_spaces < list_depth))
-            if container_ended:
-                opened = None
-            else:
-                closing = re.match(r" {0,3}([`~]+)[ \t]*$", body)
-                if closing and set(closing[1]) == {char} and len(closing[1]) >= length:
-                    opened = None
-                output.append(blank(line))
-                paragraph = False
-                continue
         match = re.match(r" {0,3}(`{3,}|~{3,})(.*)$", body)
         if match and not (match[1][0] == "`" and "`" in match[2]):
-            opened = (match[1][0], len(match[1]), quotes, list_indent)
+            opened = (match[1][0], len(match[1]), list(active))
             fences.append((line_no, match[2].strip()))
             output.append(blank(line))
             paragraph = indented = False
-        elif (spaces >= 4 or body.startswith("\t")) and (indented or not paragraph):
+        elif spaces >= 4 and (indented or not paragraph):
             output.append(blank(line))
             indented = True
         elif not body.strip():
@@ -128,34 +173,55 @@ def blocks(text):
     return "".join(output), fences
 
 
-def code_end(text, start):
-    """A code span requires a later equal backtick run in this paragraph."""
-    match = re.match(r"`+", text[start:])
-    if not match:
+BACKTICKS = re.compile(r"`+")
+BLANK_LINE = re.compile(r"\n[ \t]*\n")
+SPACES = re.compile(r"[ \t]*(?:\n[ \t]*)?")
+HTML_START = re.compile(r"</?[A-Za-z][\w:-]*(?:\s|/?>)")
+HTML_TAG = re.compile(r"<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>")
+
+
+class CodeSpans:
+    """Index equal delimiter runs and block boundaries once per text mask."""
+
+    def __init__(self, text):
+        self.text = text
+        self.runs = {}
+        for match in BACKTICKS.finditer(text):
+            self.runs.setdefault(match.end() - match.start(), []).append(match.start())
+        self.boundaries = []
+        offset = 0
+        previous_heading = False
+        previous_quotes = 0
+        for line in text.splitlines(keepends=True):
+            body_start, quotes, list_marker = container(line)
+            body = line[body_start:].rstrip("\r\n")
+            heading = bool(re.match(r" {0,3}#{1,6}(?:\s|$)", body))
+            new_block = bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|(?:=+|-+|\*{3,}|_{3,})\s*$)", body))
+            if previous_heading or not body.strip() or quotes != previous_quotes or list_marker or new_block:
+                self.boundaries.append(offset)
+            previous_heading, previous_quotes = heading, quotes
+            offset += len(line)
+        self.boundaries.append(len(text))
+
+    def end(self, start):
+        match = BACKTICKS.match(self.text, start)
+        if not match:
+            return None
+        length = match.end() - start
+        positions = self.runs.get(length, ())
+        following = bisect_right(positions, start)
+        boundary = self.boundaries[bisect_right(self.boundaries, start)] if start < len(self.text) else len(self.text)
+        if following < len(positions) and positions[following] < boundary:
+            return positions[following] + length
         return None
-    length = len(match[0])
-    line_start = text.rfind("\n", 0, start) + 1
-    first_line = text[line_start:text.find("\n", start) if "\n" in text[start:] else len(text)]
-    body_start, quote_depth, _ = container(first_line)
-    heading = bool(re.match(r" {0,3}#{1,6}(?:\s|$)", first_line[body_start:]))
-    end = len(text)
-    for newline in re.finditer("\n", text[start + length:]):
-        boundary = start + length + newline.start()
-        following_end = text.find("\n", boundary + 1)
-        following = text[boundary + 1:following_end if following_end >= 0 else len(text)]
-        offset, quotes, list_marker = container(following)
-        body = following[offset:]
-        new_block = bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|(?:=+|-+|\*{3,}|_{3,})\s*$)", body))
-        if heading or not body.strip() or quotes != quote_depth or list_marker or new_block:
-            end = boundary
-            break
-    for closing in re.finditer(r"`+", text[start + length:end]):
-        if len(closing[0]) == length:
-            return start + length + closing.end()
-    return None
 
 
-def close_label(text, start):
+def code_end(text, start, index=None):
+    return (index if index is not None else CodeSpans(text)).end(start)
+
+
+def close_label(text, start, index=None):
+    index = index if index is not None else CodeSpans(text)
     depth = 1
     cursor = start + 1
     while cursor < len(text):
@@ -164,9 +230,16 @@ def close_label(text, start):
             cursor += 2
             continue
         if char == "`":
-            end = code_end(text, cursor)
+            end = code_end(text, cursor, index)
             if end:
                 cursor = end
+                continue
+            cursor = BACKTICKS.match(text, cursor).end()
+            continue
+        if char == "<" and HTML_START.match(text, cursor):
+            tag = HTML_TAG.match(text, cursor)
+            if tag:
+                cursor = tag.end()
                 continue
         if char == "[":
             depth += 1
@@ -176,15 +249,14 @@ def close_label(text, start):
             depth -= 1
             if not depth:
                 return cursor
-        elif char == "\n" and re.match(r"\n[ \t]*\n", text[cursor:]):
+        elif char == "\n" and BLANK_LINE.match(text, cursor):
             return None
         cursor += 1
     return None
 
 
 def spaces(text, start):
-    match = re.match(r"[ \t]*(?:\n[ \t]*)?", text[start:])
-    return start + match.end()
+    return SPACES.match(text, start).end()
 
 
 def destination(text, start):
@@ -234,7 +306,7 @@ def title_end(text, start):
             continue
         if text[cursor] == delimiter:
             return cursor + 1
-        if re.match(r"\n[ \t]*\n", text[cursor:]):
+        if text[cursor] == "\n" and BLANK_LINE.match(text, cursor):
             break
         cursor += 1
     raise ValueError("Unclosed or blank-line-separated link title")
@@ -259,19 +331,58 @@ def reference_key(label):
     return re.sub(r"[ \t\r\n]+", " ", label.strip()).casefold()
 
 
+def without_containers(text):
+    """Blank physical prefixes for continuation parsing without moving offsets."""
+    lines = []
+    for line in text.splitlines(keepends=True):
+        offset, _ = container_parts(line)
+        lines.append(blank(line[:offset]) + line[offset:])
+    return "".join(lines)
+
+
 def comments(text):
-    """Mask inline comments before reference definitions, respecting code."""
+    """Mask actual comments; code, HTML attributes and link metadata are literal."""
     output = list(text)
+    index = CodeSpans(text)
+    metadata = without_containers(text)
+    protected = {}
     cursor = 0
     while cursor < len(text):
+        if cursor in protected:
+            cursor = protected.pop(cursor)
+            continue
         if text[cursor] == "\\" and cursor + 1 < len(text):
             cursor += 2
             continue
         if text[cursor] == "`":
-            end = code_end(text, cursor)
+            end = code_end(text, cursor, index)
             if end:
                 cursor = end
                 continue
+            cursor = BACKTICKS.match(text, cursor).end()
+            continue
+        if text[cursor] == "<" and HTML_START.match(text, cursor):
+            tag = HTML_TAG.match(text, cursor)
+            if tag:
+                cursor = tag.end()
+                continue
+        if text[cursor] == "[":
+            try:
+                closing = close_label(text, cursor, index)
+                if closing is not None:
+                    after = closing + 1
+                    if metadata[after:after + 1] == "(":
+                        _, end = inline_destination(metadata, after)
+                        protected[after] = end
+                    elif metadata[after:after + 1] == ":":
+                        begin = spaces(metadata, after + 1)
+                        _, end = destination(metadata, begin)
+                        following = spaces(metadata, end)
+                        if following > end and following < len(metadata) and metadata[following] in "\"'(":
+                            end = title_end(metadata, following)
+                        protected[after] = end
+            except ValueError:
+                pass  # The actual inline/definition pass emits the source finding.
         if text.startswith("<!--", cursor):
             closing = text.find("-->", cursor + 4)
             end = closing + 3 if closing >= 0 else len(text)
@@ -282,41 +393,124 @@ def comments(text):
     return "".join(output)
 
 
-def inline_text(text):
-    """Bounded heading text: retain labels/code content, discard URI/markup."""
-    text = re.sub(r"<[^>]*>", "", text)
-    result = []
+def plain_emphasis(characters, literal):
+    """Remove matched underscore emphasis without altering literal tokens."""
+    removed = set()
+    stack = []
     cursor = 0
+
+    def punctuation(position):
+        return (0 <= position < len(characters) and
+                (literal[position] or characters[position] in string.punctuation or
+                 unicodedata.category(characters[position])[0] in "PS"))
+
+    while cursor < len(characters):
+        if characters[cursor] != "_" or literal[cursor]:
+            cursor += 1
+            continue
+        begin = cursor
+        while cursor < len(characters) and characters[cursor] == "_" and not literal[cursor]:
+            cursor += 1
+        end = cursor
+        previous_space = begin == 0 or characters[begin - 1].isspace()
+        following_space = end == len(characters) or characters[end].isspace()
+        left = not following_space and (not punctuation(end) or previous_space or punctuation(begin - 1))
+        right = not previous_space and (not punctuation(begin - 1) or following_space or punctuation(end))
+        can_open = left and (not right or punctuation(begin - 1))
+        can_close = right and (not left or punctuation(end))
+        remaining = end - begin
+        if can_close:
+            while remaining:
+                match = None
+                for position in range(len(stack) - 1, -1, -1):
+                    opener = stack[position]
+                    if ((opener[3] or can_open) and (opener[4] + end - begin) % 3 == 0 and
+                            (opener[4] % 3 or (end - begin) % 3)):
+                        continue
+                    match = position
+                    break
+                if match is None:
+                    break
+                opener = stack[match]
+                count = 2 if opener[2] >= 2 and remaining >= 2 else 1
+                removed.update(range(opener[0] + opener[2] - count, opener[0] + opener[2]))
+                removed.update(range(end - remaining, end - remaining + count))
+                opener[2] -= count
+                remaining -= count
+                del stack[match + 1:]
+                if not opener[2]:
+                    stack.pop()
+        if can_open and remaining:
+            stack.append([end - remaining, end, remaining, can_close, end - begin])
+    return "".join(char for position, char in enumerate(characters) if position not in removed)
+
+
+def inline_text(text):
+    """Extract heading text while preserving code, escapes and entity literals."""
+    index = CodeSpans(text)
+    result = []
+    literal = []
+    cursor = 0
+
+    def emit(value, protected=False):
+        result.extend(value)
+        literal.extend([protected] * len(value))
+
     while cursor < len(text):
-        if text[cursor] == "[":
+        char = text[cursor]
+        if char == "\\" and cursor + 1 < len(text) and text[cursor + 1] in string.punctuation:
+            emit(text[cursor + 1], True)
+            cursor += 2
+            continue
+        if char == "`":
+            end = index.end(cursor)
+            if end:
+                length = BACKTICKS.match(text, cursor).end() - cursor
+                value = text[cursor + length:end - length].replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+                if value.startswith(" ") and value.endswith(" ") and value.strip(" "):
+                    value = value[1:-1]
+                emit(value, True)
+                cursor = end
+                continue
+            cursor = BACKTICKS.match(text, cursor).end()
+            continue
+        if char == "<" and HTML_START.match(text, cursor):
+            tag = HTML_TAG.match(text, cursor)
+            if tag:
+                cursor = tag.end()
+                continue
+        if char == "&":
+            entity = ENTITY.match(text, cursor)
+            if entity:
+                emit(unescape(entity[0]), True)
+                cursor = entity.end()
+                continue
+        if char == "[":
             try:
-                end = close_label(text, cursor)
+                end = close_label(text, cursor, index)
             except ValueError:
                 end = None
             if end is not None:
                 after = end + 1
+                following = None
                 if after < len(text) and text[after] == "(":
                     try:
                         _, following = inline_destination(text, after)
                     except ValueError:
-                        following = after
-                    result.append(text[cursor + 1:end])
+                        pass
+                elif after < len(text) and text[after] == "[":
+                    try:
+                        closing = close_label(text, after, index)
+                        following = closing + 1 if closing is not None else None
+                    except ValueError:
+                        pass
+                if following is not None:
+                    emit(inline_text(text[cursor + 1:end]), True)
                     cursor = following
                     continue
-                if after < len(text) and text[after] == "[":
-                    try:
-                        following = close_label(text, after)
-                    except ValueError:
-                        following = None
-                    if following is not None:
-                        result.append(text[cursor + 1:end])
-                        cursor = following + 1
-                        continue
-        result.append(text[cursor])
+        emit(char)
         cursor += 1
-    text = unescape(ESCAPE.sub(r"\1", "".join(result)))
-    text = text.replace("`", "").replace("*", "").replace("~", "")
-    return re.sub(r"(?<!\w)_([^_]+)_(?!\w)", r"\1", text)
+    return plain_emphasis(result, literal)
 
 
 def slug(text):
@@ -337,7 +531,8 @@ class Anchors(HTMLParser):
             if name == "id" or (tag == "a" and name == "name"):
                 self.document.anchors.add(value)
             if (tag == "a" and name == "href") or (tag == "img" and name == "src"):
-                self.document.links.append(Link(self.getpos()[0], value))
+                # HTMLParser has already decoded attribute entities exactly once.
+                self.document.links.append(Link(self.getpos()[0], value, "html"))
 
 
 class Markdown:
@@ -367,9 +562,9 @@ class Markdown:
     def issue(self, offset, code, message):
         self.findings.append(Finding(self.path, self.line(offset), code, message))
 
-    def close(self, text, start):
+    def close(self, text, start, index=None):
         try:
-            return close_label(text, start)
+            return close_label(text, start, index)
         except ValueError as error:
             self.issue(start, "link-syntax", str(error))
             return None
@@ -379,11 +574,12 @@ class Markdown:
         output[start:end] = blank(original[start:end])
 
     def _definitions(self, visible):
-        text = self.block_text
+        text = without_containers(self.block_text)
+        index = CodeSpans(text)
         consumed = 0
         paragraph = False
         quote_depth = 0
-        for line in re.finditer(r"[^\n]*(?:\n|$)", text):
+        for line in re.finditer(r"[^\n]*(?:\n|$)", self.block_text):
             if line.start() < consumed or not line[0]:
                 continue
             offset, quotes, list_marker = container(line[0])
@@ -396,7 +592,7 @@ class Markdown:
                 paragraph = bool(body.strip()) and not bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|(?:=+|-+)\s*$)", body))
                 continue
             start = line.start() + offset + match.end() - 1
-            closing = self.close(text, start)
+            closing = self.close(text, start, index)
             if closing is None or text[closing + 1:closing + 2] != ":":
                 paragraph = True
                 continue
@@ -411,14 +607,19 @@ class Markdown:
             try:
                 begin = spaces(text, closing + 2)
                 value, end = destination(text, begin)
-                if not value:
+                if not value and end == begin:
                     raise ValueError("Reference definition requires a destination")
                 following = spaces(text, end)
                 if following > end and following < len(text) and text[following] in "\"'(":
                     end = title_end(text, following)
-                rest = text[end:text.find("\n", end) if "\n" in text[end:] else len(text)]
+                newline = text.find("\n", end)
+                rest = text[end:newline if newline >= 0 else len(text)]
                 if rest.strip():
                     raise ValueError("Unsupported reference-definition continuation/title")
+                _, parts = container_parts(line[0])
+                for continued in self.block_text[line.end():end].splitlines(keepends=True):
+                    if continuation(continued, parts) is None:
+                        raise ValueError("Reference continuation leaves its quote/list container")
                 consumed = end
                 key = reference_key(label)
                 if key in self.references:
@@ -434,18 +635,25 @@ class Markdown:
 
     def _inlines(self, visible, heading_text):
         text = "".join(visible)
+        index = CodeSpans(text)
         cursor = 0
         destinations = {}
         labels = []
 
         def record(start, closing, after, end, value):
-            image = start > 0 and text[start - 1] == "!" and not (start > 1 and text[start - 2] == "\\")
+            backslashes = 0
+            before = start - 2
+            while before >= 0 and text[before] == "\\":
+                backslashes += 1
+                before -= 1
+            image = start > 0 and text[start - 1] == "!" and backslashes % 2 == 0
             if not image and any(begin < start < limit and not outer_image for begin, limit, outer_image in labels):
                 self.issue(start, "link-syntax", "Nested links are unsupported; images in link labels are supported")
             self.links.append(Link(self.line(start), value))
             labels.append((start, closing, image))
             if end > after:
                 destinations[after] = end
+                self.erase(visible, after, end, text)
 
         while cursor < len(text):
             while labels and cursor > labels[-1][1]:
@@ -455,14 +663,18 @@ class Markdown:
                 continue
             char = text[cursor]
             if char == "\\" and cursor + 1 < len(text):
+                if text[cursor + 1] == "<":
+                    self.erase(visible, cursor, cursor + 2, text)
                 cursor += 2
                 continue
             if char == "`":
-                end = code_end(text, cursor)
+                end = code_end(text, cursor, index)
                 if end:
                     self.erase(visible, cursor, end, text)
                     cursor = end
                     continue
+                cursor = BACKTICKS.match(text, cursor).end()
+                continue
             if text.startswith("<!--", cursor):
                 closing = text.find("-->", cursor + 4)
                 end = closing + 3 if closing >= 0 else len(text)
@@ -470,17 +682,17 @@ class Markdown:
                 self.erase(heading_text, cursor, end, text)
                 cursor = end
                 continue
-            if char == "<" and re.match(r"</?[A-Za-z][\w:-]*(?:\s|/?>)", text[cursor:]):
-                tag = re.match(r"<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", text[cursor:])
+            if char == "<" and HTML_START.match(text, cursor):
+                tag = HTML_TAG.match(text, cursor)
                 if tag:
-                    cursor += tag.end()
+                    cursor = tag.end()
                     continue
-                if re.match(r"<(?:a|img)\s", text[cursor:], re.I):
+                if HTML_LINK_START.match(text, cursor):
                     self.issue(cursor, "link-syntax", "Unclosed relevant HTML link/image tag")
             if char != "[":
                 cursor += 1
                 continue
-            closing = self.close(text, cursor)
+            closing = self.close(text, cursor, index)
             if closing is None:
                 cursor += 1
                 continue
@@ -498,7 +710,7 @@ class Markdown:
                     continue
             explicit = after < len(text) and text[after] == "["
             if explicit:
-                end = self.close(text, after)
+                end = self.close(text, after, index)
                 if end is None:
                     self.issue(cursor, "link-syntax", "Unclosed explicit reference label")
                     cursor = after + 1
@@ -509,6 +721,7 @@ class Markdown:
                 else:
                     record(cursor, closing, after, end + 1, self.references[key])
                 destinations[after] = end + 1
+                self.erase(visible, after, end + 1, text)
                 cursor += 1
                 continue
             key = reference_key(label)
@@ -549,6 +762,15 @@ def local_only(path):
 
 def read_utf8(root, path):
     target = root / path
+    resolved = target.resolve(strict=True)
+    try:
+        relative = resolved.relative_to(root)
+    except ValueError as error:
+        raise ValueError("Input resolves outside repository root") from error
+    if local_only(relative.as_posix()):
+        raise ValueError("Local-only analysis is unavailable in a clean checkout")
+    if not stat.S_ISREG(target.stat().st_mode):
+        raise ValueError("Input is not a regular file")
     with target.open("rb") as stream:
         data = stream.read(MAX_DOCUMENT_BYTES + 1)
     if len(data) > MAX_DOCUMENT_BYTES:
@@ -556,21 +778,46 @@ def read_utf8(root, path):
     return data.decode("utf-8")
 
 
+def input_symlink(root, path):
+    """Identify an unsupported source alias before enumeration or file I/O."""
+    relative = Path(path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Input path is outside the public corpus")
+    cursor = root
+    for part in relative.parts:
+        cursor /= part
+        if cursor.is_symlink():
+            return cursor.relative_to(root).as_posix()
+    return None
+
+
 def source_files(root, report):
     result = set()
     for name in ROOT_FILES:
-        if (root / name).exists():
+        if (root / name).exists() or (root / name).is_symlink():
             result.add(name)
     for prefix in ("docs", ".agents/skills"):
         start = root / prefix
+        alias = input_symlink(root, prefix)
+        if alias:
+            report.findings.append(Finding(alias, 1, "input", "Symlinked input directory is unsupported"))
+            continue
         if not start.exists():
             continue
-        for directory, dirs, files in os.walk(start, followlinks=False):
+        if not start.is_dir():
+            report.findings.append(Finding(prefix, 1, "input", "Corpus prefix is not a directory"))
+            continue
+
+        def walk_error(error):
+            path = Path(error.filename).relative_to(root).as_posix()
+            report.findings.append(Finding(path, 1, "input", str(error)))
+
+        for directory, dirs, files in os.walk(start, followlinks=False, onerror=walk_error):
             relative = Path(directory).relative_to(root)
             kept = []
             for name in sorted(dirs):
                 p = relative / name
-                if local_only(p.as_posix()) or name in (".git", ".venv", "__pycache__"):
+                if local_only(p.as_posix()):
                     continue
                 if (root / p).is_symlink():
                     report.findings.append(Finding(p.as_posix(), 1, "input", "Symlinked input directory is unsupported"))
@@ -614,8 +861,12 @@ def resolve_path(root, source, destination_path):
 
 def scan_links(root):
     """Read-only public-corpus check; temporary fixture roots need no Git."""
-    root = Path(root).resolve()
     report = Report()
+    try:
+        root = Path(root).resolve()
+    except (OSError, RuntimeError) as error:
+        report.findings.append(Finding(".", 1, "input", str(error)))
+        return report
     if not root.is_dir():
         report.findings.append(Finding(".", 1, "input", "Root is not an existing directory"))
         return report
@@ -626,9 +877,9 @@ def scan_links(root):
         if key in documents:
             return documents[key]
         try:
-            target = root / key
-            if target.is_symlink():
-                report.findings.append(Finding(key, 1, "input", "Symlinked Markdown input is unsupported"))
+            alias = input_symlink(root, key)
+            if alias:
+                report.findings.append(Finding(key, 1, "input", "Symlinked Markdown input is unsupported: " + alias))
                 documents[key] = None
                 return None
             text = read_utf8(root, key)
@@ -637,14 +888,18 @@ def scan_links(root):
             report.findings.extend(document.findings)
             return document
         except UnicodeDecodeError as error:
-            data = (root / key).read_bytes()
+            data = error.object
             report.findings.append(Finding(key, data[:error.start].count(b"\n") + 1, "read", "Invalid UTF-8 source"))
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, RuntimeError) as error:
             report.findings.append(Finding(key, 1, "read", str(error)))
         documents[key] = None
         return None
 
-    paths = source_files(root, report)
+    try:
+        paths = source_files(root, report)
+    except (OSError, ValueError, RuntimeError) as error:
+        report.findings.append(Finding(".", 1, "input", str(error)))
+        paths = []
     report.files = len(paths)
     if not paths:
         report.findings.append(Finding(".", 1, "input", "No public Markdown input found"))
@@ -656,7 +911,8 @@ def scan_links(root):
             continue
         for link in document.links:
             try:
-                value = unescape(ESCAPE.sub(r"\1", link.destination))
+                value = (unescape(ESCAPE.sub(r"\1", link.destination))
+                         if link.kind == "markdown" else link.destination)
                 if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", value) or value.startswith("//"):
                     continue
                 report.local_targets += 1
@@ -669,7 +925,7 @@ def scan_links(root):
                 actual = root / target
                 if not actual.exists():
                     raise ValueError("Missing local target: " + target.as_posix())
-            except (ValueError, OSError) as error:
+            except (ValueError, OSError, RuntimeError) as error:
                 report.findings.append(Finding(path, link.line, "path", str(error)))
                 continue
             if not fragment:
@@ -692,7 +948,7 @@ def scan_links(root):
                         raise ValueError("Missing Markdown/HTML anchor: " + fragment)
                 else:
                     raise ValueError("Unsupported fragment on non-Markdown source: " + fragment)
-            except (ValueError, OSError) as error:
+            except (ValueError, OSError, RuntimeError) as error:
                 report.findings.append(Finding(path, link.line, "fragment", str(error)))
     report.findings = sorted(set(report.findings))
     return report
