@@ -127,6 +127,31 @@ The BSP is a bare-metal `no_std` + `no_main` binary whose panic handler conflict
 
 Coverage remains informational and excluded from the versioned required-check policy. T-011 is already complete; its old future-tense trigger does not establish a calibrated floor. A future enforcing floor needs an explicit reviewed decision, reproducible baseline and workflow change before adding coverage to protection. `continue-on-error: true` permits workflow success despite this job failing; it does not itself define a coverage threshold or reliably describe a particular UI color. See [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idcontinue-on-error).
 
+## Documentation consistency
+
+[T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md), under Accepted [ADR-0043](../decisions/0043-documentation-corpus-consistency.md), provides the offline [checker](../../tools/check-docs.py) and [isolated fixtures](../../tools/test-check-docs.py). **Step 11 boundary:** local-link parsing is implemented; the other consistency families and required CI wiring belong to Step 12. This section does not claim that the current workflow already runs the new command or that hosted execution has occurred.
+
+Use Python **3.9 or newer**, with standard library only. No package installation, Git executable, network access, credential or repository-setting write is needed. Default root comes from the script's location, so an absolute script path also works from another cwd. `--root` selects an isolated fixture/export root; it does not change the caller's checkout. The command prints sorted `file:line: code: message` findings and exits 0 for a clean selected check, 1 for inconsistent/invalid source, and 2 for invalid CLI arguments. `--json` prints deterministic structured results on stdout. The parser and CLI do not write source, bytecode, reports or settings; redirect stdout explicitly when retaining a capture.
+
+```sh
+python3 tools/test-check-docs.py
+python3 tools/check-docs.py --checks links
+python3 tools/check-docs.py --root /path/to/fixture --json
+```
+
+The public corpus is `docs/**/*.md`, the five root entry files README/CLAUDE/AGENTS/SECURITY/CONTRIBUTING and `.agents/skills/**/*.md`. Every public historical archive and review is included. Existing [.gitignore](../../.gitignore) classifies `docs/analysis/technical-analysis/`, `docs/analysis/private/` and `docs/analysis/temp/` as local-only notes/drafts: those exact prefixes are outside repository input, and links into them fail even when a local file or symlink alias exists. There is no configurable archive ignore list or broken-link exception. Symlinked Markdown inputs/input directories are diagnosed; links cannot escape the repository root.
+
+Supported source grammar:
+
+- Inline, full/collapsed reference and defined-shortcut links and images, including images inside link labels; balanced/escaped labels and destinations, angle/empty destinations, optional titles and reference-definition continuations. Nested links are diagnosed. Reference keys use raw case-folded/whitespace-normalized labels; duplicate definitions and undefined explicit references fail. A definition cannot interrupt prose: separate it with a blank line. An undefined standalone bracket phrase remains ordinary prose. Quoted defect examples must explicitly delimit literal Markdown data.
+- Fences match delimiter character and sufficient closing length, including quote/list containers; indented code is distinguished from paragraph continuation. Matching backtick spans may cross soft line breaks within a block. Comments and actual code are excluded without shifting source line numbers; unrelated prose remains checked.
+- File/directory, same-file and repository-root-relative paths; Markdown escapes/HTML entities and UTF-8 URL decoding; exact filename case even on a case-insensitive host. A leading slash means repository root. External URI/protocol-relative destinations are never fetched. Query strings do not change the local file target.
+- ATX/setext headings, inline label/code text, Unicode letters/numbers/combining marks, underscore/hyphen retention and collision-aware duplicate suffixes; explicit HTML `id` and `<a name>` anchors. Custom anchors do not consume automatic suffixes. Fragments are case-sensitive. A directory fragment resolves through its `README.md`; source `#L1`/`#L1-L3` fragments must stay within actual line bounds. Actual HTML anchor links/image sources are checked too.
+
+This is a bounded source checker, not a complete CommonMark renderer or proof of architectural correctness. Relevant malformed/unsupported link syntax produces findings rather than being discarded. Inputs are limited to 16 MiB per document, balanced nesting to 64 and reference-definition labels to 999 characters; limits fail visibly. Fixtures define the supported contract, including false-positive controls. [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/) and [GitHub link/anchor documentation](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax) are syntax references, not a claim of complete rendering parity.
+
+To extend grammar, add an isolated failing contract fixture first, update parsing/resolution and this supported-contract description, then run both fixtures and the whole public corpus. Distinguish parser false positives from real baseline defects; return genuine defects to their named owning tasks and review bounded repairs. Do not add broad exclusions. Adding the task/review/ADR/ledger/fence/audit/live checks and required existing-job enforcement follows the approved Step 12; static commit-scope allowlisting remains deliberately skipped under ADR-0043.
+
 ## Adding a new check
 
 1. Add a job to [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
