@@ -6,7 +6,6 @@ Offsets remain tied to original text so every diagnostic has a useful line.
 
 from bisect import bisect_right
 from dataclasses import dataclass, field
-from html import unescape
 from html.entities import html5 as HTML_ENTITIES
 from html.parser import HTMLParser
 import os
@@ -34,6 +33,17 @@ HTML_TAGNAME = re.compile(r"<[A-Za-z][\w:-]*")
 HTML_ATTRIBUTE = re.compile(r"[^ \t\r\n\f=/<>\"']+")
 HTML_REFERENCE = re.compile(r"&(?:\#(?:[xX][0-9a-fA-F]+|[0-9]+);?|[A-Za-z][A-Za-z0-9]*;?)")
 MAX_ENTITY_NAME = max(map(len, HTML_ENTITIES))
+# WHATWG numeric-character-reference end state: only HTML has these legacy
+# replacements. Other controls and noncharacters remain their actual scalar.
+HTML_NUMERIC_REPLACEMENTS = {
+    0x80: 0x20AC, 0x82: 0x201A, 0x83: 0x0192, 0x84: 0x201E,
+    0x85: 0x2026, 0x86: 0x2020, 0x87: 0x2021, 0x88: 0x02C6,
+    0x89: 0x2030, 0x8A: 0x0160, 0x8B: 0x2039, 0x8C: 0x0152,
+    0x8E: 0x017D, 0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201C,
+    0x94: 0x201D, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014,
+    0x98: 0x02DC, 0x99: 0x2122, 0x9A: 0x0161, 0x9B: 0x203A,
+    0x9C: 0x0153, 0x9E: 0x017E, 0x9F: 0x0178,
+}
 
 
 class Finding(NamedTuple):
@@ -338,9 +348,28 @@ def reference_key(label):
     return re.sub(r"[ \t\r\n]+", " ", label.strip()).casefold()
 
 
+def numeric_reference(value, html=False):
+    """Decode an already recognized numeric token without deleting scalars.
+
+    Strip leading zeros and bound digit count before integer conversion, even
+    for HTML's unbounded spelling. Grammar/semicolon rules belong to callers.
+    """
+    digits = value[2:].rstrip(";")
+    hexadecimal = digits.startswith(("x", "X"))
+    digits = (digits[1:] if hexadecimal else digits).lstrip("0")
+    if len(digits) > (6 if hexadecimal else 7):
+        return "\ufffd"
+    number = int(digits or "0", 16 if hexadecimal else 10)
+    if number == 0 or number > 0x10FFFF or 0xD800 <= number <= 0xDFFF:
+        return "\ufffd"
+    if html:
+        number = HTML_NUMERIC_REPLACEMENTS.get(number, number)
+    return chr(number)
+
+
 def markdown_entity(value):
     if value.startswith("&#"):
-        return unescape(value)
+        return numeric_reference(value)
     return HTML_ENTITIES.get(value[1:], value)
 
 
@@ -543,7 +572,7 @@ def attribute_value(value):
     def replace(match):
         raw = match[0]
         if raw.startswith("&#"):
-            return unescape(raw)
+            return numeric_reference(raw, html=True)
         name = raw[1:]
         for length in range(min(len(name), MAX_ENTITY_NAME), 0, -1):
             prefix = name[:length]
@@ -604,6 +633,12 @@ class Anchors(HTMLParser):
                    (tag == "img" and name == "src") for name, _ in _attrs):
             return
         raw = self.get_starttag_text() or ""
+        # The HTMLParser input has same-length ampersand masking to prevent its
+        # unconditional attribute unescape (including unbounded int conversion).
+        # Recover the actual spelling through the public tag length/position.
+        line, column = self.getpos()
+        begin = (self.document.newlines[line - 2] + 1 if line > 1 else 0) + column
+        raw = self.document.prose[begin:begin + len(raw)]
         seen = set()
         newlines = [match.start() for match in re.finditer("\n", raw)]
         try:
@@ -647,7 +682,7 @@ class Markdown:
         self._inlines(visible, heading_text)
         self.prose = "".join(visible)
         self._headings("".join(heading_text))
-        Anchors(self).feed(self.prose)
+        Anchors(self).feed(self.prose.replace("&", "~"))
 
     def line(self, offset):
         return bisect_right(self.newlines, offset - 1) + 1

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import quote
 
 sys.dont_write_bytecode = True
 import docs_consistency as docs
@@ -379,6 +380,48 @@ class LinkTests(unittest.TestCase):
     def test_template_html_without_navigation_does_not_create_syntax_findings(self):
         self.check('<A / B / C / …>\n<comma-separated tasks, or "none">\n')
         self.check('<A / B / C / …>\n[real](missing.md)\n', ["path"])
+
+    def test_numeric_references_preserve_noncharacter_and_control_anchors(self):
+        for spelling, scalar in (("&#xFDD0;", "\ufdd0"), ("&#65535;", "\uffff"),
+                                 ("&#x10FFFF;", "\U0010ffff"), ("&#11;", "\x0b"),
+                                 ("&#127;", "\x7f"), ("&#x81;", "\x81")):
+            for tag, attr in (("span", "id"), ("a", "name")):
+                anchor = '<' + tag + ' ' + attr + '="a' + spelling + 'b"></' + tag + '>\n'
+                for destination, expected in (("#ab", ["fragment"]),
+                                              ("#a" + quote(scalar) + "b", []),
+                                              ("#a" + spelling + "b", [])):
+                    with self.subTest(spelling=spelling, attr=attr, destination=destination):
+                        self.check(anchor + '[x](' + destination + ')\n', expected)
+
+    def test_numeric_noncharacter_destination_cannot_accept_deleted_scalar_decoy(self):
+        self.write("docs/ab.md", "# Decoy\n")
+        for text in ('<a href="a&#xFDD0;b.md">x</a>\n',
+                     '<img src="a&#xFDD0;b.md">\n', '[x](a&#xFDD0;b.md)\n',
+                     '[x][ref]\n\n[ref]: a&#xFDD0;b.md\n'):
+            with self.subTest(text=text):
+                self.check(text, ["path", "path"] if "[ref]:" in text else ["path"])
+
+    def test_numeric_replacement_and_source_specific_legacy_values(self):
+        for spelling in ("&#0;", "&#xD800;", "&#xDFFF;", "&#x110000;", "&#9999999;"):
+            with self.subTest(spelling=spelling):
+                self.check('<span id="a' + spelling + 'b"></span>\n'
+                           '[x](#a%EF%BF%BDb) [y](#a' + spelling + 'b)\n')
+        # CommonMark numeric values denote their Unicode scalar. HTML alone
+        # has legacy C1 remapping; test the boundary with real anchor lookup.
+        self.check('<span id="a&#128;b"></span>\n[x](#a%E2%82%ACb)\n')
+        self.check('<span id="a&#128;b"></span>\n[x](#a&#128;b)\n', ["fragment"])
+        self.check('<span id="a\x80b"></span>\n[x](#a&#128;b)\n')
+        self.check('<span id="a\x80b"></span>\n<a href="#a&#128;b">x</a>\n', ["fragment"])
+        self.check('<span id="a&#x9F;b"></span>\n[x](#a%C5%B8b)\n')
+
+    def test_long_html_numeric_references_have_bounded_conversion(self):
+        for digits, fragment in (("9" * 100_000, "%EF%BF%BD"),
+                                 ("0" * 100_000 + "169", "%C2%A9")):
+            with self.subTest(fragment=fragment):
+                self.write("docs/source.md", '<span id="a&#' + digits + ';b"></span>\n'
+                           '[x](#a' + fragment + 'b)\n')
+                result = self.cli("--root", str(self.root), "--json", timeout=5)
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_heading_code_and_literal_underscores_survive_markup(self):
         self.check('# `<word>`\n# `_secret_`\n# `_secret_`\n# __bold__\n# \\_literal\\_\n'
