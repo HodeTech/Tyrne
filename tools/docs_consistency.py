@@ -7,6 +7,7 @@ Offsets remain tied to original text so every diagnostic has a useful line.
 from bisect import bisect_right
 from dataclasses import dataclass, field
 from html import unescape
+from html.entities import html5 as HTML_ENTITIES
 from html.parser import HTMLParser
 import os
 from pathlib import Path
@@ -25,8 +26,14 @@ ESCAPE = re.compile(r"\\([" + re.escape(string.punctuation) + r"])")
 QUOTE_PREFIX = re.compile(r" {0,3}>[ \t]?")
 LIST_PREFIX = re.compile(r" {0,3}(?:[-+*]|\d{1,9}[.)])([ \t]+)")
 EMPTY_LINE = re.compile(r"[ \t]*(?:\r?\n)?$")
-ENTITY = re.compile(r"&(?:#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]+);")
+ENTITY = re.compile(r"&(?:#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9]*);")
+MARKDOWN_DECODE = re.compile(ESCAPE.pattern + "|" + ENTITY.pattern)
 HTML_LINK_START = re.compile(r"<(?:a|img)\s", re.I)
+HTML_SPACE = re.compile(r"[ \t\r\n\f]*")
+HTML_TAGNAME = re.compile(r"<[A-Za-z][\w:-]*")
+HTML_ATTRIBUTE = re.compile(r"[^ \t\r\n\f=/<>\"']+")
+HTML_REFERENCE = re.compile(r"&(?:\#(?:[xX][0-9a-fA-F]+|[0-9]+);?|[A-Za-z][A-Za-z0-9]*;?)")
+MAX_ENTITY_NAME = max(map(len, HTML_ENTITIES))
 
 
 class Finding(NamedTuple):
@@ -331,6 +338,18 @@ def reference_key(label):
     return re.sub(r"[ \t\r\n]+", " ", label.strip()).casefold()
 
 
+def markdown_entity(value):
+    if value.startswith("&#"):
+        return unescape(value)
+    return HTML_ENTITIES.get(value[1:], value)
+
+
+def markdown_value(value):
+    """Decode complete entities and escapes in one nonrecursive source pass."""
+    return MARKDOWN_DECODE.sub(lambda match: match[0][1:] if match[0].startswith("\\")
+                               else markdown_entity(match[0]), value)
+
+
 def without_containers(text):
     """Blank physical prefixes for continuation parsing without moving offsets."""
     lines = []
@@ -482,7 +501,7 @@ def inline_text(text):
         if char == "&":
             entity = ENTITY.match(text, cursor)
             if entity:
-                emit(unescape(entity[0]), True)
+                emit(markdown_entity(entity[0]), True)
                 cursor = entity.end()
                 continue
         if char == "[":
@@ -519,20 +538,94 @@ def slug(text):
     return text.replace(" ", "-")
 
 
+def attribute_value(value):
+    """Decode once using HTML attribute, rather than text-node, entity rules."""
+    def replace(match):
+        raw = match[0]
+        if raw.startswith("&#"):
+            return unescape(raw)
+        name = raw[1:]
+        for length in range(min(len(name), MAX_ENTITY_NAME), 0, -1):
+            prefix = name[:length]
+            if prefix not in HTML_ENTITIES:
+                continue
+            following = match.start() + 1 + length
+            if (not prefix.endswith(";") and following < len(value) and
+                    value[following] in string.ascii_letters + string.digits + "="):
+                return raw
+            return HTML_ENTITIES[prefix] + name[length:]
+        return raw
+    return HTML_REFERENCE.sub(replace, value)
+
+
+def html_attributes(raw):
+    """Yield raw attribute names/values/offsets, keeping quoted > and slashes."""
+    tag = HTML_TAGNAME.match(raw)
+    if tag is None:
+        raise ValueError("Unsupported HTML tag syntax")
+    cursor = tag.end()
+    while cursor < len(raw):
+        cursor = HTML_SPACE.match(raw, cursor).end()
+        if cursor >= len(raw):
+            raise ValueError("Unclosed HTML tag")
+        if raw[cursor] == ">" or raw[cursor:cursor + 2] == "/>":
+            return
+        name = HTML_ATTRIBUTE.match(raw, cursor)
+        if name is None:
+            raise ValueError("Unsupported HTML attribute syntax")
+        start = cursor
+        cursor = HTML_SPACE.match(raw, name.end()).end()
+        value = None
+        if cursor < len(raw) and raw[cursor] == "=":
+            cursor = HTML_SPACE.match(raw, cursor + 1).end()
+            if cursor < len(raw) and raw[cursor] in "\"'":
+                quote = raw[cursor]
+                end = raw.find(quote, cursor + 1)
+                if end < 0:
+                    raise ValueError("Unclosed HTML attribute quote")
+                value = raw[cursor + 1:end]
+                cursor = end + 1
+            else:
+                begin = cursor
+                while cursor < len(raw) and raw[cursor] not in " \t\r\n\f>":
+                    cursor += 1
+                value = raw[begin:cursor]
+        yield name[0].lower(), value, start
+
+
 class Anchors(HTMLParser):
     def __init__(self, document):
         super().__init__(convert_charrefs=True)
         self.document = document
 
-    def handle_starttag(self, tag, attrs):
-        for name, value in attrs:
+    def handle_starttag(self, tag, _attrs):
+        # Placeholder-like/non-navigation tags are outside this link contract.
+        if not any(name == "id" or (tag == "a" and name in ("name", "href")) or
+                   (tag == "img" and name == "src") for name, _ in _attrs):
+            return
+        raw = self.get_starttag_text() or ""
+        seen = set()
+        newlines = [match.start() for match in re.finditer("\n", raw)]
+        try:
+            attrs = list(html_attributes(raw))
+        except ValueError as error:
+            self.document.findings.append(Finding(self.document.path, self.getpos()[0], "link-syntax", str(error)))
+            return
+        for name, value, offset in attrs:
+            line = self.getpos()[0] + bisect_right(newlines, offset - 1)
+            relevant = name == "id" or (tag == "a" and name in ("name", "href")) or (tag == "img" and name == "src")
+            if name in seen:
+                if relevant:
+                    self.document.findings.append(Finding(self.document.path, line, "link-syntax", "Duplicate relevant HTML attribute: " + name))
+                continue
+            seen.add(name)
             if value is None:
                 continue
+            value = attribute_value(value)
             if name == "id" or (tag == "a" and name == "name"):
                 self.document.anchors.add(value)
             if (tag == "a" and name == "href") or (tag == "img" and name == "src"):
-                # HTMLParser has already decoded attribute entities exactly once.
-                self.document.links.append(Link(self.getpos()[0], value, "html"))
+                self.document.links.append(Link(line, value, "html"))
 
 
 class Markdown:
@@ -911,8 +1004,7 @@ def scan_links(root):
             continue
         for link in document.links:
             try:
-                value = (unescape(ESCAPE.sub(r"\1", link.destination))
-                         if link.kind == "markdown" else link.destination)
+                value = markdown_value(link.destination) if link.kind == "markdown" else link.destination
                 if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", value) or value.startswith("//"):
                     continue
                 report.local_targets += 1

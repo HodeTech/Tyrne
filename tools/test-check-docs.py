@@ -335,6 +335,51 @@ class LinkTests(unittest.TestCase):
                 self.check('<' + tag + ' ' + attr + '="a\\!b.md">\n')
                 actual.unlink()
 
+    def test_html_named_references_follow_attribute_context(self):
+        for tag, attr in (("a", "href"), ("img", "src")):
+            for spelling, actual, decoy in (("a&notit;.md", "a&notit;.md", "a¬it;.md"),
+                                            ("a&copyx.md", "a&copyx.md", "a©x.md"),
+                                            ("a&copy=.md", "a&copy=.md", "a©=.md")):
+                with self.subTest(tag=tag, spelling=spelling):
+                    wrong = self.write("docs/" + decoy, "# Decoy\n")
+                    text = '<' + tag + ' ' + attr + '="' + spelling + '">\n'
+                    self.check(text, ["path"])
+                    wrong.unlink()
+                    right = self.write("docs/" + actual, "# Actual\n")
+                    self.check(text)
+                    right.unlink()
+        self.write("docs/a©.md", "# Héllo\n")
+        self.check('<a href="a&copy.md#h%C3%A9llo">x</a>\n')
+        self.check('<a href="a&#169;.md">x</a><img src="a&#xA9;.md">\n')
+        self.check('<span id="a&copyx"></span>[x](#a&copyx)\n')
+
+    def test_raw_html_attributes_retain_quotes_case_lines_and_first_value(self):
+        self.check('<A HREF=target.md TITLE="a > b">x</A><img src=target.md>\n')
+        self.check('<span hidden id=custom></span>[x](#custom)\n')
+        result = self.check('<a\n href="missing.md">x</a>\n', ["path"])
+        self.assertEqual(2, result.findings[0].line)
+        self.check('<span id="real" id="fake"></span>[x](#fake)\n', ["fragment", "link-syntax"])
+
+    def test_markdown_entities_require_complete_names_and_escape_precedence(self):
+        for spelling, actual, decoy in (("a&copyx.md", "a&copyx.md", "a©x.md"),
+                                        ("a&notit;.md", "a&notit;.md", "a¬it;.md"),
+                                        (r"a\&copy;.md", "a&copy;.md", "a©.md")):
+            with self.subTest(spelling=spelling):
+                wrong = self.write("docs/" + decoy, "# Decoy\n")
+                text = "[x](" + spelling + ")\n"
+                self.check(text, ["path"])
+                wrong.unlink()
+                right = self.write("docs/" + actual, "# Actual\n")
+                self.check(text)
+                right.unlink()
+        self.write("docs/a©.md", "# Actual\n")
+        self.check("[x](a&copy;.md) [y](a&#169;.md) [z](a&#xA9;.md)\n")
+        self.check("# &notit;\n# &#00000169;\n[a](#notit) [b](#00000169)\n")
+
+    def test_template_html_without_navigation_does_not_create_syntax_findings(self):
+        self.check('<A / B / C / …>\n<comma-separated tasks, or "none">\n')
+        self.check('<A / B / C / …>\n[real](missing.md)\n', ["path"])
+
     def test_heading_code_and_literal_underscores_survive_markup(self):
         self.check('# `<word>`\n# `_secret_`\n# `_secret_`\n# __bold__\n# \\_literal\\_\n'
                    '[a](#word) [b](#_secret_) [c](#_secret_-1) [d](#bold) [e](#_literal_)\n')
