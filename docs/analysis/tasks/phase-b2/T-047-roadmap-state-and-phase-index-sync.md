@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
@@ -66,3 +66,4 @@ Separate live state from the preserved historical tail; update live claims from 
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: T-029 as latest completion, stale first-wave triggers, archive undecided and four-file-only scope. Approved replacement: latest T-030–T-037 plus historical T-029, selected B.2-2 live state, linked preserved archive/delimiter and all three source-bound seam triggers. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
 | 2026-10-12 | Codex (AI agent), coordinator cross-reference check | ROOT-01: added the T-056 Informs backlink to match its newly explicit prerequisite/surface reference, following start-task step 9; no dependency scope or task state changed. |
+| 2026-10-13 | Codex implementation coordinator | Step 10 starts after Step 9 canonical both-round commit 20a0d25. [Preflight](../../reports/2026-10-13-t047-roadmap-state-preflight.md) records actual source/merge/audit/history review, complete archive boundary and distinct stack/IRQ flags. No new ADR or maintainer decision; In Progress, all 11 criteria unchecked until implementation and both fresh paired rounds. |
