@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-032](T-032-panic-family-denies-hal-bsp.md)
@@ -83,3 +83,4 @@ The test count is approximate (365 `#[test]` attributes by `grep`; 345 by a scra
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: naming alternatives without explicit motivating reference, automatic register-dump follow-up and a one-line unimplemented deny option. Approved replacement: Accepted ADR-0042 guidance plus testing References/downstream search; current panic behavior without automatic follow-up; review-only unimplemented and actual deny/logging/fault scope, with no lint/runtime change. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
 | 2026-10-12 | Codex (AI agent), coordinator cross-reference check | ROOT-01: added the T-056 Informs backlink to match its newly explicit prerequisite/surface reference, following start-task step 9; no dependency scope or task state changed. |
+| 2026-10-13 | Codex (AI agent), implementation author | Step 8 kickoff after T-055's completed two-round boundary at `98378b5`; verified prerequisites and approved choices. See [source-bound preflight](../../reports/2026-10-13-t052-t053-standards-preflight.md), including additional existing-scope tooling-file reasons recorded before edits. Status In Progress; no delivery or review claim. |
