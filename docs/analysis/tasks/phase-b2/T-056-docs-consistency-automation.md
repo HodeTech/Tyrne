@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2 (Polish items; not exit-gating)
-- **Status:** Draft
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-048](T-048-phase-b-task-corpus-sync.md), [T-049](T-049-review-indices-sync.md), [T-052](T-052-standards-docs-reality-sync.md), [T-053](T-053-standards-docs-mechanical-fixes.md), [T-054](T-054-adr-ledger-renumbering-cascade.md), [T-055](T-055-adr-append-only-corrections.md); [T-047](T-047-roadmap-state-and-phase-index-sync.md) supplies the delimited live-state surface
@@ -69,3 +69,4 @@ Run locally on macOS and verify Linux through exact-source hosted CI after publi
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Draft |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: shell/no-Python premise, numeric collisions, narrow link/audit scope and generic language formatter/linter requirement with three prerequisites. Approved replacement: Accepted ADR-0043 Python 3.9 stdlib grammar and six check families, expanded dependencies, meaningful fixtures/syntax/independent style, optional-check dispositions and required existing-job CI with exact-source macOS/Linux evidence; optional phase-exit accounting retained, full implementation selected. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-13 | Codex implementation coordinator | Step 11 starts after actual T-047 canonical both-round commit fd9009b; all seven prerequisites implemented/verified/two-round reviewed under Accepted ADR-0043. [Parser preflight](../../reports/2026-10-13-t056-parser-preflight.md) records bounded grammar, existing local-only corpus boundary, source inventory and the prewrite status-normalization correction to seventeen legacy date_done gaps (T-015 has a date-extended Done status, no date_done field). In Progress/all sixteen criteria unchecked; parser first, remaining checks/required wiring/exact-source hosted evidence remain Step 12. No new ADR/decision, task delivery or publication claimed. |
