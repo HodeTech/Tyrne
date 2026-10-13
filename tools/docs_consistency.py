@@ -25,7 +25,7 @@ PHYSICAL_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n|$)")
 C0_SPACE = "".join(map(chr, range(33)))
 ESCAPE = re.compile(r"\\([" + re.escape(string.punctuation) + r"])")
 QUOTE_PREFIX = re.compile(r" {0,3}>[ \t]?")
-LIST_PREFIX = re.compile(r" {0,3}(?:[-+*]|\d{1,9}[.)])([ \t]+)")
+LIST_PREFIX = re.compile(r" {0,3}(?:[-+*]|[0-9]{1,9}[.)])([ \t]+)")
 EMPTY_LINE = re.compile(r"[ \t]*(?:\r?\n)?$")
 ENTITY = re.compile(r"&(?:#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9]*);")
 MARKDOWN_DECODE = re.compile(ESCAPE.pattern + "|" + ENTITY.pattern)
@@ -75,6 +75,14 @@ class TableRow(NamedTuple):
     width: int
 
 
+class BlockLine(NamedTuple):
+    start: int
+    end: int
+    body_start: int
+    parts: tuple
+    boundary: bool
+
+
 @dataclass
 class Report:
     findings: list = field(default_factory=list)
@@ -99,7 +107,7 @@ def physical_lines(text, keepends=False):
             for match in PHYSICAL_LINE.finditer(text) if match[0]]
 
 
-def container_parts(line):
+def container_parts(line, paragraph=False):
     """Parse ordered quote/list prefixes, retaining excess code indentation."""
     offset = 0
     parts = []
@@ -108,21 +116,21 @@ def container_parts(line):
         if match:
             parts.append(("quote", match.end() - offset))
             offset = match.end()
+            paragraph = False  # A newly opened quote has a fresh block.
             continue
         match = LIST_PREFIX.match(line, offset)
         if not match:
             break
+        marker = match[0].lstrip(" ")
+        if paragraph and (not line[match.end():].strip(" \t\r\n") or
+                          (marker[0] in string.digits and int(re.match(r"[0-9]+", marker)[0]) != 1)):
+            break  # A soft ordered marker remains source text, including its prefix.
         padding = len(match[1])
         width = match.end() - offset if padding <= 4 else match.end() - offset - padding + 1
         parts.append(("list", width))
         offset += width
+        paragraph = False
     return offset, parts
-
-
-def container(line):
-    offset, parts = container_parts(line)
-    return offset, sum(kind == "quote" for kind, _ in parts), sum(
-        width for kind, width in parts if kind == "list")
 
 
 def continuation(line, parts):
@@ -143,16 +151,79 @@ def continuation(line, parts):
     return line[offset:]
 
 
-def block_body(line, active):
+def block_body(line, active, paragraph=False, details=False):
+    """Resolve existing containers before interpreting a possible new item.
+
+    Ordered non-1 markers cannot interrupt an open paragraph, but can start
+    a sibling after outdent or a new list after the paragraph has ended.
+    """
     parts = list(active)
+    outdented_list = False
+    outdented_quote = False
     while parts:
         body = continuation(line, parts)
         if body is not None:
-            offset, extra = container_parts(body)
-            return body[offset:], parts + extra
-        parts.pop()
-    offset, parts = container_parts(line)
-    return line[offset:], parts
+            offset, extra = container_parts(body, paragraph and (not outdented_list or outdented_quote))
+            if paragraph and outdented_list and not extra and body.strip(" \t\r\n") and not paragraph_interrupt(body):
+                result = body, list(active), False  # Lazy item continuation.
+            else:
+                result = body[offset:], parts + extra, bool(extra)
+            return result if details else result[:2]
+        kind = parts.pop()[0]
+        outdented_list |= kind == "list"
+        outdented_quote |= kind == "quote"
+    offset, parts = container_parts(line, paragraph and (not outdented_list or outdented_quote))
+    if paragraph and active and not parts and line.strip(" \t\r\n") and not paragraph_interrupt(line):
+        result = line, list(active), False  # Lazy quote/list continuation.
+    else:
+        result = line[offset:], parts, bool(parts)
+    return result if details else result[:2]
+
+
+def paragraph_interrupt(body):
+    """Recognize leaf syntax that ends an existing paragraph's inline block."""
+    body = body.rstrip("\r\n")
+    if re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|>|(?:=+|-+)[ \t]*$)", body) or opening_fence(body):
+        return True
+    if any(re.fullmatch(r" {0,3}(?:" + re.escape(char) + r"[ \t]*){3,}", body) for char in "*-_"):
+        return True
+    stripped = body.lstrip(" ")
+    if len(body) - len(stripped) > 3:
+        return False
+    if re.match(r"<!--|<\?|<![A-Z]|<!\[CDATA\[", stripped):
+        return True
+    tag = re.match(r"(</?)([A-Za-z][A-Za-z0-9-]*)(?=[ \t>]|/>|$)", stripped)
+    return bool(tag and (tag[2].lower() in HTML_BLOCK_NAMES or
+                        (tag[1] == "<" and tag[2].lower() in HTML_RAW_BLOCK_NAMES and
+                         (tag.end() == len(stripped) or stripped[tag.end()] in " \t>"))))
+
+
+class BlockLayout:
+    """Acyclic physical-line container/paragraph events for inline consumers.
+
+    HTML discovery uses preliminary events. The block walker supplies final
+    events after its actual literal/HTML/table decisions; downstream consumers
+    retain those source body offsets rather than stripping markers again.
+    """
+
+    def __init__(self, text, events=None):
+        if events is not None:
+            self.lines = events
+            return
+        self.lines = []
+        active = []
+        paragraph = previous_heading = False
+        start = 0
+        for line in physical_lines(text, keepends=True):
+            body, parts, opened = block_body(line, active, paragraph, details=True)
+            boundary = (opened or parts != active or previous_heading or
+                        not body.strip(" \t\r\n") or paragraph_interrupt(body))
+            self.lines.append(BlockLine(start, start + len(line), start + len(line) - len(body),
+                                        tuple(parts), boundary))
+            active = parts
+            paragraph = bool(body.strip(" \t\r\n")) and not paragraph_interrupt(body)
+            previous_heading = bool(re.match(r" {0,3}#{1,6}(?:[ \t]|$)", body))
+            start += len(line)
 
 
 def table_cells(body, offset):
@@ -204,7 +275,7 @@ def table_interrupt(body):
     body = body.rstrip("\r\n")
     if not body.strip(" \t"):
         return True
-    if re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|>|(?:[-+*]|\d{1,9}[.)])[ \t]+)", body) or opening_fence(body):
+    if re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|>|(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)", body) or opening_fence(body):
         return True
     if any(re.fullmatch(r" {0,3}(?:" + re.escape(char) + r"[ \t]*){3,}", body) for char in "*-_"):
         return True
@@ -249,10 +320,15 @@ def blocks(text):
     offset = 0
     table = None
     rows = []
+    raw_html = []
+    events = []
+    previous_heading = False
     lines = physical_lines(text, keepends=True)
     for line_no, line in enumerate(lines, 1):
         begin = offset
         offset += len(line)
+        events.append(BlockLine(begin, offset, begin, tuple(active), previous_heading))
+        previous_heading = False
         visual = line.expandtabs(4)
         if opened:
             char, length, parts = opened
@@ -294,7 +370,7 @@ def blocks(text):
             indented = False
             continue
         if not comment and line_no < len(lines):
-            raw_body, raw_parts = block_body(line, active)
+            raw_body, raw_parts = block_body(line, active, paragraph)
             following = continuation(lines[line_no], raw_parts)
             if following is not None and not table_interrupt(raw_body) and not raw_body.startswith(("    ", "\t")):
                 cells, header_pipe = table_cells(raw_body, begin + len(line) - len(raw_body))
@@ -303,6 +379,7 @@ def blocks(text):
                         all(re.fullmatch(r":?-+:?", cell.source) for cell in delimiters)):
                     table = (raw_parts, len(cells), line_no)
                     rows.append(TableRow(line_no, cells, True, line_no, len(cells)))
+                    events[-1] = BlockLine(begin, offset, begin + len(line) - len(raw_body), tuple(raw_parts), True)
                     active = raw_parts
                     output.append(blank(line))
                     html.cursor = offset
@@ -313,7 +390,11 @@ def blocks(text):
             body = continuation(visual, comment_parts)
             active = list(comment_parts)
         else:
-            body, active = block_body(visual, active)
+            raw_body, raw_parts, opened_container = block_body(line, active, paragraph, details=True)
+            events[-1] = BlockLine(begin, offset, begin + len(line) - len(raw_body), tuple(raw_parts),
+                                   events[-1].boundary or opened_container or raw_parts != active or
+                                   paragraph_interrupt(raw_body))
+            body, active = block_body(visual, active, paragraph)
         body = body.rstrip("\r\n")
         if comment or re.match(r" {0,3}<!--", body):
             comment_start = 0 if comment else line.index("<!--")
@@ -327,8 +408,15 @@ def blocks(text):
                 continue
             comment = False
             line = line[:comment_start] + blank(line[comment_start:closing + 3]) + line[closing + 3:]
-            body, active = block_body(line.expandtabs(4), active)
-            body = body.rstrip("\r\n")
+            # The entire closing physical line belongs to the HTML block.
+            # Preserve actual raw tags without parsing its literal Markdown
+            # or manufacturing code indentation from the erased comment.
+            html.scan(begin + closing + 3, offset, raw=True)
+            end = max(offset, html.spans[-1][1] if html.spans else offset)
+            raw_html.append((begin, end))
+            output.append(line)
+            paragraph = indented = False
+            continue
         spaces = len(body) - len(body.lstrip(" "))
         match = opening_fence(body)
         if match:
@@ -339,16 +427,17 @@ def blocks(text):
         elif spaces >= 4 and (indented or not paragraph):
             output.append(blank(line))
             indented = True
-        elif not body.strip():
+        elif not body.strip(" \t"):
             output.append(line)
             paragraph = False
             html.scan(begin, offset)
         else:
             output.append(line)
             indented = False
-            paragraph = not bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|[-*_]{3,}\s*$)", body))
+            paragraph = not bool(re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|[-*_]{3,}[ \t]*$)", body))
+            previous_heading = bool(re.match(r" {0,3}#{1,6}(?:[ \t]|$)", body))
             html.scan(begin, offset)
-    return "".join(output), fences, html.spans, rows
+    return "".join(output), fences, html.spans, rows, raw_html, BlockLayout(text, events)
 
 
 BACKTICKS = re.compile(r"`+")
@@ -361,24 +450,17 @@ HTML_TAG = re.compile(r"<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>")
 class CodeSpans:
     """Index equal delimiter runs and block boundaries once per text mask."""
 
-    def __init__(self, text):
+    def __init__(self, text, layout=None):
         self.text = text
+        self.layout = layout if layout is not None else BlockLayout(text)
         self.runs = {}
         for match in BACKTICKS.finditer(text):
             self.runs.setdefault(match.end() - match.start(), []).append(match.start())
         self.boundaries = []
-        offset = 0
-        previous_heading = False
-        previous_quotes = 0
-        for line in physical_lines(text, keepends=True):
-            body_start, quotes, list_marker = container(line)
-            body = line[body_start:].rstrip("\r\n")
-            heading = bool(re.match(r" {0,3}#{1,6}(?:\s|$)", body))
-            new_block = bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|(?:=+|-+|\*{3,}|_{3,})\s*$)", body))
-            if previous_heading or not body.strip() or quotes != previous_quotes or list_marker or new_block:
-                self.boundaries.append(offset)
-            previous_heading, previous_quotes = heading, quotes
-            offset += len(line)
+        for line in self.layout.lines:
+            body = text[line.body_start:line.end].rstrip("\r\n")
+            if line.boundary or not body.strip(" \t"):
+                self.boundaries.append(line.start)
         self.boundaries.append(len(text))
 
     def boundary(self, start):
@@ -429,7 +511,7 @@ def close_label(text, start, index=None):
     cursor = start + 1
     while cursor < len(text):
         char = text[cursor]
-        if char == "\\" and cursor + 1 < len(text):
+        if char == "\\" and ESCAPE.match(text, cursor):
             cursor += 2
             continue
         if char == "`":
@@ -469,7 +551,7 @@ def destination(text, start):
         cursor += 1
         begin = cursor
         while cursor < len(text):
-            if text[cursor] == "\\" and cursor + 1 < len(text):
+            if text[cursor] == "\\" and ESCAPE.match(text, cursor):
                 cursor += 2
                 continue
             if text[cursor] == ">":
@@ -481,10 +563,10 @@ def destination(text, start):
     depth = 0
     while cursor < len(text):
         char = text[cursor]
-        if char == "\\" and cursor + 1 < len(text):
+        if char == "\\" and ESCAPE.match(text, cursor):
             cursor += 2
             continue
-        if char.isspace() or (char == ")" and not depth):
+        if char in " \t\r\n" or (char == ")" and not depth):
             break
         if char == "(":
             depth += 1
@@ -492,7 +574,7 @@ def destination(text, start):
                 raise ValueError("Destination nesting exceeds supported limit")
         elif char == ")":
             depth -= 1
-        elif char in "<\x00":
+        elif char == "<" or ord(char) < 32 or ord(char) == 127:
             raise ValueError("Invalid bare destination character")
         cursor += 1
     if depth:
@@ -504,7 +586,7 @@ def title_end(text, start):
     delimiter = ")" if text[start] == "(" else text[start]
     cursor = start + 1
     while cursor < len(text):
-        if text[cursor] == "\\" and cursor + 1 < len(text):
+        if text[cursor] == "\\" and ESCAPE.match(text, cursor):
             cursor += 2
             continue
         if text[cursor] == delimiter:
@@ -573,28 +655,28 @@ def navigation_value(link):
     return value.translate({9: None, 10: None, 13: None})
 
 
-def without_containers(text):
+def without_containers(text, layout=None):
     """Blank physical prefixes for continuation parsing without moving offsets."""
     lines = []
-    for line in physical_lines(text, keepends=True):
-        offset, _ = container_parts(line)
-        lines.append(blank(line[:offset]) + line[offset:])
+    layout = layout if layout is not None else BlockLayout(text)
+    for line in layout.lines:
+        lines.append(blank(text[line.start:line.body_start]) + text[line.body_start:line.end])
     return "".join(lines)
 
 
-def comments(text):
+def comments(text, layout=None):
     """Mask actual comments; code, HTML attributes and link metadata are literal."""
     output = list(text)
-    index = CodeSpans(text)
+    index = CodeSpans(text, layout)
     comment_index = CommentSpans(text, index)
-    metadata = without_containers(text)
+    metadata = without_containers(text, index.layout)
     protected = {}
     cursor = 0
     while cursor < len(text):
         if cursor in protected:
             cursor = protected.pop(cursor)
             continue
-        if text[cursor] == "\\" and cursor + 1 < len(text):
+        if text[cursor] == "\\" and ESCAPE.match(text, cursor):
             cursor += 2
             continue
         if text[cursor] == "`":
@@ -645,29 +727,33 @@ class HTMLContexts:
 
     def __init__(self, text):
         self.text = text
-        self.metadata = without_containers(text)
         self.index = CodeSpans(text)
+        self.metadata = without_containers(text, self.index.layout)
         self.comments = CommentSpans(text, self.index)
         self.cursor = 0
         self.protected = {}
         self.spans = []
 
-    def scan(self, begin, end):
+    def scan(self, begin, end, raw=False):
         text = self.text
-        cursor = max(self.cursor, begin)
+        if raw:
+            self.protected.clear()
+        cursor = begin if raw else max(self.cursor, begin)
         while cursor < end:
             if cursor in self.protected:
                 cursor = self.protected.pop(cursor)
                 continue
-            if text[cursor] == "\\" and cursor + 1 < len(text):
+            if not raw and text[cursor] == "\\" and ESCAPE.match(text, cursor):
                 cursor += 2
                 continue
-            if text[cursor] == "`":
+            if not raw and text[cursor] == "`":
                 closing = self.index.end(cursor)
                 cursor = closing or BACKTICKS.match(text, cursor).end()
                 continue
             if text.startswith("<!--", cursor):
-                closing = self.comments.end(cursor)
+                closing = text.find("-->", cursor + 4) if raw else self.comments.end(cursor)
+                if raw:
+                    closing = closing + 3 if closing >= 0 else len(text)
                 cursor = closing if closing is not None else cursor + 4
                 continue
             if text[cursor] == "<" and HTML_START.match(text, cursor):
@@ -676,7 +762,7 @@ class HTMLContexts:
                     self.spans.append((cursor, tag.end()))
                     cursor = tag.end()
                     continue
-            if text[cursor] == "[":
+            if not raw and text[cursor] == "[":
                 try:
                     closing = close_label(text, cursor, self.index)
                     if closing is not None:
@@ -933,19 +1019,29 @@ class Markdown:
         self.anchors = set()
         self.findings = []
         if inline_only:
-            self.block_text, self.fences, self.html_spans, self.table_rows = text, [], [], []
+            self.block_text, self.fences, self.html_spans, self.table_rows, raw_spans = text, [], [], [], []
+            self.layout = BlockLayout(text)
         else:
-            self.block_text, self.fences, self.html_spans, self.table_rows = blocks(text)
-        self.block_text = comments(self.block_text)
+            self.block_text, self.fences, self.html_spans, self.table_rows, raw_spans, self.layout = blocks(text)
+        # Raw HTML block tails have no Markdown inline semantics. Keep their
+        # exact source fragments separately for the HTML navigation pass.
+        raw_fragments = [(begin, end, self.block_text[begin:end]) for begin, end in raw_spans]
+        block_text = list(self.block_text)
+        for begin, end, _ in raw_fragments:
+            self.erase(block_text, begin, end, self.block_text)
+        self.block_text = "".join(block_text)
+        self.block_text = comments(self.block_text, self.layout)
         self.references = references if references is not None else {}
         visible = list(self.block_text)
         if not inline_only:
             self._definitions(visible)
         heading_text = list("".join(visible))
         self._inlines(visible, heading_text)
-        self.prose = "".join(visible)
         if not inline_only:
             self._headings("".join(heading_text))
+        for begin, end, raw in raw_fragments:
+            visible[begin:end] = raw
+        self.prose = "".join(visible)
         Anchors(self).feed(self.prose.replace("&", "~"))
         for row in self.table_rows:
             for cell in row.cells[:row.width]:
@@ -979,22 +1075,26 @@ class Markdown:
         for begin, end in self.html_spans:
             self.erase(definition_text, begin, end, self.block_text)
         definition_text = "".join(definition_text)
-        text = without_containers(definition_text)
-        index = CodeSpans(text)
+        text = without_containers(definition_text, self.layout)
+        index = CodeSpans(text, self.layout)
+        lines = {line.start: line for line in self.layout.lines}
         consumed = 0
         paragraph = False
         quote_depth = 0
         for line in re.finditer(r"[^\n]*(?:\n|$)", definition_text):
             if line.start() < consumed or not line[0]:
                 continue
-            offset, quotes, list_marker = container(line[0])
+            event = lines[line.start()]
+            offset = event.body_start - line.start()
+            quotes = sum(kind == "quote" for kind, _ in event.parts)
+            list_marker = event.boundary and any(kind == "list" for kind, _ in event.parts)
             body = line[0][offset:]
             if quotes != quote_depth or list_marker:
                 paragraph = False
             quote_depth = quotes
             match = re.match(r" {0,3}\[", line[0][offset:])
             if not match:
-                paragraph = bool(body.strip()) and not bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|(?:=+|-+)\s*$)", body))
+                paragraph = bool(body.rstrip("\r\n").strip(" \t")) and not bool(re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|(?:=+|-+)[ \t]*$)", body))
                 continue
             start = line.start() + offset + match.end() - 1
             closing = self.close(text, start, index)
@@ -1019,9 +1119,9 @@ class Markdown:
                     end = title_end(text, following)
                 newline = text.find("\n", end)
                 rest = text[end:newline if newline >= 0 else len(text)]
-                if rest.strip():
+                if rest.strip(" \t\r"):
                     raise ValueError("Unsupported reference-definition continuation/title")
-                _, parts = container_parts(line[0])
+                parts = event.parts
                 for continued in physical_lines(self.block_text[line.end():end], keepends=True):
                     if continuation(continued, parts) is None:
                         raise ValueError("Reference continuation leaves its quote/list container")
@@ -1040,7 +1140,7 @@ class Markdown:
 
     def _inlines(self, visible, heading_text):
         text = "".join(visible)
-        index = CodeSpans(text)
+        index = CodeSpans(text, self.layout)
         comment_index = CommentSpans(text, index)
         cursor = 0
         destinations = {}
@@ -1068,7 +1168,7 @@ class Markdown:
                 cursor = destinations.pop(cursor)
                 continue
             char = text[cursor]
-            if char == "\\" and cursor + 1 < len(text):
+            if char == "\\" and ESCAPE.match(text, cursor):
                 if text[cursor + 1] == "<":
                     self.erase(visible, cursor, cursor + 2, text)
                 cursor += 2
@@ -1142,19 +1242,19 @@ class Markdown:
 
     def _headings(self, text):
         used = set()
-        bodies = [line[container(line)[0]:].rstrip(" \t") for line in physical_lines(text)]
+        bodies = [text[line.body_start:line.end].rstrip(" \t\r\n") for line in self.layout.lines]
         for index, body in enumerate(bodies):
             match = re.match(r" {0,3}#{1,6}(?:[ \t]+|$)(.*)$", body)
             if match:
                 title = re.sub(r"[ \t]+#+[ \t]*$", "", match[1])
             elif re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", body) and index:
                 previous = bodies[index - 1]
-                if not previous.strip() or previous.lstrip().startswith(("|", "#", "- ", "* ", "+ ")):
+                if not previous.strip(" \t") or previous.lstrip(" \t").startswith(("|", "#", "- ", "* ", "+ ")):
                     continue
                 begin = index - 1
-                while begin and bodies[begin - 1].strip() and not re.match(r" {0,3}[#|]", bodies[begin - 1]):
+                while begin and bodies[begin - 1].strip(" \t") and not re.match(r" {0,3}[#|]", bodies[begin - 1]):
                     begin -= 1
-                title = " ".join(line.strip() for line in bodies[begin:index])
+                title = " ".join(line.strip(" \t") for line in bodies[begin:index])
             else:
                 continue
             base = slug(title)
@@ -1346,7 +1446,7 @@ def scan_links(root):
                 continue
             report.fragments += 1
             try:
-                line_reference = re.fullmatch(r"L(\d+)(?:-L(\d+))?", fragment)
+                line_reference = re.fullmatch(r"L([0-9]+)(?:-L([0-9]+))?", fragment)
                 if actual.is_dir():
                     target = resolve_path(root, target.as_posix() + "/dummy", "README.md")
                     actual = root / target

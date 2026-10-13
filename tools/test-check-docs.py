@@ -599,6 +599,208 @@ class LinkTests(unittest.TestCase):
                            'Missing or case-mismatched local target: docs/missing.md')],
                          [(x['path'], x['line'], x['code'], x['message']) for x in findings])
 
+    def test_escaped_physical_newlines_cannot_bypass_blank_title_boundaries(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for backslashes in (1, 2):
+                with self.subTest(ending=repr(ending), backslashes=backslashes):
+                    source = '[x](target.md "first' + '\\' * backslashes + '\n\n[real](missing.md)\nlast")\n'
+                    result = self.check(source.replace('\n', ending), ['link-syntax', 'path'])
+                    self.assertEqual([(1, 'Unclosed or blank-line-separated link title'),
+                                      (3, 'Missing or case-mismatched local target: docs/missing.md')],
+                                     [(x.line, x.message) for x in result.findings])
+        self.check('[x](target.md "first\\\nlast")\n')
+        self.check(r'[x](target.md "escaped \"quote\"")' + '\n')
+
+    def test_escaped_physical_newlines_cannot_join_blank_separated_labels(self):
+        for ending in ('\n', '\r', '\r\n'):
+            with self.subTest(ending=repr(ending)):
+                result = self.check('[first\\\n\nlast](missing.md)\n'.replace('\n', ending))
+                self.assertEqual(0, result.local_targets)
+        self.check(r'[escaped \] label](target.md)' + '\n')
+
+    def test_destination_backslashes_cannot_escape_physical_line_endings(self):
+        for ending in ('\n', '\r', '\r\n'):
+            actual = self.write('docs/target\\' + ending + '.txt', 'nonconforming destination decoy')
+            for destination in ('<target\\\n.txt>', 'target\\\n.txt'):
+                for marker in ('[x]', '![x]'):
+                    with self.subTest(ending=repr(ending), destination=destination, marker=marker):
+                        result = self.check((marker + '(' + destination + ')\n').replace('\n', ending), ['link-syntax'])
+                        self.assertEqual(1, result.findings[0].line)
+            actual.unlink()
+
+    def test_bare_destinations_cannot_escape_ascii_space(self):
+        actual = self.write('docs/target\\ file.txt', 'nonconforming bare destination decoy')
+        for marker in ('[x]', '![x]'):
+            with self.subTest(marker=marker):
+                result = self.check(marker + '(target\\ file.txt)\n', ['link-syntax'])
+                self.assertEqual(1, result.findings[0].line)
+        self.check('[x](<target\\ file.txt>)\n')
+        actual.unlink()
+        actual = self.write('docs/target\\Q.txt', 'literal non-punctuation backslash')
+        self.check('[x](target\\Q.txt)\n')
+        actual.unlink()
+
+    def test_reference_destinations_cannot_escape_line_endings_or_ascii_space(self):
+        for ending in ('\n', '\r', '\r\n'):
+            actual = self.write('docs/target\\' + ending + '.txt', 'nonconforming destination decoy')
+            for destination in ('<target\\\n.txt>', 'target\\\n.txt'):
+                with self.subTest(ending=repr(ending), destination=destination):
+                    source = ('[x][r]\n\n[r]: ' + destination + '\n').replace('\n', ending)
+                    result = self.check(source, ['reference', 'link-syntax'] if destination.startswith('<') else ['path', 'path'])
+                    self.assertEqual([1, 3], [x.line for x in result.findings])
+                    if not destination.startswith('<'):
+                        self.assertTrue(all(x.message == 'Missing or case-mismatched local target: docs/target\\'
+                                            for x in result.findings))
+                        selected = self.write('docs/target\\', 'actual first-line reference destination')
+                        self.check(source)
+                        selected.unlink()
+            actual.unlink()
+        actual = self.write('docs/target\\ file.txt', 'nonconforming bare destination decoy')
+        self.check('[x][r]\n\n[r]: target\\ file.txt\n', ['reference', 'link-syntax'])
+        actual.unlink()
+
+    def test_unicode_content_lines_do_not_split_complete_comments_or_code_spans(self):
+        for scalar in ('\v', '\f', '\x1c', '\x1d', '\x1e', '\x85', '\u2028', '\u2029', '\u00a0'):
+            for ending in ('\n', '\r', '\r\n'):
+                for opening, closing in (('prose <!--', '-->'), ('`prose', '`')):
+                    with self.subTest(scalar=repr(scalar), ending=repr(ending), opening=opening):
+                        source = opening + '\n' + scalar + '\n[literal](missing.md)\n' + closing + '\n[real](target.md)\n'
+                        result = self.check(source.replace('\n', ending))
+                        self.assertEqual(1, result.local_targets)
+        result = self.check('prose <!--\n \t\n[real](missing.md)\n-->\n', ['path'])
+        self.assertEqual(3, result.findings[0].line)
+
+    def test_unicode_whitespace_does_not_turn_literal_markers_into_block_boundaries(self):
+        for scalar in ('\v', '\f', '\x1c', '\x1d', '\x1e', '\x85', '\u2028', '\u2029', '\u00a0'):
+            for marker in ('#', '---', '***', '___'):
+                for opening, closing in (('prose <!--', '-->'), ('`prose', '`')):
+                    with self.subTest(scalar=repr(scalar), marker=marker, opening=opening):
+                        self.check(opening + '\n' + marker + scalar + ('text' if marker == '#' else '') + '\n[literal](missing.md)\n' + closing + '\n')
+
+    def test_unicode_content_is_not_blank_before_reference_like_prose(self):
+        for scalar in ('\v', '\f', '\x1c', '\x1d', '\x1e', '\x85', '\u2028', '\u2029', '\u00a0'):
+            with self.subTest(scalar=repr(scalar)):
+                result = self.check(scalar + '\n[r]: target.md\n\n[x][r]\n', ['link-syntax', 'reference'])
+                self.assertEqual([2, 4], [x.line for x in result.findings])
+
+    def test_raw_ascii_control_destinations_are_rejected_before_target_lookup(self):
+        for scalar in ('\x01', '\x0b', '\x1b', '\x1f', '\x7f'):
+            actual = self.write('docs/a' + scalar + 'b.txt', 'raw control decoy or actual entity target')
+            with self.subTest(scalar=repr(scalar)):
+                result = self.check('[x](a' + scalar + 'b.txt)\n', ['link-syntax'])
+                self.assertEqual(1, result.findings[0].line)
+                self.check('[x](a&#' + str(ord(scalar)) + ';b.txt)\n')
+            actual.unlink()
+
+    def test_bare_destinations_keep_non_ascii_whitespace_as_filename_content(self):
+        for scalar in ('\u00a0', '\u2028', '\u2029'):
+            actual = self.write('docs/a' + scalar + 'b.txt', 'actual Unicode filename')
+            for source in ('[x](a' + scalar + 'b.txt)\n', '[x][r]\n\n[r]: a' + scalar + 'b.txt\n'):
+                with self.subTest(scalar=repr(scalar), source=source):
+                    self.check(source)
+            actual.unlink()
+
+    def test_block_comment_closing_lines_keep_only_raw_html_navigation(self):
+        for ending in ('\n', '\r', '\r\n'):
+            cases = [('<!-- c --> <a href="missing.md">real</a>\n', ['path'], [1]),
+                     ('<!--\n--> <img src="missing.md">\n', ['path'], [2]),
+                     ('<!-- c --> [literal](missing.md) <a href="real-missing.md">real</a>\n', ['path'], [1]),
+                     ('<!-- c --> <span id="real"></span>\n\n[x](#real)\n', [], []),
+                     ('<!-- c --> [literal](missing.md)\n', [], []),
+                     ('<!-- c --> ```text\n[real](missing.md)\n```\n', ['path'], [2]),
+                     ('<!-- c -->\n<a href="missing.md">real</a>\n', ['path'], [2]),
+                     ('<!-- c --> `<a href="missing.md">real</a>`\n', ['path'], [1]),
+                     ('<!-- c --> [literal](target.md "<a href=\'missing.md\'>")\n', ['path'], [1]),
+                     ('<!-- c --> <div title="\n# Ghost\n">text</div>\n\n[x](#ghost)\n', ['fragment'], [5])]
+            for source, codes, lines in cases:
+                with self.subTest(ending=repr(ending), source=source):
+                    result = self.check(source.replace('\n', ending), codes)
+                    self.assertEqual(lines, [x.line for x in result.findings])
+                    for finding in result.findings:
+                        expected = ('Missing Markdown/HTML anchor: ghost' if finding.code == 'fragment' else
+                                    'Missing or case-mismatched local target: docs/' +
+                                    ('real-missing.md' if 'real-missing.md' in source else 'missing.md'))
+                        self.assertEqual(expected, finding.message)
+        result = self.check('<!-- <a href="missing.md"> --> <a href="target.md">real</a>\n')
+        self.assertEqual(1, result.local_targets)
+
+    def test_ordered_soft_continuations_preserve_comments_and_real_list_boundaries(self):
+        for ending in ('\n', '\r', '\r\n'):
+            cases = [('prose <!--\n2. <span id="ghost"></span> -->\n\n[x](#ghost)\n', ['fragment'], [4]),
+                     ('prose <!--\n2. [literal](missing.md) -->\n', [], []),
+                     ('prose <!--\n1. [real](missing.md) -->\n', ['path'], [2]),
+                     ('1. prose <!--\n2. [real](missing.md) -->\n', ['path'], [2]),
+                     ('1. prose <!--\n   2. [literal](missing.md) -->\n', [], []),
+                     ('1. prose <!--\n   1. [real](missing.md) -->\n', ['path'], [2]),
+                     ('> prose <!--\n> 2. [literal](missing.md) -->\n', [], []),
+                     ('> prose <!--\n> 1. [real](missing.md) -->\n', ['path'], [2]),
+                     ('prose <!--\n\n2. [real](missing.md) -->\n', ['path'], [3]),
+                     ('1. prose <!--\nordinary [literal](missing.md) -->\n', [], []),
+                     ('2. prose <!--\n3. [real](missing.md) -->\n', ['path'], [2])]
+            for source, codes, lines in cases:
+                with self.subTest(ending=repr(ending), source=source):
+                    result = self.check(source.replace('\n', ending), codes)
+                    self.assertEqual(lines, [x.line for x in result.findings])
+                    for finding in result.findings:
+                        self.assertEqual('Missing Markdown/HTML anchor: ghost' if finding.code == 'fragment' else
+                                         'Missing or case-mismatched local target: docs/missing.md', finding.message)
+
+    def test_noninterrupting_ordered_text_cannot_create_headings_or_definitions(self):
+        self.check('prose\n2. # Ghost\n\n[x](#ghost)\n', ['fragment'])
+        result = self.check('prose\n2. [r]: target.md\n\n[x][r]\n', ['reference'])
+        self.assertEqual(4, result.findings[0].line)
+        self.check('prose\n\n2. # Real\n\n[x](#real)\n')
+        self.check('1. first\n2. # Real\n\n[x](#real)\n')
+        self.check('> prose\n> 2. # Ghost\n\n[x](#ghost)\n', ['fragment'])
+        self.check('1. prose\n   2. # Ghost\n\n[x](#ghost)\n', ['fragment'])
+
+    def test_multiline_html_attributes_preserve_quoted_container_boundaries(self):
+        source = ('> <div title="\n> 2. # Ghost\n> ~~~\n> " id="real">text</div>\n>\n'
+                  '> [real](missing.md)\n[x](#real) [ghost](#ghost)\n')
+        result = self.check(source, ['path', 'fragment'])
+        self.assertEqual([6, 7], [x.line for x in result.findings])
+        self.assertEqual('Missing Markdown/HTML anchor: ghost', result.findings[1].message)
+        self.check('- <div title="\n  2. # Ghost\n  ```\n  ">text</div>\n\n[x](#ghost)\n', ['fragment'])
+
+    def test_ordered_item_boundaries_keep_delimiters_nesting_and_long_indentation(self):
+        for delimiter in ('.', ')'):
+            with self.subTest(delimiter=delimiter):
+                self.check('> 1' + delimiter + ' prose <!--\n> 2' + delimiter +
+                           ' [real](missing.md) -->\n', ['path'])
+                self.check('1' + delimiter + ' prose <!--\n   2' + delimiter +
+                           ' [literal](missing.md) -->\n')
+        self.check('123456789. ```text\n           [literal](missing.md)\n           ```\n'
+                   '           # Real\n\n[x](#real)\n')
+
+    def test_raw_html_tails_ignore_preliminary_markdown_code_and_escape_state(self):
+        result = self.check('prose `\n<!-- c --> <a href="missing.md">real</a>\n`\n', ['path'])
+        self.assertEqual(2, result.findings[0].line)
+        self.check('<!-- c --> \\<a href="missing.md">real</a>\n', ['path'])
+
+    def test_missing_quote_markers_keep_noninterrupting_ordered_lazy_continuations(self):
+        for ending in ('\n', '\r', '\r\n'):
+            cases = [('> 1. prose <!--\n2. [literal](missing.md) -->\n', []),
+                     ('> 1. prose <!--\n1. [real](missing.md) -->\n', ['path']),
+                     ('> 1. prose <!--\n> 2. [real](missing.md) -->\n', ['path']),
+                     ('> 1. prose <!--\n\n2. [real](missing.md) -->\n', ['path']),
+                     ('> > 1. prose <!--\n> 2. [literal](missing.md) -->\n', [])]
+            for source, codes in cases:
+                with self.subTest(ending=repr(ending), source=source):
+                    result = self.check(source.replace('\n', ending), codes)
+                    if codes:
+                        self.assertEqual(3 if '\n\n' in source else 2, result.findings[0].line)
+
+    def test_ordered_markers_and_source_line_numbers_require_ascii_digits(self):
+        for digit in ('١', '１'):
+            with self.subTest(digit=digit):
+                self.check(digit + '. # Ghost\n\n[x](#ghost)\n', ['fragment'])
+                result = self.check('| A | B |\n| --- | --- |\n' + digit +
+                                    '. `literal | [real](missing.md) `\n', ['path'])
+                self.assertEqual(3, result.findings[0].line)
+                self.write('tools/sample.txt', 'one\n')
+                self.check('[x](../tools/sample.txt#L' + digit + ')\n', ['fragment'])
+        self.check('1. # Real\n\n[x](#real)\n')
+
     def test_escaped_markers_are_literal(self):
         self.check(r"\[literal](missing.md) \`unmatched [real](target.md)")
 
