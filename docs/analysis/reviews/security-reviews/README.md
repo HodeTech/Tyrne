@@ -52,3 +52,4 @@ A security review is a **separate pass** from the code review — it is performe
 | 2026-05-31 | T-022 high-half migration: kernel isolation and regime transition | Approve | [2026-05-31-T-022-high-half-migration.md](2026-05-31-T-022-high-half-migration.md) |
 | 2026-06-01 | T-028 first real EL0 task: syscall, scheduling and exit boundary | Approve | [2026-06-01-T-028-el0-userspace-wireup.md](2026-06-01-T-028-el0-userspace-wireup.md) |
 | 2026-06-01 | Phase B consolidated security closure, B0–B6 | Approve | [2026-06-01-phase-b-closure.md](2026-06-01-phase-b-closure.md) |
+| 2026-10-13 | T-050 capabilities/boot/EL0/memory/scheduler descriptions; both fresh rounds, corrected 75de2ba..946f45f | Both rounds scoped Approve, shared code-origin C01 and R2-C01 fixed, zero unresolved delta findings; HIGH T-038 remains open | [2026-10-13-t050-entry-document-refresh.md](2026-10-13-t050-entry-document-refresh.md) |

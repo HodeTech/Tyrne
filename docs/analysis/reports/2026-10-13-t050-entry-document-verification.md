@@ -2,7 +2,7 @@
 
 - **Task / plan:** [T-050](../tasks/phase-b2/T-050-entry-docs-and-glossary-sync.md), Step 6 of the [approved plan](2026-10-12-phase-b2-track2-preflight-and-plan.md).
 - **Executed source:** clean `development` at `75de2ba90e151bae33e14d2db4a8278837e7775d` after T-049’s canonical boundary `054e13e`. Entry-document edits described below are subsequent working-tree changes, not claimed at that executed source.
-- **State:** implementation verification, T-050 In Progress; both fresh code/security review rounds pending. No Done, maintainer review, hosted CI or merge claim.
+- **State:** T-050 In Review after both fresh code/security rounds and bounded correction verification; canonical boundary below supersedes the implementation-time pending snapshots. No Done, maintainer review, hosted CI or merge claim.
 - **Evidence:** [full preparation/source map](2026-10-13-t050-entry-document-preflight.md), [raw captures/metadata](2026-10-13-t050-entry-document-evidence/README.md), [glossary disposition/ID ledger](2026-10-13-t050-entry-document-evidence/glossary.json).
 
 ## Existing-document review and implementation scope
@@ -128,3 +128,11 @@ The post-correction bounded diagnostic passes on the same 32-file implementation
 ## Round 2 correction — 2026-10-13
 
 Fresh primary R2 code review confirmed Low R2-C01: the new Bridge phase definition said B.2 must close before all C/D “work begins”. Accepted ADR-0040 Decision outcome rule 2 instead gates milestone opening and implementation tasks leaving Draft, while explicitly permitting Phase C planning, Proposed ADRs and the readiness sweep. The glossary now preserves that distinction. The separate fresh R2 security reviewer independently corroborated this shared code-origin finding after completing its own source/evidence assessment. Count it once, separately from resolved R1 C01. No new policy, ADR, glossary vocabulary/anchor, runtime source or retained raw-evidence change. Bounded R2 correction verification and canonical integration remain pending.
+
+## Canonical review boundary — 2026-10-13
+
+[Code](../reviews/code-reviews/2026-10-13-t050-entry-document-refresh.md) and [security](../reviews/security-reviews/2026-10-13-t050-entry-document-refresh.md) artifacts retain all four complete delivered reports, original findings/verdicts and final bounded approvals. Both fresh rounds approve corrected source 946f45f. R1 C01 fixed at 5236156 and R2-C01 fixed at 946f45f; each code-origin Low is counted once, security corroborations attributed. Zero unresolved delta findings; existing HIGH T-038 remains Ready.
+
+T-050 acceptance/DoD now checked against delivered evidence and step-scoped allowances; status In Review without date_done. The later canonical bookkeeping has separate coordinator static verification; retained verification.json remains the original 292-target implementation snapshot. Six runtime commands and all raw evidence still refer to clean executed 75de2ba. No new run, human approval, hosted CI, merge or future-tool certification. T-055 starts next.
+
+Final coordinator publication diagnostic: 39 step paths (the original 32 plus seven canonical/lifecycle surfaces), 20 Markdown files, 664 rendered local targets and 42 fragments, zero errors. Four exact delivered report copies and unique table-index membership verified; all 54 glossary anchors, 27 existing-definition dispositions, five serial excerpts, 14 raw stream hashes, six recorded exits and one-line LICENSE preservation pass. Task-state recount: 8 Done, 24 Ready, 6 In Review, 8 Draft; no new Done. This bounded existing-Markdown-tool diagnostic is not T-056 grammar coverage. An initial coordinator count assertion incorrectly expected 35 original paths; it failed before commit, was corrected to the verified 32, and the complete check was rerun.

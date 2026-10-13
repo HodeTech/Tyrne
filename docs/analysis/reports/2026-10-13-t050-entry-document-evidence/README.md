@@ -23,3 +23,5 @@ Metadata records exact argv, cwd, UTC intervals, process exits, tool identities,
 - [release.qemu.log](release.qemu.log)
 
 The glossary ledger separately records 50 → 54 headwords, four additions, all stable IDs, the two pure-ordering moves/grouping exception and 27 source-corrected existing definitions. It is document metadata, not runtime evidence. See the [verification report](../2026-10-13-t050-entry-document-verification.md) and [preflight source map](../2026-10-13-t050-entry-document-preflight.md). Both fresh implementation-review rounds remain pending.
+
+**Later review boundary (2026-10-13):** the pending snapshot above is superseded by both completed fresh rounds; T-050 is In Review. [Canonical code](../../reviews/code-reviews/2026-10-13-t050-entry-document-refresh.md) and [security](../../reviews/security-reviews/2026-10-13-t050-entry-document-refresh.md) preserve actual delivered outcomes. Raw captures/metadata/glossary.json/verification.json remain unchanged; no later runtime execution is implied.

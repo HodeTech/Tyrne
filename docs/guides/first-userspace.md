@@ -2,7 +2,7 @@
 
 Build and observe `userland/hello`, Tyrne's first real EL0 program. It runs in its own address space, attempts a capability-gated console syscall, then exits through the real lower-EL exception vector. This guide explains the current reference BSP's path and its limits.
 
-**Refresh status:** In Progress — T-050; implementation-review rounds pending. **Verified:** 2026-10-13, source `75de2ba90e151bae33e14d2db4a8278837e7775d`; [fresh build/trace evidence](../analysis/reports/2026-10-13-t050-entry-document-verification.md).
+**Refresh status:** In Review — T-050; both fresh code/security rounds complete, maintainer review pending. **Verified:** 2026-10-13, source `75de2ba90e151bae33e14d2db4a8278837e7775d`; [fresh build/trace evidence](../analysis/reports/2026-10-13-t050-entry-document-verification.md).
 
 ## Goal
 

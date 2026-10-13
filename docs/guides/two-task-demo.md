@@ -2,7 +2,7 @@
 
 Run the current QEMU demo and follow its capability-checked IPC exchange. The two privileged demo tasks originated in Phase A ([T-005](../analysis/tasks/phase-a/T-005-two-task-ipc-demo.md)); today's reference BSP also schedules the EL0 hello program between them.
 
-**Refresh status:** In Progress — T-050; implementation-review rounds pending. **Verified:** 2026-10-13, source `75de2ba90e151bae33e14d2db4a8278837e7775d`; [fresh build/trace evidence](../analysis/reports/2026-10-13-t050-entry-document-verification.md).
+**Refresh status:** In Review — T-050; both fresh code/security rounds complete, maintainer review pending. **Verified:** 2026-10-13, source `75de2ba90e151bae33e14d2db4a8278837e7775d`; [fresh build/trace evidence](../analysis/reports/2026-10-13-t050-entry-document-verification.md).
 
 ## Goal
 

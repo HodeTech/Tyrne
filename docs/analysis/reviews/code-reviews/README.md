@@ -52,6 +52,7 @@ The ADR-0040 approval follow-up in this index is explicitly an independent appro
 | 2026-10-13 | T-046 seven whole subsystem chapters and T-045 shared coherence; six R1 findings fixed in `4b33607`, no new R2 finding | [2026-10-13-t046-subsystem-architecture.md](2026-10-13-t046-subsystem-architecture.md) |
 | 2026-10-13 | T-048 historical Phase B task reconciliation; both fresh rounds Approve, one R1 Low provenance correction verified at `a50f94a`; no new B.2 Done or runtime claim | [2026-10-13-t048-phase-b-task-reconciliation.md](2026-10-13-t048-phase-b-task-reconciliation.md) |
 | 2026-10-13 | T-049 review discovery, immutable historical navigation and fresh Miri/coverage; both fresh rounds complete, Low C01 corrected and verified, no unresolved finding | [2026-10-13-t049-review-corpus-reconciliation.md](2026-10-13-t049-review-corpus-reconciliation.md) |
+| 2026-10-13 | T-050 entry documents, guides/glossary/skills and copyright; both fresh code/security rounds Approve, one Low in each corrected and verified, zero unresolved delta findings | [2026-10-13-t050-entry-document-refresh.md](2026-10-13-t050-entry-document-refresh.md) |
 
 ## Companion plans
 

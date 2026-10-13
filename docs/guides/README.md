@@ -12,8 +12,8 @@ Tyrne is pre-alpha. Phase B is complete; Phase B.2 consolidation/hardening is ac
 |-------|----------|--------|
 | [run-under-qemu.md](run-under-qemu.md) | Build and boot the reference QEMU BSP. | Accepted guide; T-033 refresh merged in PR #48. |
 | [ci.md](ci.md) | Understand pipeline jobs and their gates. | Accepted (2026-04-23, R6); Track B.2-1 refresh merged in PR #48. |
-| [two-task-demo.md](two-task-demo.md) | Run and interpret the capability-checked IPC demo with EL0 interleaving. | Available; T-050 refresh In Progress, reviews pending. |
-| [first-userspace.md](first-userspace.md) | Build and inspect hello's EL0 entry, console return and exit. | Available; T-050 refresh In Progress, reviews pending. |
+| [two-task-demo.md](two-task-demo.md) | Run and interpret the capability-checked IPC demo with EL0 interleaving. | Available; T-050 refresh In Review, both fresh rounds complete; maintainer review pending. |
+| [first-userspace.md](first-userspace.md) | Build and inspect hello's EL0 entry, console return and exit. | Available; T-050 refresh In Review, both fresh rounds complete; maintainer review pending. |
 
 ## Planned topics
 
