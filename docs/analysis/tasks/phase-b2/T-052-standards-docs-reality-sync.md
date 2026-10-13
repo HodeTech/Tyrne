@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Progress
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-032](T-032-panic-family-denies-hal-bsp.md)
@@ -29,14 +29,14 @@ The purely mechanical standards fixes are [T-053](T-053-standards-docs-mechanica
 
 Every decision below is recorded in this task's review history with its classification (claim correction, or rule change). A rule change follows [`propose-standard-change`](../../../../.agents/skills/propose-standard-change/SKILL.md) (ADR accepted before the standard changes). This task is documentation-only: where the chosen option is "make the code match", the code work is opened as a named follow-up task and the standard is annotated as a tracked gap until it lands.
 
-- [ ] Test naming: apply Accepted ADR-0042 after ADR-0041's atomic supersession. Document descriptive unprefixed `<subject>_<condition>_<expected_outcome>` guidance, ordinary snake_case and concise unambiguous names without mechanically fixed word counts; use the three actual IPC test identifiers from ADR-0042. Add testing.md's References link to ADR-0042, verify it and record the downstream-effects search. No naming lint or mass rename.
-- [ ] Panic handler: correct the claim to the current banner, PanicInfo message/location and spin/halt behavior. Distinguish saved exception diagnostics from generic panic-time register dumps. The maintainer approved removing the automatic register-dump follow-up obligation; no dump feature or new task is required by this correction.
-- [ ] `unimplemented!()`: state that `todo!()` is denied by the workspace clippy::todo lint, while unimplemented! has no automated deny today and relies on review. Preserve intentional host stubs; no Cargo/lint-level change. Verify Cargo.toml and required workspace Clippy coverage.
-- [ ] Logging facade (`logging-and-observability.md`): a status banner at the top states that the standard is forward-looking, that the `tyrne-log` crate and log-service architecture do not exist yet, and that the kernel currently emits diagnostics only through the raw `Console`/UART path; the present-tense sentence at line 52 ("The project provides a logging facade") is aligned with it; verified against the `Cargo.toml` workspace members.
-- [ ] Deny-lint uniformity (`error-handling.md:3` and `:60`, `code-style.md:129`): after T-032 has landed, the three statements name exactly the crates that carry the panic-family denies (verified with `grep -n "deny(clippy" kernel/src/lib.rs hal/src/lib.rs bsp-qemu-virt/src/main.rs`), and the "userspace services uniformly" scope claim is narrowed or footnoted for crates without them (`test-hal`, `userland/*` carry only the workspace-level lints).
-- [ ] Downstream-effects search recorded (`propose-standard-change` step 7): `.agents/skills/`, architecture documents, and other standards are searched for restatements of the five changed claims, and each hit is updated or listed in the review history.
+- [x] Test naming: apply Accepted ADR-0042 after ADR-0041's atomic supersession. Document descriptive unprefixed `<subject>_<condition>_<expected_outcome>` guidance, ordinary snake_case and concise unambiguous names without mechanically fixed word counts; use the three actual IPC test identifiers from ADR-0042. Add testing.md's References link to ADR-0042, verify it and record the downstream-effects search. No naming lint or mass rename.
+- [x] Panic handler: correct the claim to the current banner, PanicInfo message/location and spin/halt behavior. Distinguish saved exception diagnostics from generic panic-time register dumps. The maintainer approved removing the automatic register-dump follow-up obligation; no dump feature or new task is required by this correction.
+- [x] `unimplemented!()`: state that `todo!()` is denied by the workspace clippy::todo lint, while unimplemented! has no automated deny today and relies on review. Preserve intentional host stubs; no Cargo/lint-level change. Verify Cargo.toml and required workspace Clippy coverage.
+- [x] Logging facade (`logging-and-observability.md`): a status banner at the top states that the standard is forward-looking, that the `tyrne-log` crate and log-service architecture do not exist yet, and that the kernel currently emits diagnostics only through the raw `Console`/UART path; the present-tense sentence at line 52 ("The project provides a logging facade") is aligned with it; verified against the `Cargo.toml` workspace members.
+- [x] Deny-lint uniformity (`error-handling.md:3` and `:60`, `code-style.md:129`): after T-032 has landed, the three statements name exactly the crates that carry the panic-family denies (verified with `grep -n "deny(clippy" kernel/src/lib.rs hal/src/lib.rs bsp-qemu-virt/src/main.rs`), and the "userspace services uniformly" scope claim is narrowed or footnoted for crates without them (`test-hal`, `userland/*` carry only the workspace-level lints).
+- [x] Downstream-effects search recorded (`propose-standard-change` step 7): `.agents/skills/`, architecture documents, and other standards are searched for restatements of the five changed claims, and each hit is updated or listed in the review history.
 
-- [ ] Review adjacent error-handling claims so planned TaskFault delivery, supervision and reclamation are explicitly future work rather than current fault isolation.
+- [x] Review adjacent error-handling claims so planned TaskFault delivery, supervision and reclamation are explicitly future work rather than current fault isolation.
 
 ## Out of scope
 
@@ -57,11 +57,11 @@ T-032 is already Done; verify its actual source and search standards, architectu
 
 Doc-only variant:
 
-- [ ] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
-- [ ] `git diff --stat` lists only: `docs/standards/{testing,error-handling,code-style,logging-and-observability}.md`, downstream documents demonstrably restating these same claims (with recorded dispositions), `docs/roadmap/current.md`, and this task file.
-- [ ] Text is English; fences are tagged ([`documentation-style.md`](../../../standards/documentation-style.md)).
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040` (plus any ADR a rule change adds).
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
+- [x] `git diff --stat` lists only: `docs/standards/{testing,error-handling,code-style,logging-and-observability}.md`, downstream documents demonstrably restating these same claims (with recorded dispositions), `docs/roadmap/current.md`, and this task file.
+- [x] Text is English; fences are tagged ([`documentation-style.md`](../../../standards/documentation-style.md)).
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040` (plus any ADR a rule change adds).
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
 **Step-scoped evidence allowance.** In addition to the named content files, the step may update this task, `docs/roadmap/current.md`, the B.2 task/track indexes, governing decision references, source-bound reports/raw evidence, canonical review artifacts and their indexes where necessary. Verify this allowance against the step commit range, not the full stacked branch. Record a demonstrated existing-scope reason for any further file.
 
@@ -85,3 +85,4 @@ The test count is approximate (365 `#[test]` attributes by `grep`; 345 by a scra
 | 2026-10-12 | Codex (AI agent), coordinator cross-reference check | ROOT-01: added the T-056 Informs backlink to match its newly explicit prerequisite/surface reference, following start-task step 9; no dependency scope or task state changed. |
 | 2026-10-13 | Codex (AI agent), implementation author | Step 8 kickoff after T-055's completed two-round boundary at `98378b5`; verified prerequisites and approved choices. See [source-bound preflight](../../reports/2026-10-13-t052-t053-standards-preflight.md), including additional existing-scope tooling-file reasons recorded before edits. Status In Progress; no delivery or review claim. |
 | 2026-10-13 | Codex (AI agent), implementation author | T-052 content: test naming is the Accepted ADR-0042 rule change; panic, incomplete-marker enforcement, logging status and crate deny scope are the four approved source-backed claim corrections. Adjacent task-fault/supervision/resource-retention and ISR-transport boundaries corrected. Code-style restatements aligned; no source/lint change. Downstream dispositions and verification will be retained before fresh paired reviews. |
+| 2026-10-13 | Codex (AI agent), Step 8 canonical boundary | Both fresh code/security rounds Approve cumulative `98378b5..d553efe`; zero confirmed source or peer-seam findings, no correction commit required. [Code](../../reviews/code-reviews/2026-10-13-t052-t053-standards-reconciliation.md) and [security](../../reviews/security-reviews/2026-10-13-t052-t053-standards-reconciliation.md) retain all four required reports plus the disclosed supplementary primary assessment. All 12 AC/DoD boxes checked against source/evidence/scoped allowance; static/navigation snapshot limits preserved. In Review without date_done or maintainer approval; Step 9/T-054 starts next. |

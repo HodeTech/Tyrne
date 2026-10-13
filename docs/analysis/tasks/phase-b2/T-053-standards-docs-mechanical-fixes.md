@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Progress
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -23,16 +23,16 @@ Opened under [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md
 
 ## Acceptance criteria
 
-- [ ] `docs/standards/error-handling.md` §"Panic strategy" (line 143 at opening): states that `-C panic=abort` is set by `.cargo/config.toml` `[target.aarch64-unknown-none] rustflags`, not by a `Cargo.toml` profile key, scoped to every build for that bare-metal target, including kernel/BSP and userland, and that host-side `cargo test` builds of kernel/hal/test-hal keep unwinding for the test harness (verified against `.cargo/config.toml` and the comment above `[profile.release]` in the root `Cargo.toml`).
-- [ ] `docs/standards/code-review.md` §Tooling (lines 124-129): CI is described as live and merge-blocking (format, host and kernel clippy, host tests, kernel build, Miri; coverage informational and non-blocking), pointing to `infrastructure.md`; "Branch protection (planned)" is kept only if `infrastructure.md` still lists it as planned.
-- [ ] `docs/standards/commit-style.md` scope list (lines 53-56) is refreshed from `git log --format=%s` and includes at least `perf`, `roadmap`, `analysis`, `audits`, `architecture`, `mmu`; recommend `syscalls`, `architecture` and `bsp-<board>` for new examples while documenting historical aliases/prior-use scopes without prohibiting them, with the rule "new scopes must appear in at least one prior commit or be agreed in review" kept.
-- [ ] `docs/standards/code-style.md` §Lints (lines 118-130) lists every lint in the root `Cargo.toml` `[workspace.lints.*]` tables — adding `unreachable_pub` (warn), `unused_must_use` (deny) and `clippy::todo` (deny, keeping its rationale visible) — and states that `Cargo.toml` is authoritative.
-- [ ] `docs/standards/bsp-boot-checklist.md` §"Enabling QEMU exception logging" (lines 218-224): replaces the fixed `/tmp/qemu_int.log` with the real behaviour — the path `${TMPDIR:-/tmp}/qemu_int.<pid>.log` is printed at startup; grep the printed path (verified against `tools/run-qemu.sh` lines 11-12 and 83).
-- [ ] The three untagged fences — `commit-style.md` lines 15 and 25 and `testing.md` line 67 — carry a `text` tag; afterwards no opening fence in `docs/standards/` is untagged (record the check command used, for example an `awk` pass that tracks fence state).
-- [ ] `docs/standards/testing.md` (line 82): the parenthetical "(to be added with the workspace)" after `test-hal` is removed (the crate exists).
-- [ ] `docs/standards/release.md` (line 16): "an Tyrne-specific" becomes "a Tyrne-specific".
+- [x] `docs/standards/error-handling.md` §"Panic strategy" (line 143 at opening): states that `-C panic=abort` is set by `.cargo/config.toml` `[target.aarch64-unknown-none] rustflags`, not by a `Cargo.toml` profile key, scoped to every build for that bare-metal target, including kernel/BSP and userland, and that host-side `cargo test` builds of kernel/hal/test-hal keep unwinding for the test harness (verified against `.cargo/config.toml` and the comment above `[profile.release]` in the root `Cargo.toml`).
+- [x] `docs/standards/code-review.md` §Tooling (lines 124-129): CI is described as live and merge-blocking (format, host and kernel clippy, host tests, kernel build, Miri; coverage informational and non-blocking), pointing to `infrastructure.md`; "Branch protection (planned)" is kept only if `infrastructure.md` still lists it as planned.
+- [x] `docs/standards/commit-style.md` scope list (lines 53-56) is refreshed from `git log --format=%s` and includes at least `perf`, `roadmap`, `analysis`, `audits`, `architecture`, `mmu`; recommend `syscalls`, `architecture` and `bsp-<board>` for new examples while documenting historical aliases/prior-use scopes without prohibiting them, with the rule "new scopes must appear in at least one prior commit or be agreed in review" kept.
+- [x] `docs/standards/code-style.md` §Lints (lines 118-130) lists every lint in the root `Cargo.toml` `[workspace.lints.*]` tables — adding `unreachable_pub` (warn), `unused_must_use` (deny) and `clippy::todo` (deny, keeping its rationale visible) — and states that `Cargo.toml` is authoritative.
+- [x] `docs/standards/bsp-boot-checklist.md` §"Enabling QEMU exception logging" (lines 218-224): replaces the fixed `/tmp/qemu_int.log` with the real behaviour — the path `${TMPDIR:-/tmp}/qemu_int.<pid>.log` is printed at startup; grep the printed path (verified against `tools/run-qemu.sh` lines 11-12 and 83).
+- [x] The three untagged fences — `commit-style.md` lines 15 and 25 and `testing.md` line 67 — carry a `text` tag; afterwards no opening fence in `docs/standards/` is untagged (record the check command used, for example an `awk` pass that tracks fence state).
+- [x] `docs/standards/testing.md` (line 82): the parenthetical "(to be added with the workspace)" after `test-hal` is removed (the crate exists).
+- [x] `docs/standards/release.md` (line 16): "an Tyrne-specific" becomes "a Tyrne-specific".
 
-- [ ] Correct adjacent volatile tooling claims: missing_docs is warn but required Clippy -D warnings escalates it; cargo-audit/cargo-vet remain planned unless source shows delivery; smoke execution is live in CI and test guidance. Preserve all lint levels and the existing review-agreed scope-extension rule.
+- [x] Correct adjacent volatile tooling claims: missing_docs is warn but required Clippy -D warnings escalates it; cargo-audit/cargo-vet remain planned unless source shows delivery; smoke execution is live in CI and test guidance. Preserve all lint levels and the existing review-agreed scope-extension rule.
 
 ## Out of scope
 
@@ -46,10 +46,10 @@ Verify each statement against its source of truth first (`.cargo/config.toml`, `
 
 ## Definition of done
 
-- [ ] Every relative link in each touched file resolves.
-- [ ] `git diff --stat` is limited to the standards documents named above, this task file and `docs/roadmap/current.md`.
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `standards`).
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] Every relative link in each touched file resolves.
+- [x] `git diff --stat` is limited to the standards documents named above, this task file and `docs/roadmap/current.md`.
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `standards`).
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
 
 **Step-scoped evidence allowance.** In addition to the named content files, the step may update this task, `docs/roadmap/current.md`, the B.2 task/track indexes, governing decision references, source-bound reports/raw evidence, canonical review artifacts and their indexes where necessary. Verify this allowance against the step commit range, not the full stacked branch. Record a demonstrated existing-scope reason for any further file.
 
@@ -68,3 +68,4 @@ Verify each statement against its source of truth first (`.cargo/config.toml`, `
 | 2026-10-12 | Codex (AI agent), coordinator cross-reference check | ROOT-01: added the T-056 Informs backlink to match its newly explicit prerequisite/surface reference, following start-task step 9; no dependency scope or task state changed. |
 | 2026-10-13 | Codex (AI agent), implementation author | Step 8 kickoff after T-055's completed two-round boundary at `98378b5`; verified prerequisites and approved choices. See [source-bound preflight](../../reports/2026-10-13-t052-t053-standards-preflight.md), including additional existing-scope tooling-file reasons recorded before edits. Status In Progress; no delivery or review claim. |
 | 2026-10-13 | Codex (AI agent), implementation author | T-053 content: target-wide panic flags, live target-aware CI/smoke, actual lint entries and warning escalation, history-derived valid scopes, printed QEMU log path, all three fence tags and grammar/test-hal fixes. Pre-recorded security-review/P11/infrastructure additions correct adjacent tooling delivery claims while preserving required properties. No source/configuration/CI/lint-level change. Verification and both fresh paired rounds remain pending. |
+| 2026-10-13 | Codex (AI agent), Step 8 canonical boundary | Both fresh code/security rounds Approve cumulative `98378b5..d553efe`; zero confirmed source or peer-seam findings, no correction commit required. [Code](../../reviews/code-reviews/2026-10-13-t052-t053-standards-reconciliation.md) and [security](../../reviews/security-reviews/2026-10-13-t052-t053-standards-reconciliation.md) retain all four required reports plus the disclosed supplementary primary assessment. All 13 AC/DoD boxes checked against source/evidence/scoped allowance; static/navigation snapshot limits preserved. In Review without date_done or maintainer approval; Step 9/T-054 starts next. |

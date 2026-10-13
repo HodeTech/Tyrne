@@ -4,7 +4,7 @@
 - **Author:** Codex (AI agent), coordinator/implementation author
 - **Step baseline:** `98378b5add44755f7cbab6e8bc96337accf0574a`; kickoff `cbd4cd15798e0580fe11efff8c4ce2f1a15a3bf3`
 - **Authority and scope:** [preflight](2026-10-13-t052-t053-standards-preflight.md), [approved plan](2026-10-12-phase-b2-track2-preflight-and-plan.md), Accepted [ADR-0042](../../decisions/0042-descriptive-test-names.md) / [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md).
-- **Boundary:** initial content verification before fresh paired reviews; both tasks In Progress with unchecked criteria. This coordinator report is not an independent review, maintainer approval or Done promotion.
+- **Boundary:** canonical Step 8 boundary after both fresh paired rounds; both tasks In Review. Dated initial verification below remains attributable to its earlier snapshot. This coordinator report is not an independent review, maintainer approval or Done promotion.
 
 ## T-052 choices and source facts
 
@@ -54,3 +54,7 @@ The [baseline hits](2026-10-13-t052-t053-verification-evidence/downstream-baseli
 [Initial navigation result](2026-10-13-t052-t053-verification-evidence/initial-navigation-verification.json) records whole visible source-corpus local-path/fragment diagnostics with zero candidates. This existing third-party Markdown diagnostic does not prove the future T-056 grammar. Report links added afterward will be checked again before the review freeze/publication. `git diff --check 98378b5` returns 0 for this step; inherited prior raw-log EOF whitespace is not normalized or reclassified.
 
 No new Cargo/QEMU/Miri/coverage/Linux-hosted/reproducibility test ran for this prose-only step. Runtime, manifests/config, CI, scripts, Accepted ADR bodies and branch-protection bytes are unchanged. Two fresh paired review rounds are still required before both tasks can become In Review.
+
+## Canonical boundary — 2026-10-13
+
+[Code](../reviews/code-reviews/2026-10-13-t052-t053-standards-reconciliation.md) and [security](../reviews/security-reviews/2026-10-13-t052-t053-standards-reconciliation.md) retain all four required reports and the supplementary primary assessment, initial verdicts, commands, limitations and actual paired cross-reads. Both rounds Approve frozen `d553efe`; zero confirmed source or seam findings and no source correction commit required. Both tasks In Review/all 25 criteria checked/no date_done. The R1 interim progress relay, original R2 primary template exposure/replacement and report-only S28 link QA remain explicit. Earlier initial snapshots/raw evidence are unchanged; later canonical diagnostics are separate. Step 9/T-054 is next. No new runtime/hosted/reproducibility execution, T-056 grammar certification, maintainer approval or T-038 closure.
