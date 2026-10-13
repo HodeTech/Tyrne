@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -82,3 +82,4 @@ Adjacent, not in the plan item: the same skill (lines 150, 170) quotes a fixed `
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: two-entry/52-anchor approach, existing definition text frozen, guide/build/template corrections omitted and copyright undecided. Approved replacement: four terms/54 anchors after recount, source-backed existing definitions and clean-checkout/guide/DAIF corrections; exact Copyright 2026 HodeTech, Cemil ILIK and Tyrne Contributors line approved. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-13 | Codex (AI agent), Step 6 kickoff | Starts after T-049 both fresh complementary rounds and canonical boundary `054e13e2a368bb6699657ebc5b58e4daf98a23f1`. Existing entry documents, all four guides, glossary, edit-target skills, phase-path entry points and relevant source/build/permission/scheduler units reviewed; full independent preparation note will be retained with implementation evidence. Apply write-guide/update-glossary; fresh tracked-source export starts without target/ or hello.bin and verifies matching debug/release prerequisite chains and traces before prose edits. Approved common line recorded before changes: Copyright 2026 HodeTech, Cemil ILIK and Tyrne Contributors. Anchor scheme: full displayed headword to lowercase ASCII alphanumeric words separated by hyphens, removing punctuation/code ticks; stable 54 IDs, grouped mmu_bootstrap/.boot_pt convention retained. No new ADR/runtime policy needed; no delivery claimed at kickoff. |
