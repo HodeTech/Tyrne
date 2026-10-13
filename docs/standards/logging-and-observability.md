@@ -1,6 +1,8 @@
 # Logging and observability
 
-How Tyrne code produces diagnostic output, what it promises about that output, and how operators and developers extract it. The constraints of kernel / `no_std` environments make naive logging unsafe; this standard describes an approach that works for both kernel and userspace while remaining auditable and secret-safe.
+> **Planned — implementation status (2026-10-13):** this is a forward-looking standard. The workspace contains no `tyrne-log` crate, structured logging facade, per-CPU log ring, log service, metric facade or runtime logging-control API. Current kernel diagnostics use the raw HAL `Console` / BSP UART path. The sections below describe intended behavior, not delivered APIs or security guarantees. Implementation choices still require their named future ADRs; secret-redaction and context-safety constraints apply to current diagnostics as well.
+
+How Tyrne diagnostic output should evolve under kernel / `no_std` constraints, and how operators and developers should eventually extract it safely.
 
 ## Scope and goals
 
@@ -21,11 +23,11 @@ Five levels, evaluated in order of increasing severity:
 | `warn` | Something is unusual but the system continues. Default on. |
 | `error` | A recoverable failure occurred. Default on. |
 
-There is no `fatal`. A fatal condition triggers the panic path (see [error-handling.md](error-handling.md)), which produces its own, richer diagnostic output.
+There is no `fatal`. A fatal condition triggers the panic path (see [error-handling.md](error-handling.md)), which currently prints the QEMU BSP banner and formatted PanicInfo, then spins; it does not supply a general register dump.
 
 ## Structured records
 
-Every log record is structured, not a formatted string:
+The planned facade would emit structured records rather than formatted strings:
 
 ```rust
 // Conceptual shape, not real code.
@@ -49,7 +51,7 @@ The rationale is standard observability: searchable, machine-processable logs be
 
 ## Logging APIs
 
-The project provides a logging facade (planned crate `tyrne-log`) with macros mirroring the `log` crate's shape but producing structured records:
+The planned `tyrne-log` facade would provide macros mirroring the `log` crate's shape while producing structured records. It is not a workspace crate; this example is conceptual:
 
 ```rust
 use tyrne_log::{trace, debug, info, warn, error};
@@ -57,15 +59,17 @@ use tyrne_log::{trace, debug, info, warn, error};
 info!(target = "ipc::endpoint", "IPC send rejected", endpoint = id, reason = "no receiver");
 ```
 
-Crates **never** use `log::info!`, `tracing::info!`, or `std::println!` directly. The facade is the only approved entry point, for the reasons below.
+When the facade exists, crates must use it rather than `log::info!`, `tracing::info!` or `std::println!` directly. Until then, current raw Console/UART diagnostics must respect the secret and context constraints below; there is no facade API to call.
 
 ## Context rules
+
+**Planned transport:** the ring, worker and userspace service below are not implemented. In particular, the raw UART path does not provide these ISR-safety or capability-routing properties.
 
 ### Kernel mode
 
 - **ISR context:** `trace`/`debug`/`info` may be emitted. The macro writes to a per-CPU lock-free ring buffer; a kernel worker drains the buffer into the log transport at task context. ISRs never block on logging.
 - **Task context in kernel:** same facade; same ring path by default.
-- **Early boot:** before the log transport is up, records go to a bootstrap UART sink (see [architecture/hal.md](../architecture/hal.md), Phase 3) configured by the BSP. Records lost if the boot ring fills; this is acceptable for early boot.
+- **Early boot:** the intended bootstrap sink is BSP UART (see [architecture/hal.md](../architecture/hal.md)). A future boot ring may lose records when full; today output is direct UART without that ring or structured transport.
 
 ### Userspace
 
@@ -84,11 +88,15 @@ This is not just hygiene: a capability-based OS loses its meaning if capabilitie
 
 ## Sampling and rate limits
 
+**Planned:** these policies require the future facade/ring/service; no current rate-limiting guarantee is delivered.
+
 - `trace` and `debug` are always candidates for sampling. The facade supports per-target rate limits (records-per-second) to avoid flooding the ring.
 - A flooded ring drops the oldest records, not the newest. The log service reports dropped-record counts as an `info` event.
 - Rate-limited records should be deterministic (e.g. 1-in-N) rather than time-based, to keep repro logs useful.
 
 ## Tracing and spans
+
+**Planned:** span propagation and IDs are a design target, not an existing tracing API.
 
 - Causal / timing context is represented as **spans**. A span is opened before a unit of work and closed after; records emitted inside the span are associated with it.
 - Spans carry a parent pointer, allowing causal chains across IPC boundaries.
@@ -97,6 +105,8 @@ This is not just hygiene: a capability-based OS loses its meaning if capabilitie
 In practice this maps onto the `tracing` crate's model; Tyrne will either adopt `tracing` directly (if a `no_std` subset works) or implement a compatible shape internally. The choice is deferred to an ADR at implementation time.
 
 ## Metrics
+
+**Planned:** no metric facade, store, service or metric-read syscall is implemented.
 
 - Metrics are counters, gauges, and histograms, emitted separately from logs.
 - The metric facade (planned) lets subsystems register counters at crate init:
@@ -109,20 +119,24 @@ In practice this maps onto the `tracing` crate's model; Tyrne will either adopt 
 
 ## Dynamic configuration
 
+**Planned:** `LogControlCap`, per-subsystem runtime levels and persistent operator configuration are not implemented.
+
 - Levels can be changed at runtime per subsystem through an operator capability (`LogControlCap`).
 - The default configuration in the kernel build is compiled in; runtime changes live until the next reboot unless persisted by an operator service.
 
 ## Output destinations
 
+Only direct UART diagnostics exist today; ring retention, operator streaming and persistent logging below are proposed destinations.
+
 - **Serial UART** — the always-available diagnostic channel. Early boot uses it exclusively.
 - **Ring buffer in RAM** — retained across warm reboot on boards that support it; inspected via debug port.
 - **Operator tool over IPC** — a debug/observability service that a developer can attach to and stream from.
-- **Persistent storage** — eventually; not in scope for Phase 3.
+- **Persistent storage** — future service work; no persistent log sink is implemented.
 
 ## Log format on the wire
 
 - Binary, versioned, efficient. A single format that renders to JSON or human text offline.
-- A future ADR selects the specific encoding (candidates: `postcard`, a custom TLV). Until then, implementations emit a documented binary shape.
+- A future ADR selects the encoding (candidates: `postcard`, a custom TLV). No structured wire format is implemented today; this list does not authorize choosing one before that decision.
 
 ## Anti-patterns to reject
 
@@ -134,6 +148,8 @@ In practice this maps onto the `tracing` crate's model; Tyrne will either adopt 
 - Duplicate logging (a layer logs and a caller logs the same event).
 
 ## Tooling
+
+**Planned:** none of the structured logging tools below is delivered by this repository. Current diagnosis uses serial output and QEMU traces.
 
 - Ring buffer inspection CLI (planned).
 - JSON renderer for offline analysis.

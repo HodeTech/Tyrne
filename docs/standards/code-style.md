@@ -95,7 +95,7 @@ pub fn send(&self, msg: Message) -> Result<(), IpcError> { /* ... */ }
 
 - Kernel and HAL crates are `#![no_std]`. Do not depend, transitively or directly, on anything that pulls `std`.
 - Heap allocation is **not** available in the kernel by default. When the allocator is added (see the allocator ADR, to be written when the allocator is introduced — no existing ADR covers it), it will be a distinct crate and kernel code will opt in explicitly.
-- No `println!`, `print!`, `eprintln!`. Use the logging facade (see [logging-and-observability.md](logging-and-observability.md)).
+- No `println!`, `print!`, `eprintln!`. Current kernel diagnostics use the raw HAL `Console` / BSP UART path. The structured logging facade and service are planned, not available APIs; see [logging-and-observability.md](logging-and-observability.md).
 
 ## Capability type conventions
 
@@ -113,7 +113,7 @@ See [unsafe-policy.md](unsafe-policy.md). Summary: every `unsafe` block and ever
 
 - Kernel code **must not** panic on the hot path. See [error-handling.md](error-handling.md).
 - `unwrap()` / `expect()` are forbidden in kernel source outside of `init` paths that run once at boot.
-- `todo!()` and `unimplemented!()` are allowed only in branches that are statically unreachable and are annotated as such; otherwise they are bugs waiting to happen.
+- `todo!()` is denied by workspace Clippy and must be resolved before landing. `unimplemented!()` has no automated deny: review rejects incomplete reachable runtime paths and requires an explanation for unreachable branches. Intentional non-bare-metal user-library host stubs are a documented exception; see [error-handling.md](error-handling.md#10-todo-and-unimplemented-are-transient-markers).
 
 ## Lints
 
@@ -126,7 +126,7 @@ The workspace lint set (in `Cargo.toml` `[workspace.lints.*]`) plus the per-crat
 - `clippy::undocumented_unsafe_blocks`, `clippy::missing_safety_doc` (deny, workspace)
 - `clippy::arithmetic_side_effects` (deny in kernel; explicit wrapping math required)
 - `clippy::float_arithmetic` (deny in kernel)
-- `clippy::panic`, `clippy::unwrap_used`, `clippy::expect_used` (deny in kernel paths)
+- `clippy::panic`, `clippy::unwrap_used`, `clippy::expect_used` (deny in `tyrne-kernel`, `tyrne-hal` and `tyrne-bsp-qemu-virt`, with explicit boot/demo, fatal-handler and test allowances; not inherited as denies by test-hal/userland)
 
 Lint **levels** are configured in `Cargo.toml` `[workspace.lints.clippy]` / `[workspace.lints.rust]` and in per-crate `#![deny(...)]` attributes in `lib.rs`. `clippy.toml` holds only numeric thresholds (e.g. `avoid-breaking-exported-api`), not lint levels — do not look there for the authoritative list.
 

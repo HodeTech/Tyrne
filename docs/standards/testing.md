@@ -62,17 +62,19 @@ These exemptions are narrow. When in doubt, write the test.
 
 ## Test naming
 
-Pick one convention and hold it. Tyrne uses:
+Use descriptive `snake_case` names, following Accepted [ADR-0042](../decisions/0042-descriptive-test-names.md). The guidance is:
 
+```text
+<subject>_<condition>_<expected_outcome>
 ```
-test_<subject>_<condition>_<expected_outcome>
-```
 
-Examples:
+There is no mandatory `test_` prefix or mechanically fixed word count. Concise names are valid when the subject, condition and result are unambiguous in context; an existing `test_` prefix is also valid. Review checks meaning rather than enforcing a naming lint or mass rename.
 
-- `test_endpoint_send_with_no_receiver_returns_no_receiver`
-- `test_capability_table_full_returns_caps_exhausted`
-- `test_panic_handler_on_kernel_panic_halts_cpu`
+Actual IPC test identifiers in `kernel/src/ipc/mod.rs`:
+
+- `send_without_send_right_fails`
+- `recv_without_recv_right_fails`
+- `send_with_wrong_object_kind_returns_wrong_object_kind`
 
 The condition and outcome should be specific enough that a reader can diagnose a failure from the name alone.
 
@@ -149,6 +151,7 @@ When a test fails in CI:
 ## References
 
 - [ADR-0040 — Phase B.2 consolidation bridge](../decisions/0040-phase-b2-consolidation-bridge.md).
+- [ADR-0042 — Descriptive test names without a mandatory test_ prefix](../decisions/0042-descriptive-test-names.md).
 - The Rust Book, Testing chapter: https://doc.rust-lang.org/book/ch11-00-testing.html
 - Embedded Rust testing patterns: https://docs.rust-embedded.org/book/
 - `cargo-nextest`: https://nexte.st/

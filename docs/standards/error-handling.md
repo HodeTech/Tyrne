@@ -1,6 +1,6 @@
 # Error handling
 
-How Tyrne code reports, propagates, and recovers from failures. This standard covers kernel code, HAL, and userspace services uniformly, with explicit carve-outs for contexts where the default rules would be wrong (kernel panics, init paths, ISRs).
+How Tyrne code reports, propagates, and recovers from failures. The design rules cover kernel code, HAL and userspace services, with explicit carve-outs for kernel panics, init paths and ISRs. Enforcement differs by crate: the kernel, HAL and QEMU BSP carry panic-family deny attributes with scoped allowances; test-hal and userland inherit only the workspace-level lint configuration. Planned task supervision is distinguished from current runtime behavior below.
 
 ## Scope and goals
 
@@ -52,28 +52,28 @@ The `From` impl makes the conversion explicit and localized. Downstream callers 
 
 ### 4. No `unwrap` / `expect` on hot paths
 
-In the kernel and in the HAL, `unwrap()` and `expect()` are forbidden outside of:
+In the kernel, HAL and QEMU BSP, `unwrap()` and `expect()` are forbidden outside of explicitly scoped exceptions:
 
 - **One-shot `init` paths.** Code that runs once at boot, before any user-controllable input has been accepted, may use `expect()` with a message that describes the invariant being asserted.
 - **Test-only code.** Unit and integration tests may `unwrap()` freely.
 
-Clippy enforces this: `clippy::unwrap_used` and `clippy::expect_used` are `deny` in kernel crates.
+**Required:** `clippy::unwrap_used`, `clippy::expect_used` and `clippy::panic` are denied in `tyrne-kernel`, `tyrne-hal` and `tyrne-bsp-qemu-virt`. Source-local allowances cover the relevant boot/demo, fatal-handler and test paths; they are not a general runtime escape. `tyrne-test-hal`, `tyrne-user` and `tyrne-userland-hello` inherit workspace lints without those crate-level denies. See [code-style.md](code-style.md#lints) and [infrastructure.md](infrastructure.md#required-gates-enforced-by-the-current-branch-protection) for configuration and target coverage.
 
 ### 5. `panic!` is an assertion, not error handling
 
 `panic!` is reserved for situations where the program has detected a broken invariant that makes continuing undefined or unsafe. It is not a substitute for returning a `Result`.
 
-Examples of legitimate panics (all in init paths):
+Examples of legitimate panics (in invariant-checking paths):
 
 - The bootloader handed us an invalid memory map.
 - An impossible discriminant appeared in a match because the caller violated `Safety`.
 
-Kernel panic behavior is defined by the configured panic strategy:
+Current behavior and future BSP policy are separate:
 
-- **Development / QEMU CI:** panic prints to the serial console, dumps register state, and halts. CI treats any panic as a failed test.
-- **Production / real hardware:** the panic handler either (a) triggers a supervised reset via the HAL, or (b) drops into a minimal diagnostic shell if a debug capability is present. The choice is board-specific and defined in the board's BSP.
+- **Current QEMU BSP:** the panic handler prints `!! tyrne panic !!` and formatted `PanicInfo` (message and available source location) to UART, then spins. It does not dump the general-purpose register frame or provide a backtrace, reset or diagnostic shell. Exception handlers can include saved exception class/ESR and interrupt identifiers in a panic message; those diagnostics are not a generic panic-time register dump. Required QEMU smoke rejects a panic marker.
+- **Planned real-hardware policy:** supervised reset or a capability-controlled diagnostic shell requires a board-specific implementation and decision; neither exists in the current QEMU BSP.
 
-Userspace tasks that panic do *not* take down the kernel. The task is terminated and the supervisor is notified (see §8).
+The current `hello` userspace panic handler explicitly calls `task_exit(101)`. This does not implement general userspace fault isolation: an unexpected non-SVC EL0 synchronous exception still reaches the BSP's whole-kernel panic path. No supervisor notification or resource reclamation is delivered (see §8).
 
 ### 6. Return errors, do not log-and-return
 
@@ -116,27 +116,23 @@ Do not swallow. Do not collapse distinct IPC failures into a generic "internal e
 
 ### 8. Userspace task faults are kernel-visible errors
 
-A userspace task that divides by zero, dereferences an unmapped address, executes an illegal instruction, or panics is **not** a kernel error. The fault handler:
+**Planned:** task fault delivery and supervision belong to [Phase E](../roadmap/phases/phase-e.md), including E3's service-manager/supervisor Fault-endpoint plumbing. The intended model suspends a faulting task, encodes a `TaskFault` message and delivers it to a supervisor endpoint; the supervisor chooses restart, termination or logging policy. This is a target design, not the current fault-handler contract.
 
-1. Suspends the faulting task.
-2. Encodes the fault as a `TaskFault` message.
-3. Sends the message on the task's supervisor endpoint (held by whoever started the task).
-
-The supervisor decides whether to restart, terminate, or log-and-drop. The kernel does not decide policy.
+**Current:** unexpected non-SVC EL0 synchronous faults panic the kernel. Explicit `task_exit` removes the running task from scheduling but retains its Task, address space, capability-table and frame state; it neither sends `TaskFault` nor reclaims these resources. The `hello` panic handler's explicit exit is one application's behavior. See the [security model](../architecture/security-model.md) for the implemented syscall-input boundary and retained-state limitations.
 
 ### 9. Interrupt service routines minimize error paths
 
 ISRs run with restricted state. Inside an ISR:
 
 - **Do not allocate.** No heap, no growable structures.
-- **Do not log with blocking facilities.** Use the trace buffer or a lock-free ring; see [logging-and-observability.md](logging-and-observability.md).
+- **Do not log with blocking facilities.** A trace buffer or lock-free ring is the intended deferred transport; neither exists today. Do not assume that the current raw UART path is a nonblocking ISR logger. See the planned [logging and observability](logging-and-observability.md#context-rules) design.
 - **Do not return `Result` that the ISR entry cannot handle.** An ISR either fully handles the event or marks a deferred work item for a task-context handler. An error inside an ISR is an assertion failure and should be a `panic!` in debug builds, or a quiet hardware-fault counter bump in release builds (with an entry in the audit log explaining why).
 
 ### 10. `todo!()` and `unimplemented!()` are transient markers
 
-- `todo!()` is permitted only during active development of a feature behind a cfg flag or in a PR that will not land before the todo is resolved.
-- `unimplemented!()` is permitted for genuinely unreachable branches that Rust's type system cannot prove (e.g. match arms on an enum whose other variants are excluded by earlier match arms).
-- Neither may remain in main at the end of a feature's implementation. CI flags their presence.
+- `todo!()` is a transient development marker and must be resolved before the feature lands. **Required:** the workspace sets `clippy::todo = "deny"`; required Clippy commands cover the configured host and bare-metal targets. A cfg-disabled branch is not proof of completeness or lint coverage for every configuration.
+- `unimplemented!()` has **no automated deny lint** today. Review must reject incomplete reachable runtime paths; a genuinely unreachable branch requires an explicit explanation.
+- Intentional non-bare-metal stubs in `userland/tyrne-user` permit host workspace compilation without executing the bare-metal syscall shim. These are documented target stubs, not unfinished runtime features; preserve them. Review distinguishes these from missing feature implementations. See [infrastructure.md](infrastructure.md#required-gates-enforced-by-the-current-branch-protection) for actual Clippy coverage.
 
 ## Panic strategy
 
@@ -165,7 +161,7 @@ When introducing a new `Error` enum, ask:
 
 ## Tooling
 
-- `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic` are `deny` in kernel crates.
+- **Required:** `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic` are denied by crate attributes in `tyrne-kernel`, `tyrne-hal` and `tyrne-bsp-qemu-virt`, with the scoped allowances described above. They are not workspace-wide denies.
 - `clippy::result_large_err` is `warn` — error types larger than ~128 bytes bloat the `Result` return value.
 - `clippy::missing_errors_doc` is `warn` — every public `fn -> Result` should document its errors.
 
