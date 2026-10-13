@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -64,3 +64,4 @@ Copy the established banner shapes rather than inventing new ones: ADR-0022 line
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: index needs no edit / no anomalies and DoD excludes index/sync skill. Approved replacement: source/header/index reconciliation with explicit anomaly/disposition report, title-slug differences including 0040–0043 and existing Deferred/date/partial/reserved forms; index/sync skill/reports allowed while five ADR corrections stay append-only with only the stated strikethrough exception. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
 | 2026-10-12 | Codex (AI agent), Step 0 round-1 correction | R1-GOV-01 confirmed: replaced the residual evidence-or-retraction AC/Approach alternative with the already-approved retraction. Historical observation/direct-dispatch rationale and append-only limits remain explicit; no new decision or delivery. |
+| 2026-10-13 | Codex (AI agent), Step 7 kickoff | Starts after T-050 canonical boundary 69afa33 and both fresh rounds. [Full preflight/scoped plan](../../reports/2026-10-13-t055-adr-correction-preflight.md) records all five approved corrections, exact metadata/index anomalies and four demonstrated additional surfaces before edits: ADR-0010/timer.rs existing ceiling-contract clarification, supersede-adr existing append-only/template repair and P7 compatibility anchor preserving ADR-0015. No new decision/ADR/runtime change; status In Progress, delivery/checks/review rounds pending. |
