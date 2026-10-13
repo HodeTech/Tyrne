@@ -61,6 +61,20 @@ class Link(NamedTuple):
     kind: str = "markdown"
 
 
+class TableCell(NamedTuple):
+    start: int
+    end: int
+    source: str
+
+
+class TableRow(NamedTuple):
+    line: int
+    cells: list
+    header: bool
+    table_line: int
+    width: int
+
+
 @dataclass
 class Report:
     findings: list = field(default_factory=list)
@@ -141,6 +155,86 @@ def block_body(line, active):
     return line[offset:], parts
 
 
+def table_cells(body, offset):
+    """Keep original cell ranges; only unescaped pipes separate GFM cells."""
+    body = body.rstrip("\r\n")
+    separators = []
+    cursor = 0
+    while cursor < len(body):
+        if body[cursor] == "\\" and cursor + 1 < len(body) and body[cursor + 1] in string.punctuation:
+            cursor += 2
+            continue
+        if body[cursor] == "|":
+            separators.append(cursor)
+        cursor += 1
+    bounds = [-1] + separators + [len(body)]
+    ranges = list(zip(bounds, bounds[1:]))
+    if separators and not body[:separators[0]].strip(" \t"):
+        ranges.pop(0)
+    if separators and ranges and not body[separators[-1] + 1:].strip(" \t"):
+        ranges.pop()
+    cells = []
+    for previous, end in ranges:
+        start = previous + 1
+        while start < end and body[start] in " \t":
+            start += 1
+        while end > start and body[end - 1] in " \t":
+            end -= 1
+        cells.append(TableCell(offset + start, offset + end, body[start:end]))
+    return cells, bool(separators)
+
+
+HTML_BLOCK_NAMES = frozenset((
+    "address article aside base basefont blockquote body caption center col colgroup dd details "
+    "dialog dir div dl dt fieldset figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 "
+    "head header hr html iframe legend li link main menu menuitem nav noframes ol optgroup option "
+    "p param search section summary table tbody td tfoot th thead title tr track ul"
+).split())
+HTML_RAW_BLOCK_NAMES = frozenset(("pre", "script", "style", "textarea"))
+
+
+def opening_fence(body):
+    """Return a valid opening run; backticks cannot occur in its info string."""
+    match = re.match(r" {0,3}(`{3,}|~{3,})(.*)$", body)
+    return match if match and not (match[1][0] == "`" and "`" in match[2]) else None
+
+
+def table_interrupt(body):
+    """A table ends at a blank line or another block's opening syntax."""
+    body = body.rstrip("\r\n")
+    if not body.strip(" \t"):
+        return True
+    if re.match(r" {0,3}(?:#{1,6}(?:[ \t]|$)|>|(?:[-+*]|\d{1,9}[.)])[ \t]+)", body) or opening_fence(body):
+        return True
+    if any(re.fullmatch(r" {0,3}(?:" + re.escape(char) + r"[ \t]*){3,}", body) for char in "*-_"):
+        return True
+    stripped = body.lstrip(" ")
+    if len(body) - len(stripped) > 3:
+        return False  # Indentation alone cannot interrupt an existing table.
+    if re.match(r"<!--|<\?|<![A-Z]|<!\[CDATA\[", stripped):
+        return True
+    tag = re.match(r"(</?)([A-Za-z][A-Za-z0-9-]*)(?=[ \t>]|/>|$)", stripped)
+    if tag:
+        name = tag[2].lower()
+        if name in HTML_BLOCK_NAMES:
+            return True
+        tail = stripped[tag.end():]
+        if tag[1] == "<" and name in HTML_RAW_BLOCK_NAMES and (not tail or tail[0] in " \t>"):
+            return True
+    complete = HTML_TAG.match(stripped) if HTML_START.match(stripped) else None
+    if not complete or stripped[complete.end():].strip(" \t"):
+        return False
+    if stripped.startswith("</"):
+        return bool(re.fullmatch(r"</[A-Za-z][A-Za-z0-9-]*[ \t]*>", stripped))
+    if not tag or tag[2].lower() in HTML_RAW_BLOCK_NAMES:
+        return False
+    try:
+        return all(re.fullmatch(r"[A-Za-z_:][A-Za-z0-9_.:-]*", name)
+                   for name, _, _ in html_attributes(complete[0]))
+    except ValueError:
+        return False
+
+
 def blocks(text):
     """Mask fenced/indented code, retaining opening-fence metadata."""
     output = []
@@ -152,7 +246,10 @@ def blocks(text):
     indented = False
     html = HTMLContexts(text)
     offset = 0
-    for line_no, line in enumerate(physical_lines(text, keepends=True), 1):
+    table = None
+    rows = []
+    lines = physical_lines(text, keepends=True)
+    for line_no, line in enumerate(lines, 1):
         begin = offset
         offset += len(line)
         visual = line.expandtabs(4)
@@ -168,6 +265,19 @@ def blocks(text):
                 output.append(blank(line))
                 paragraph = False
                 continue
+        if table:
+            parts, width, header_line = table
+            body = continuation(line, parts)
+            if body is not None and (line_no == header_line + 1 or not table_interrupt(body)):
+                if line_no != header_line + 1:
+                    cells, _ = table_cells(body, begin + len(line) - len(body))
+                    rows.append(TableRow(line_no, cells, False, header_line, width))
+                output.append(blank(line))
+                html.cursor = offset
+                html.protected.clear()
+                paragraph = indented = False
+                continue
+            table = None
         if html.spans and html.spans[-1][1] > begin:
             # A tag begun in prose owns its complete quoted attributes. Its
             # later physical lines cannot open code blocks or containers.
@@ -176,6 +286,22 @@ def blocks(text):
             paragraph = True
             indented = False
             continue
+        if not comment and line_no < len(lines):
+            raw_body, raw_parts = block_body(line, active)
+            following = continuation(lines[line_no], raw_parts)
+            if following is not None and not table_interrupt(raw_body) and not raw_body.startswith(("    ", "\t")):
+                cells, header_pipe = table_cells(raw_body, begin + len(line) - len(raw_body))
+                delimiters, delimiter_pipe = table_cells(following, 0)
+                if ((header_pipe or delimiter_pipe) and cells and len(cells) == len(delimiters) and
+                        all(re.fullmatch(r":?-+:?", cell.source) for cell in delimiters)):
+                    table = (raw_parts, len(cells), line_no)
+                    rows.append(TableRow(line_no, cells, True, line_no, len(cells)))
+                    active = raw_parts
+                    output.append(blank(line))
+                    html.cursor = offset
+                    html.protected.clear()
+                    paragraph = indented = False
+                    continue
         body, active = block_body(visual, active)
         body = body.rstrip("\r\n")
         if comment or re.match(r" {0,3}<!--", body):
@@ -191,8 +317,8 @@ def blocks(text):
             body, active = block_body(line.expandtabs(4), active)
             body = body.rstrip("\r\n")
         spaces = len(body) - len(body.lstrip(" "))
-        match = re.match(r" {0,3}(`{3,}|~{3,})(.*)$", body)
-        if match and not (match[1][0] == "`" and "`" in match[2]):
+        match = opening_fence(body)
+        if match:
             opened = (match[1][0], len(match[1]), list(active))
             fences.append((line_no, match[2].strip()))
             output.append(blank(line))
@@ -209,7 +335,7 @@ def blocks(text):
             indented = False
             paragraph = not bool(re.match(r" {0,3}(?:#{1,6}(?:\s|$)|[-*_]{3,}\s*$)", body))
             html.scan(begin, offset)
-    return "".join(output), fences, html.spans
+    return "".join(output), fences, html.spans, rows
 
 
 BACKTICKS = re.compile(r"`+")
@@ -730,14 +856,13 @@ class Anchors(HTMLParser):
         begin = (self.document.newlines[line - 2] + 1 if line > 1 else 0) + column
         raw = self.document.prose[begin:begin + len(raw)]
         seen = set()
-        newlines = [match.start() for match in re.finditer("\n", raw)]
         try:
             attrs = list(html_attributes(raw))
         except ValueError as error:
-            self.document.findings.append(Finding(self.document.path, self.getpos()[0], "link-syntax", str(error)))
+            self.document.issue(begin, "link-syntax", str(error))
             return
         for name, value, offset in attrs:
-            line = self.getpos()[0] + bisect_right(newlines, offset - 1)
+            line = self.document.line(begin + offset)
             relevant = name == "id" or (tag == "a" and name in ("name", "href")) or (tag == "img" and name == "src")
             if name in seen:
                 if relevant:
@@ -756,9 +881,10 @@ class Anchors(HTMLParser):
 class Markdown:
     """Parsed bounded syntax, original line offsets and deterministic findings."""
 
-    def __init__(self, path, text):
+    def __init__(self, path, text, *, inline_only=False, references=None, base_line=0):
         self.path = str(path)
         self.text = text
+        self.base_line = base_line
         # HTMLParser counts LF only. A lone CR becomes one LF at the same
         # source offset; CRLF retains both characters and its one LF boundary.
         text = re.sub(r"\r(?!\n)", "\n", text)
@@ -766,19 +892,33 @@ class Markdown:
         self.links = []
         self.anchors = set()
         self.findings = []
-        self.block_text, self.fences, self.html_spans = blocks(text)
+        if inline_only:
+            self.block_text, self.fences, self.html_spans, self.table_rows = text, [], [], []
+        else:
+            self.block_text, self.fences, self.html_spans, self.table_rows = blocks(text)
         self.block_text = comments(self.block_text)
-        self.references = {}
+        self.references = references if references is not None else {}
         visible = list(self.block_text)
-        self._definitions(visible)
+        if not inline_only:
+            self._definitions(visible)
         heading_text = list("".join(visible))
         self._inlines(visible, heading_text)
         self.prose = "".join(visible)
-        self._headings("".join(heading_text))
+        if not inline_only:
+            self._headings("".join(heading_text))
         Anchors(self).feed(self.prose.replace("&", "~"))
+        for row in self.table_rows:
+            for cell in row.cells[:row.width]:
+                # GFM unescapes cell pipes before inline parsing, including
+                # HTML and reference labels. Original ranges remain above.
+                child = Markdown(self.path, cell.source.replace("\\|", "|"), inline_only=True,
+                                 references=self.references, base_line=row.line - 1)
+                self.links.extend(child.links)
+                self.anchors.update(child.anchors)
+                self.findings.extend(child.findings)
 
     def line(self, offset):
-        return bisect_right(self.newlines, offset - 1) + 1
+        return bisect_right(self.newlines, offset - 1) + 1 + self.base_line
 
     def issue(self, offset, code, message):
         self.findings.append(Finding(self.path, self.line(offset), code, message))

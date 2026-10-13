@@ -378,6 +378,115 @@ class LinkTests(unittest.TestCase):
         text = '- **Doc:** quoted `| \\`field\\` |`\n- **Suggested:** `| [\\`file\\`](missing.md) |`\n'
         self.check(text)
 
+    def test_table_code_spans_cannot_cross_cells_or_rows(self):
+        header = "| A | B |\n| --- | --- |\n"
+        for row, line in (("| `literal | [bad](missing.md) ` |\n", 3),
+                          ("| `literal | text |\n| next | [bad](missing.md) ` |\n", 4)):
+            with self.subTest(row=row):
+                result = self.check(header + row, ["path"])
+                self.assertEqual(line, result.findings[0].line)
+                self.assertEqual("Missing or case-mismatched local target: docs/missing.md",
+                                 result.findings[0].message)
+
+    def test_table_code_controls_keep_non_table_and_same_cell_literals(self):
+        header = "| A | B |\n| --- | --- |\n"
+        self.check(header + "| `[literal](missing.md)` | text |\n")
+        self.check(header + r"| `[literal](missing.md)\|text` | text |" + "\n")
+        self.check("`literal | [literal](missing.md) `\n")
+        self.check("| A | B |\n| --- |\n| `literal | [literal](missing.md) ` |\n")
+
+    def test_table_comments_are_confined_to_their_cell(self):
+        header = "| A | B |\n| --- | --- |\n"
+        result = self.check(header + "| <!-- | [bad](missing.md) --> |\n", ["path"])
+        self.assertEqual(3, result.findings[0].line)
+        self.check(header + "| <!-- [literal](missing.md) --> | text |\n")
+        result = self.check(header + "| <!-- | text |\n\n[bad](missing.md)\n", ["path"])
+        self.assertEqual(5, result.findings[0].line)
+
+    def test_table_html_anchors_respect_separators_and_escaped_pipes(self):
+        header = "| A | B |\n| --- | --- |\n"
+        self.check(header + '<span id="fake|anchor"></span> | text\n\n[x](#fake%7Canchor)\n', ["fragment"])
+        self.check(header + r'| <span id="real\|anchor"></span> | text |' + '\n\n[x](#real%7Canchor)\n')
+        self.check('<span id="ordinary|anchor"></span>\n[x](#ordinary%7Canchor)\n')
+        result = self.check(header + '| <a href="missing.md">x</a> | text |\n', ["path"])
+        self.assertEqual(3, result.findings[0].line)
+
+    def test_table_labels_are_cell_local_and_share_document_references(self):
+        header = "| A | B |\n| --- | --- |\n"
+        self.check(header + "| [bad | label](missing.md) |\n")
+        self.check(header + r"| [real\|label](missing.md) | text |" + "\n", ["path"])
+        self.check(header + r"| [a\|b] | [x][ref] |" + "\n\n[a|b]: target.md\n[ref]: target.md\n")
+        self.check("[ordinary|label](missing.md)\n", ["path"])
+
+    def test_table_cells_cannot_define_block_headings_or_references(self):
+        header = "| A | B |\n| --- | --- |\n"
+        self.check(header + "| # Ghost | text |\n\n[x](#ghost)\n", ["fragment"])
+        self.check(header + "| [ref]: missing.md | text |\n\n[x][ref]\n", ["reference"])
+
+    def test_table_body_column_count_uses_declared_header_width(self):
+        header = "| A | B |\n| --- | --- |\n"
+        self.check(header + "| text | text | [literal](missing.md) |\n")
+        self.check(header + "| [real](missing.md) |\n", ["path"])
+        self.check("[header](missing.md) | B\n--- | ---\n", ["path"])
+
+    def test_table_optional_edges_alignment_and_pipe_escape_parity(self):
+        self.check("A | B\n:--- | ---:\n`literal | [bad](missing.md) `\n", ["path"])
+        self.check("| A | B |\n| --- | --- |\n" +
+                   r"| `literal \\| [bad](missing.md) ` |" + "\n", ["path"])
+        self.write("docs/a|b.txt", "actual")
+        self.check("| A |\n| --- |\n" + r"| [x](a\|b.txt) |" + "\n")
+
+    def test_table_containers_and_block_termination_preserve_physical_lines(self):
+        for header, row in (("> | A | B |\n> | --- | --- |\n", "> | `literal | [bad](missing.md) ` |\n"),
+                            ("- | A | B |\n  | --- | --- |\n", "  | `literal | [bad](missing.md) ` |\n")):
+            with self.subTest(header=header):
+                result = self.check(header + row, ["path"])
+                self.assertEqual(3, result.findings[0].line)
+        self.check("| A | B |\n| --- | --- |\n| text | text |\n# Real\n\n[x](#real)\n")
+        self.check("| A | B |\n| --- | --- |\n| text | text |\n- [bad](missing.md)\n", ["path"])
+
+    def test_table_html_and_comments_cannot_leak_into_following_real_code_blocks(self):
+        header = "| A | B |\n| --- | --- |\n"
+        for row in ('| <span title="literal | text |\n', '| <!-- | text |\n'):
+            with self.subTest(row=row):
+                result = self.check(header + row + '\n```text\n[literal](also-missing.md)\n```\n'
+                                    '[real](missing.md)\n', ["path"])
+                self.assertEqual(8, result.findings[0].line)
+                self.assertEqual('Missing or case-mismatched local target: docs/missing.md',
+                                 result.findings[0].message)
+
+    def test_table_long_backtick_runs_interrupt_only_as_valid_fences(self):
+        for source, expected_line in (("```literal``` | `open\n--- | ---\nleft | [bad](missing.md) `\n", 3),
+                                      ("| A | B |\n| --- | --- |\n```literal``` | `open\n"
+                                       "left | [bad](missing.md) `\n", 4)):
+            with self.subTest(source=source):
+                result = self.check(source, ["path"])
+                self.assertEqual(expected_line, result.findings[0].line)
+
+    def test_table_source_ranges_retain_raw_escaped_and_surplus_cells(self):
+        source = '> | A | B |\n> | --- | --- |\n> | [x](target.md) | <span id="a\\|b"></span> | surplus |\n'
+        document = docs.Markdown('docs/source.md', source)
+        self.assertEqual(3, len(document.table_rows[1].cells))
+        self.assertEqual(2, document.table_rows[1].width)
+        self.assertEqual(3, document.table_rows[1].line)
+        for row in document.table_rows:
+            for cell in row.cells:
+                self.assertEqual(cell.source, source[cell.start:cell.end])
+        self.assertIn('a|b', document.anchors)
+
+    def test_table_html_block_interrupts_follow_declared_start_rules(self):
+        header = '| A | B |\n| --- | --- |\n'
+        for body, rows in (('<search partial | body |\n', 1),
+                           ('<source/> | body |\n', 2),
+                           ('<![CDATA[foo | body |\n', 1),
+                           ('<div/other | body |\n', 2),
+                           ('<pre/> | body |\n', 2),
+                           ('</pre partial | body |\n', 2),
+                           ('<span>\n', 1), ('<source>\n', 1)):
+            with self.subTest(body=body):
+                document = docs.Markdown('docs/source.md', header + body)
+                self.assertEqual(rows, len(document.table_rows))
+
     def test_escaped_markers_are_literal(self):
         self.check(r"\[literal](missing.md) \`unmatched [real](target.md)")
 
