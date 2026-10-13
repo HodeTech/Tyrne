@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
@@ -67,3 +67,4 @@ Verify all 32 definitions and their references, the ADR-0040 rider and the numbe
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: either numeric cascade or slugs, including a no-old-number-string check. Approved replacement: all 32 semantic purpose definitions/references, separate historical aliases/filed numbers/unallocated decisions and verification of the already-filed Acceptance-time rider. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-13 | Codex (AI agent), implementation author | Step 9 kickoff after Step 8 both-round canonical boundary at `f8c9b7f34a28d0974cbc9e03f1ef8355dc2df4f3`. [Preflight](../../reports/2026-10-13-t054-identity-preflight.md) records full semantic planning review, all 32source definitions, explicit reference resolution and the additional write-adr procedural reason before mutation. Accepted ADR-0043 selects stable purposes, no numeric cascade/new ADR/phase opening. Status In Progress; criteria unchecked pending implementation and both fresh paired rounds. |
