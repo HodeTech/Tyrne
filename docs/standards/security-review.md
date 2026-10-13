@@ -121,8 +121,7 @@ Every security review results in one of:
 ## Tooling
 
 - Manual checklist, applied per PR.
-- `cargo-audit` — known vulnerabilities in dependencies (CI gate).
-- `cargo-vet` — audited dependencies (CI gate).
+- **Planned:** `cargo-audit` for known dependency vulnerabilities and `cargo-vet` for dependency audit coverage. Neither has a CI job today; both are conditional on the first external dependency under [infrastructure.md](infrastructure.md#planned-gates-not-yet-enforced). A green CI is not evidence that either ran.
 - `cargo-geiger` — `unsafe` accounting (periodic).
 - `miri` on host-runnable subsets, where practical.
 - Static analysis for cryptographic primitives when introduced (subject of a future standard).

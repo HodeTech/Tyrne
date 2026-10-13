@@ -13,7 +13,7 @@ How Tyrne is versioned, how changes accumulate into a release, what must be true
 
 ## Versioning
 
-Tyrne uses **semantic versioning** with an Tyrne-specific convention during the pre-1.0 period:
+Tyrne uses **semantic versioning** with a Tyrne-specific convention during the pre-1.0 period:
 
 - `0.x.y` means **pre-alpha / alpha / beta**. No stability guarantees. Any minor bump may break ABI, capability semantics, or behavior.
 - `1.x.y` is the first release that commits to a stable kernel ABI for userspace. That boundary is cut only when the maintainer judges the kernel ABI to be worth committing to; it is not tied to a calendar.

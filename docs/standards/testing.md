@@ -28,11 +28,9 @@ Tyrne uses four layers. A given change almost always adds or updates tests in mo
 ### 3. QEMU boot / smoke tests
 
 - Boot the kernel under QEMU `virt` (primary target) and assert it reaches a known checkpoint.
-- Driven by a test runner (`tools/testrun` or similar, to be built in Phase 4) that:
-  - Compiles the kernel with the `test` configuration.
-  - Launches QEMU with serial redirected to a captured stream.
-  - Asserts that the kernel emits an "all-green" marker within a timeout, or fails with the serial dump.
-- Each QEMU test is named by the scenario it proves ("boot + syscall round-trip", "IPC rendezvous", "page fault handling").
+- **Required:** `tools/smoke.sh` boots the normal debug or release kernel image under QEMU and checks profile-specific serial markers within a timeout, rejecting panic and CPU-fault traces. Build matching userland first, then the kernel; use `tools/smoke.sh --int` or `tools/smoke.sh --release --int`. These are normal images, not a compiled Rust `test` configuration.
+- Debug requires greeting, task exit and completion; release requires exit/completion and forbids the debug-console greeting. Captured serial and exception output supports diagnosis. Exact SVC counting and adversarial EL0 images are separate scope, not current smoke gates.
+- The current scenario is the boot/EL0 hello/exit round trip. Additional QEMU scenarios must state what behavior they prove; the current smoke does not establish general page-fault containment.
 - Slower — seconds per test. Run as a CI gate but not on every file save.
 
 ### 4. Hardware smoke tests
@@ -81,7 +79,7 @@ The condition and outcome should be specific enough that a reader can diagnose a
 ## Fixtures and doubles
 
 - Prefer explicit fixtures over hidden globals. A test that needs a fake `MemoryCap` constructs one locally.
-- Test doubles for HAL traits live in a `test-hal` crate (to be added with the workspace). They implement the same traits with deterministic, inspectable behavior.
+- Test doubles for HAL traits live in the existing `test-hal` crate. They implement the same traits with deterministic, inspectable behavior.
 - Do not share mutable state between tests. Tests run in parallel by default; a shared mutable global will corrupt. Use `thread_local!` or per-test instances.
 
 ## Non-determinism
@@ -145,7 +143,7 @@ When a test fails in CI:
 - `cargo test` — host-side unit and integration tests.
 - `cargo llvm-cov` — coverage measurement.
 - `miri` — runs unit tests under an interpreter that catches some UB.
-- QEMU test runner — planned in `tools/testrun`.
+- **Required:** `tools/smoke.sh` / `tools/smoke.sh --release` for matching debug/release QEMU images; see [run-under-qemu.md](../guides/run-under-qemu.md) for build prerequisites and exception logging.
 - `cargo-nextest` — optional, for faster test runs; acceptable but not required.
 
 ## References

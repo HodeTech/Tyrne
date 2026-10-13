@@ -12,7 +12,7 @@ This format is enforced **by convention and review**, not by a git hook or a CI 
 
 Each commit follows the Conventional Commits pattern with Tyrne-specific trailers:
 
-```
+```text
 <type>(<scope>): <subject>
 
 <body>
@@ -22,7 +22,7 @@ Each commit follows the Conventional Commits pattern with Tyrne-specific trailer
 
 Example:
 
-```
+```text
 feat(ipc): introduce synchronous rendezvous endpoint
 
 Adds a kernel-level endpoint object that rendezvouses one sender with
@@ -50,10 +50,15 @@ Refs: ADR-0001
   - `chore` — tooling, reformatting, licensing housekeeping.
   - `audit` — `unsafe`-audit-log or security-audit bookkeeping (e.g. reconciliation rounds, audit-entry amendments).
   - `revert` — reverts a previous commit (subject: `revert: <original subject>`).
-- **Scope** — the subsystem most affected. Choose from the short list:
-  `kernel`, `hal`, `ipc`, `mm`, `sched`, `syscalls`, `drivers`, `userspace`,
-  `bsp-<board>`, `docs`, `standards`, `adr`, `ci`, `tooling`, `deps`. New scopes
-  must appear in at least one other prior commit or be agreed in review.
+- **Scope** — the subsystem or documentation area most affected. Common examples include
+  `kernel`, `hal`, `ipc`, `mm`, `mmu`, `sched`, `syscalls`, `drivers`, `userspace`,
+  `bsp-<board>`, `docs`, `standards`, `adr`, `ci`, `tooling`, `deps`, `perf`,
+  `roadmap`, `analysis`, `audits` and `architecture`. Recommend `syscalls`,
+  `architecture` and `bsp-<board>` for new examples. Historical/prior-use aliases
+  such as `syscall`, `arch`, `bsp`, `review-round`, `reviews`, `review`, `task`
+  and `tasks` remain valid; this is not a static allowlist. New scopes must appear
+  in at least one other prior commit or be agreed in review. The list was refreshed
+  from actual `git log --format=%s` history; it does not impose retroactive renaming.
 - **Subject** —
   - Imperative mood ("add", not "adds" or "added").
   - Lowercase first word (type takes care of emphasis).

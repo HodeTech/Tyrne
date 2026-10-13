@@ -55,7 +55,7 @@ Unforgeable capability types should be named with a `Cap` suffix when the bearer
 
 ## Documentation comments
 
-- Every `pub` and `pub(crate)` item has a doc-comment. The workspace currently sets `missing_docs = "warn"` (see `Cargo.toml` `[workspace.lints.rust]`): undocumented public items produce a warning, not a hard CI failure. Tightening this to `deny` is a future option once every public item in the kernel crates is documented; until then a missing doc-comment is a review-rejection reason even though the lint does not block the build.
+- Every `pub` and `pub(crate)` item has a doc-comment. The workspace level is `missing_docs = "warn"` in `Cargo.toml` `[workspace.lints.rust]`; required Clippy commands pass `-D warnings`, so emitted missing-doc warnings fail those covered targets unless explicitly allowed in source. The lint does not cover every internal `pub(crate)` item; review still enforces this documentation rule. No workspace lint-level change is implied.
 - Doc-comments follow the standard Rust shape:
   - First line is a **one-sentence summary**.
   - Blank line.
@@ -117,33 +117,36 @@ See [unsafe-policy.md](unsafe-policy.md). Summary: every `unsafe` block and ever
 
 ## Lints
 
-The workspace lint set (in `Cargo.toml` `[workspace.lints.*]`) plus the per-crate `#![deny(...)]` attributes in each `lib.rs` includes, at minimum:
+The root `Cargo.toml` `[workspace.lints.*]` tables are authoritative for inherited levels; every workspace member opts in. All current workspace entries are listed below, followed by additional crate attributes in kernel/HAL libraries and the BSP entry point:
 
 - `unsafe_op_in_unsafe_fn` (deny, workspace)
-- `missing_docs` (warn, workspace — see the documentation-comments section above)
-- `clippy::pedantic` (warn, not deny — reviewed case-by-case)
+- `missing_docs` (warn, workspace — required Clippy `-D warnings` escalates emitted warnings; see the documentation-comments section above)
+- `unreachable_pub` (warn, workspace)
+- `unused_must_use` (deny, workspace)
+- `clippy::pedantic` (warn, priority -1, workspace; required Clippy `-D warnings` escalates emitted warnings, with justified scoped allowances)
 - `clippy::alloc_instead_of_core` (deny, workspace)
 - `clippy::undocumented_unsafe_blocks`, `clippy::missing_safety_doc` (deny, workspace)
+- `clippy::todo` (deny, workspace: unfinished implementation markers must not land)
 - `clippy::arithmetic_side_effects` (deny in kernel; explicit wrapping math required)
 - `clippy::float_arithmetic` (deny in kernel)
 - `clippy::panic`, `clippy::unwrap_used`, `clippy::expect_used` (deny in `tyrne-kernel`, `tyrne-hal` and `tyrne-bsp-qemu-virt`, with explicit boot/demo, fatal-handler and test allowances; not inherited as denies by test-hal/userland)
 
-Lint **levels** are configured in `Cargo.toml` `[workspace.lints.clippy]` / `[workspace.lints.rust]` and in per-crate `#![deny(...)]` attributes in `lib.rs`. `clippy.toml` holds only numeric thresholds (e.g. `avoid-breaking-exported-api`), not lint levels — do not look there for the authoritative list.
+Lint **levels** are configured in `Cargo.toml` `[workspace.lints.clippy]` / `[workspace.lints.rust]` and per-crate attributes (`kernel/src/lib.rs`, `hal/src/lib.rs`, `bsp-qemu-virt/src/main.rs`), including explicit scoped allowances. `clippy.toml` holds only numeric thresholds (e.g. `avoid-breaking-exported-api`), not lint levels — do not look there for the authoritative list.
 
 ## Tooling
 
 | Tool | Purpose | Where |
 |------|---------|-------|
 | `rustfmt` | Formatter | `cargo fmt` |
-| `clippy` | Linter | `cargo clippy --workspace --all-targets -- -D warnings` |
-| `miri` | UB detector | `cargo +nightly miri test` (where feasible) |
+| `clippy` | Required linter | `cargo host-clippy`; bare-metal `cargo kernel-clippy` after `tools/build-userland.sh`, plus explicit userland/release commands in [infrastructure.md](infrastructure.md) |
+| `miri` | Required UB detector | Pinned-toolchain workspace command excluding the BSP; see [infrastructure.md](infrastructure.md#miri-as-a-blocking-gate) |
 | `cargo-geiger` | `unsafe` accounting | Periodic audit |
-| `cargo-audit` | Known vulnerabilities | CI gate (see [infrastructure.md](infrastructure.md)) |
-| `cargo-vet` | Dependency auditing | CI gate |
+| `cargo-audit` | Known vulnerabilities | Planned CI gate when the first external dependency lands; see [infrastructure.md](infrastructure.md#planned-gates-not-yet-enforced) |
+| `cargo-vet` | Dependency auditing | Planned under the same first-external-dependency condition |
 
 ## Enforcement
 
-- **Author:** runs `cargo fmt`, `cargo clippy -- -D warnings`, tests locally before pushing.
+- **Author:** runs `cargo fmt --all`, `cargo host-clippy` and `cargo host-test` locally; build matching userland before bare-metal kernel build/clippy/smoke when applicable. Use the target-aware commands in [infrastructure.md](infrastructure.md).
 - **Reviewer:** does not comment on issues the tools catch; those are CI's job. Reviewer focuses on design, correctness, and capability semantics.
 - **CI:** fails the build on any formatter, clippy, or test failure.
 

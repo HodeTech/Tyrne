@@ -215,10 +215,11 @@ after the first yield.
 
 ### Enabling QEMU exception logging
 
-Pass `--int-log` to `tools/run-qemu.sh` (it adds `-d int -D /tmp/qemu_int.log` to the QEMU invocation), or pass the flags directly:
+Pass `--int-log` to `tools/run-qemu.sh`. It adds `-d int -D <logfile>`; the actual path is `${TMPDIR:-/tmp}/qemu_int.<pid>.log` and is printed at startup. Copy that printed path, then inspect it:
 
 ```sh
-qemu-system-aarch64 ... -d int -D /tmp/qemu_int.log
+logfile='/actual/path/printed/by/run-qemu.sh'
+grep "Taking exception" "$logfile"
 ```
 
-Then `grep "Taking exception" /tmp/qemu_int.log` to see what fired.
+For a manual QEMU invocation, choose an explicit destination with `-d int -D <logfile>` and inspect that same file. `tools/smoke.sh --int` separately uses `int,unimp` tracing and its own captured evidence paths; it does not share the runner's default log file.

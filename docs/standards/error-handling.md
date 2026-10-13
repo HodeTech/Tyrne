@@ -136,9 +136,9 @@ ISRs run with restricted state. Inside an ISR:
 
 ## Panic strategy
 
-The workspace sets `panic = "abort"` in `Cargo.toml` for kernel crates. Unwinding in kernel mode across a context switch boundary is undefined behavior without substantial runtime support, which we are not adding. `abort` is a hard stop that the kernel panic handler intercepts.
+**Required configuration:** `.cargo/config.toml` sets `-C panic=abort` in `[target.aarch64-unknown-none] rustflags`. It applies to every build for that bare-metal target, including kernel/BSP and userland; it is not a `Cargo.toml` profile key. The root release-profile comment explains this target scoping. The bare-metal panic handler supplies the actual behavior described above.
 
-Userspace task crates may differ in later phases; that will be revisited in an ADR.
+Host-side `cargo test` builds of kernel, HAL and test-hal retain unwinding for the test harness. Unwinding in kernel mode across a context switch would require runtime support that Tyrne does not provide. A future change to userspace panic policy requires an ADR.
 
 ## Error-type design checklist
 

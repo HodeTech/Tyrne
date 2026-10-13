@@ -100,6 +100,8 @@ Every kernel, HAL, driver, and service change is subject to these principles. Do
 
 **Applies to.** Every build configuration. Every toolchain choice. Every dependency addition (see [infrastructure.md](infrastructure.md)).
 
+**Delivery status (2026-10-13).** P11 above is the required property, not a claim that CI certifies it today. Toolchain and workspace dependency state are pinned; `cargo-vet`/`cargo-audit` are planned for the first external dependency and no cross-run binary-comparison job exists. See [infrastructure.md](infrastructure.md#reproducibility). This does not relax the reproducibility or dependency-audit requirement.
+
 ### P12 — No half-finished subsystems on main
 
 **Statement.** Code merged into `main` is complete to the subsystem's current declared scope. Stubs, `todo!()` macros, and placeholder implementations do not merge unless they are explicitly marked as incremental and are part of an approved multi-commit sequence.

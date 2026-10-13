@@ -180,6 +180,8 @@ The dependency graph in `Cargo.lock` is the obvious supply-chain surface, but th
 
 ### Reproducibility
 
+**Required properties:** the bullets below state the reproducibility contract. **Current delivery status (2026-10-13):** source/toolchain pinning and build checks exist, but CI has no cross-run bit-for-bit binary comparison and does not certify absence of embedded host paths/timestamps. Those properties still require verification; a passing build alone is not reproducibility proof. Dependency audit tools remain planned as described above.
+
 - Builds are reproducible given the same source tree, toolchain, and target.
 - Build artifacts do not bake in timestamps, absolute host paths, or user names.
 - Rust build flags avoid `*-cpu=native` in release builds; the target triple fully defines the ISA baseline.
