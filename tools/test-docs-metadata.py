@@ -524,6 +524,215 @@ class MetadataTests(unittest.TestCase):
         self.write("docs/analysis/reports/history.md", "# History\n\n```\nhistorical\n```\n")
         self.clean("fences")
 
+    def audit_fixture(self, source="// Audit: UNSAFE-2026-0001\n", entries=None):
+        self.write("Cargo.toml", '[workspace]\nmembers = ["kernel"]\n')
+        self.write("kernel/Cargo.toml", '[package]\nname = "fixture"\n')
+        self.write("kernel/src/lib.rs", source)
+        entries = entries if entries is not None else {"UNSAFE-2026-0001": "Active"}
+        self.write("docs/audits/unsafe-log.md", "# Unsafe log\n\n" + "\n".join(
+            "### " + key + " — Fixture\n\n- **Status:** " + state + ".\n" for key, state in entries.items()))
+
+    def test_unsafe_active_reference_and_original_physical_line(self):
+        self.audit_fixture("// Audit: UNSAFE-2026-0001\r\n\r\n// Historical UNSAFE-2026-0099\r")
+        report = self.rejects("unsafe", "unsafe-ref", "kernel/src/lib.rs")
+        self.assertEqual([3], [x.line for x in report.findings if x.code == "unsafe-ref"])
+
+    def test_unsafe_wrapped_lists_shorthand_and_safe_audited_under(self):
+        self.audit_fixture("// Audit:\n// `UNSAFE-2026-0001` (page tables) +\n// UNSAFE-2026-0002 / 0003, UNSAFE-2026-0004.\n\n"
+                           "/// The assertion itself is audited\n/// under UNSAFE-2026-0005 (safe invariant).\n",
+                           {"UNSAFE-2026-%04d" % n: "Active" for n in range(1, 6)})
+        self.clean("unsafe")
+
+    def test_unsafe_removed_history_does_not_become_an_active_annotation(self):
+        self.audit_fixture("// Reject the old UNSAFE-2026-0012 pattern.\n// Audit: UNSAFE-2026-0001 (see UNSAFE-2026-0012 history).\n",
+                           {"UNSAFE-2026-0001": "Active", "UNSAFE-2026-0012": "Removed"})
+        self.clean("unsafe")
+
+    def test_unsafe_removed_active_annotation_and_unknown_shorthand_fail(self):
+        self.audit_fixture("// Audit: UNSAFE-2026-0001 / 0012 / 0099\n",
+                           {"UNSAFE-2026-0001": "Active", "UNSAFE-2026-0012": "Removed"})
+        self.rejects("unsafe", "unsafe-ref")
+
+    def test_unsafe_active_entry_requires_annotation_not_ordinary_mentions(self):
+        self.audit_fixture("// Historical reference UNSAFE-2026-0001.\n")
+        self.rejects("unsafe", "unsafe-log", "docs/audits/unsafe-log.md")
+
+    def test_unsafe_lists_stop_at_prose_and_source_gaps(self):
+        self.audit_fixture("// Audit: UNSAFE-2026-0001. Previously UNSAFE-2026-0002.\n\n// UNSAFE-2026-0003\n",
+                           {"UNSAFE-2026-%04d" % n: "Active" for n in range(1, 4)})
+        report = self.rejects("unsafe", "unsafe-log")
+        self.assertEqual(2, len([x for x in report.findings if x.code == "unsafe-log"]))
+
+    def test_unsafe_strings_raw_strings_characters_and_lifetimes(self):
+        self.audit_fixture('const S: &str = "// Audit: UNSAFE-2026-0099";\n'
+                           'const R: &str = r###"quote"# // Audit: UNSAFE-2026-0098"###;\n'
+                           'const B: &[u8] = br##"/* Audit: UNSAFE-2026-0097 */"##;\n'
+                           'const C: char = \'/\';\nfn f<\'a>(x: &\'a str) {\n'
+                           ' // Audit: UNSAFE-2026-0001\n}\n')
+        self.clean("unsafe")
+
+    def test_unsafe_nested_rust_and_assembly_comments(self):
+        self.audit_fixture("/* outer /* nested */ Audit: UNSAFE-2026-0001 */\n")
+        self.write("kernel/src/vectors.S", '/* Audit:\n * UNSAFE-2026-0002 */\nmov x0, #1\n.asciz "// UNSAFE-2026-0099"\n')
+        self.write("docs/audits/unsafe-log.md", "# Log\n\n### UNSAFE-2026-0001 — Rust\n\n- **Status:** Active.\n\n### UNSAFE-2026-0002 — Assembly\n\n- **Status:** Active.\n")
+        self.clean("unsafe")
+
+    def test_unsafe_malformed_id_and_unterminated_lexical_input_fail(self):
+        for source in ("// Audit: UNSAFE-2026-00010\n", "// UNSAFE-2026-00x1\n", 'const S: &str = "unterminated', "/* unterminated"):
+            with self.subTest(source=source):
+                self.audit_fixture(source)
+                report = self.scan("unsafe")
+                self.assertTrue(any(x.code in ("unsafe-ref", "unsafe-source") for x in report.findings), report.as_dict())
+
+    def test_unsafe_log_duplicate_status_id_and_fenced_examples(self):
+        self.audit_fixture()
+        log = self.root / "docs/audits/unsafe-log.md"
+        original = log.read_text()
+        for changed in (original + original[original.index("###"):],
+                        original.replace("- **Status:** Active.", "- **Status:** Active.\n- **Status:** Removed."),
+                        original.replace("Active.", "Unknown."), original.replace("- **Status:** Active.", "")):
+            with self.subTest(log=changed):
+                log.write_text(changed, encoding="utf-8")
+                self.rejects("unsafe", "unsafe-log")
+        log.write_text(original + "\n```markdown\n### UNSAFE-2026-0099 — Example\n- **Status:** Active.\n```\n", encoding="utf-8")
+        self.clean("unsafe")
+
+    def test_unsafe_all_workspace_members_independent_of_defaults(self):
+        self.audit_fixture()
+        self.write("Cargo.toml", '[workspace]\nmembers = ["kernel", "bsp"]\ndefault-members = ["kernel"]\n')
+        self.write("bsp/Cargo.toml", '[package]\nname = "bsp"\n')
+        self.write("bsp/tests/check.rs", "// Unknown UNSAFE-2026-0099\n")
+        self.rejects("unsafe", "unsafe-ref", "bsp/tests/check.rs")
+
+    def test_unsafe_build_examples_benches_custom_sources_and_generated_boundary(self):
+        self.audit_fixture()
+        self.write("kernel/Cargo.toml", '[package]\nname = "fixture"\nbuild = "custom/build.rs"\n[[bin]]\nname = "custom"\npath = "custom/main.rs"\n')
+        for path in ("custom/build.rs", "custom/main.rs", "examples/demo.rs", "benches/bench.rs", "src/target/module.rs"):
+            self.write("kernel/" + path, "// Audit: UNSAFE-2026-0001\n")
+        self.write("kernel/target/generated.rs", "// UNSAFE-2026-0099\n")
+        self.clean("unsafe")
+
+    def test_unsafe_in_root_path_dependency_cannot_disappear(self):
+        self.audit_fixture()
+        self.write("kernel/Cargo.toml", '[package]\nname = "fixture"\n[dependencies]\nother = { path = "../other" }\n')
+        self.write("other/Cargo.toml", '[package]\nname = "other"\n')
+        self.write("other/src/lib.rs", "// Unknown UNSAFE-2026-0099\n")
+        report = self.scan("unsafe")
+        self.assertTrue(any(x.code == "unsafe-scope" or (x.code == "unsafe-ref" and x.path == "other/src/lib.rs") for x in report.findings), report.as_dict())
+
+    def test_unsafe_unsupported_scope_and_duplicate_manifest_keys_fail(self):
+        for manifest in ('[workspace]\nmembers = ["*"]\n',
+                         '[workspace]\nmembers = ["kernel"]\nexclude = ["other"]\n',
+                         '[workspace]\nmembers = ["kernel"]\nmembers = []\n',
+                         'workspace = { members = ["missing"] }\n',
+                         '[workspace]\nmembers = "kernel"\n'):
+            with self.subTest(manifest=manifest):
+                self.audit_fixture()
+                self.write("Cargo.toml", manifest)
+                self.rejects("unsafe", "unsafe-scope")
+
+    def test_unsafe_custom_source_missing_or_outside_package_fails(self):
+        for path in ("missing.rs", "../outside.rs"):
+            with self.subTest(path=path):
+                self.audit_fixture()
+                self.write("outside.rs", "// Audit: UNSAFE-2026-0001\n")
+                self.write("kernel/Cargo.toml", '[package]\nname = "fixture"\nbuild = "' + path + '"\n')
+                self.rejects("unsafe", "unsafe-scope")
+
+    def test_unsafe_manifest_strings_comments_and_metadata_do_not_change_scope(self):
+        self.audit_fixture()
+        self.write("Cargo.toml", '[workspace]\nmembers = [\n "kernel", # actual member\n]\n[workspace.metadata]\nnote = "# members = []"\n')
+        self.clean("unsafe")
+
+    def test_unsafe_dotted_and_quoted_manifest_scope_is_resolved_or_rejected(self):
+        self.audit_fixture()
+        self.write("Cargo.toml", 'workspace."members" = ["kernel", "missing"]\n')
+        self.rejects("unsafe", "unsafe-scope")
+
+    def test_unsafe_source_redirection_literal_and_dynamic_forms(self):
+        self.audit_fixture('#[path = "other.rs"]\nmod other;\ninclude_str!("vectors.s");\n// Audit: UNSAFE-2026-0001\n')
+        self.write("kernel/src/other.rs", "// Audit: UNSAFE-2026-0001\n")
+        self.write("kernel/src/vectors.s", "/* Audit: UNSAFE-2026-0001 */\n")
+        self.clean("unsafe")
+        self.write("kernel/src/lib.rs", 'include!(concat!(env!("OUT_DIR"), "/generated.rs"));\n// Audit: UNSAFE-2026-0001\n')
+        self.rejects("unsafe", "unsafe-scope", "kernel/src/lib.rs")
+
+    def test_unsafe_only_selection_guards_source_and_manifest_aliases(self):
+        self.audit_fixture()
+        source = self.root / "kernel/src/lib.rs"
+        source.unlink()
+        other = self.write("outside.rs", "// Audit: UNSAFE-2026-0001\n")
+        source.symlink_to(other)
+        self.rejects("unsafe", "input", "kernel/src/lib.rs")
+        source.unlink();source.write_text("// Audit: UNSAFE-2026-0001\n", encoding="utf-8")
+        manifest = self.root / "kernel/Cargo.toml"
+        manifest.unlink();manifest.symlink_to(self.write("outside.toml", '[package]\nname = "outside"\n'))
+        self.rejects("unsafe", "input", "kernel/Cargo.toml")
+
+    def test_unsafe_requires_manifest_log_and_public_regular_utf8_sources(self):
+        self.audit_fixture()
+        (self.root / "Cargo.toml").unlink()
+        self.rejects("unsafe", "read", "Cargo.toml")
+        self.audit_fixture()
+        (self.root / "docs/audits/unsafe-log.md").unlink()
+        self.rejects("unsafe", "read", "docs/audits/unsafe-log.md")
+        self.audit_fixture()
+        (self.root / "kernel/src/lib.rs").write_bytes(b"\xff")
+        self.rejects("unsafe", "read", "kernel/src/lib.rs")
+
+    def test_unsafe_log_adopted_status_qualifications_are_preserved(self):
+        self.audit_fixture("// Audit: UNSAFE-2026-0001\n// Historical UNSAFE-2026-0012\n",
+                           {"UNSAFE-2026-0001": "Active. Pending smoke verification", "UNSAFE-2026-0012": "Removed — dated retirement"})
+        self.clean("unsafe")
+
+    def test_unsafe_workspace_path_dependencies_are_not_lost(self):
+        self.audit_fixture()
+        self.write("Cargo.toml", '[workspace]\nmembers = ["kernel"]\n[workspace.dependencies]\nother = { path = "other" }\n')
+        self.write("kernel/Cargo.toml", '[package]\nname = "fixture"\n[dependencies]\nother.workspace = true\n')
+        self.write("other/Cargo.toml", '[package]\nname = "other"\n')
+        self.write("other/src/lib.rs", "// Unknown UNSAFE-2026-0099\n")
+        self.rejects("unsafe", "unsafe-ref", "other/src/lib.rs")
+
+    def test_unsafe_malformed_slash_suffix_is_not_silently_dropped(self):
+        for suffix in ("00010", "00x1"):
+            with self.subTest(suffix=suffix):
+                self.audit_fixture("// Audit: UNSAFE-2026-0001 / " + suffix + "\n")
+                self.rejects("unsafe", "unsafe-ref")
+
+    def test_unsafe_lexical_scan_has_bounded_repeated_line_work(self):
+        import subprocess
+        import sys
+        command = ('import sys; sys.path.insert(0, "tools"); from docs_audit import comments_in_source; '
+                   'text = \'let value = r#"// Audit: UNSAFE-2026-0099"#; // ordinary comment\\n\' * 30000; '
+                   'regions, strings = comments_in_source(text); '
+                   'assert len(regions) == 30000 and len(strings) == 30000')
+        result = subprocess.run([sys.executable, "-c", command], cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, timeout=10)
+        self.assertEqual(0, result.returncode, result.stderr.decode())
+
+    def test_unsafe_backtick_slash_shorthand_still_resolves_unknown_tail(self):
+        self.audit_fixture("// Audit: `UNSAFE-2026-0001` / `0099`\n")
+        self.rejects("unsafe", "unsafe-ref", "kernel/src/lib.rs")
+
+    def test_unsafe_redirected_rust_extension_and_assembly_include_are_bounded(self):
+        self.audit_fixture('#[path = "extra.inc"]\nmod extra;\n// Audit: UNSAFE-2026-0001\n')
+        self.write("kernel/src/extra.inc", "// Unknown UNSAFE-2026-0099\n")
+        self.rejects("unsafe", "unsafe-scope", "kernel/src/lib.rs")
+        self.audit_fixture()
+        self.write("kernel/src/extra.s", '.include "extra.inc"\n')
+        self.rejects("unsafe", "unsafe-scope", "kernel/src/extra.s")
+
+    def test_unsafe_annotation_list_work_is_bounded_with_nested_explanations(self):
+        import subprocess
+        import sys
+        command = ('import sys; sys.path.insert(0, "tools"); from docs_audit import comment_tags; '
+                   'text = "Audit: UNSAFE-2026-0001 (" * 15000 + ")" * 15000; '
+                   'references, active = comment_tags(text); '
+                   'assert len(references) == 15000 and active == {"UNSAFE-2026-0001"}')
+        result = subprocess.run([sys.executable, "-c", command], cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, timeout=10)
+        self.assertEqual(0, result.returncode, result.stderr.decode())
+
     def clean(self, family):
         report = self.scan(family)
         self.assertFalse(report.findings, report.as_dict())

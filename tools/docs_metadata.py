@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 from urllib.parse import unquote
 
+from docs_audit import check_unsafe
 from docs_consistency import Corpus, Markdown, check_links, inline_text, navigation_value, physical_lines, resolve_path
 
 LIFECYCLE = ("Draft", "Ready", "In Progress", "In Review", "Done", "Blocked", "Superseded")
@@ -572,7 +573,8 @@ def check_fences(corpus):
 
 
 CHECKS = {"links": check_links, "tasks": check_tasks, "adrs": check_adrs,
-          "reviews": check_reviews, "planned": check_planned, "fences": check_fences}
+          "reviews": check_reviews, "planned": check_planned, "fences": check_fences,
+          "unsafe": check_unsafe}
 
 
 def scan_docs(root, *, checks):
