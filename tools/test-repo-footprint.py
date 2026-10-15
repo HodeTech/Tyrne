@@ -2,10 +2,12 @@
 """Real temporary-Git contract fixtures for ADR-0044 storage enforcement."""
 
 from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -252,6 +254,39 @@ class FootprintTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertEqual(codes(report), {"input"})
             self.assertIn("graft", report["findings"][0]["message"])
+
+    def test_inconsistent_commit_graph_cannot_hide_oversized_history(self):
+        with repository() as root:
+            write(root, "large.dat", b"x" * 1048577)
+            commit(root)
+            offending = git(root, "rev-parse", "HEAD").decode().strip()
+            (root / "large.dat").unlink()
+            commit(root)
+            head = git(root, "rev-parse", "HEAD").decode().strip()
+            git(root, "config", "core.commitGraph", "true")
+            git(root, "commit-graph", "write", "--reachable")
+            path = root / ".git/objects/info/commit-graph"
+            graph = bytearray(path.read_bytes())
+            self.assertEqual(graph[:5], b"CGPH\x01")
+            self.assertEqual(graph[7], 0)  # Standalone graph, no base chain.
+            hash_size, digest = {1: (20, hashlib.sha1), 2: (32, hashlib.sha256)}[graph[5]]
+            # Git's documented chunk format: sorted OIDs and H+16-byte CDAT rows.
+            chunks = {bytes(graph[8 + i * 12:12 + i * 12]):
+                      struct.unpack(">Q", graph[12 + i * 12:20 + i * 12])[0]
+                      for i in range(graph[6])}
+            count = struct.unpack(">I", graph[chunks[b"OIDF"] + 1020:chunks[b"OIDF"] + 1024])[0]
+            oids = [bytes(graph[chunks[b"OIDL"] + i * hash_size:
+                                chunks[b"OIDL"] + (i + 1) * hash_size]).hex() for i in range(count)]
+            offset = chunks[b"CDAT"] + oids.index(head) * (hash_size + 16) + hash_size
+            graph[offset:offset + 8] = struct.pack(">II", 0x70000000, 0x70000000)
+            graph[-hash_size:] = digest(graph[:-hash_size]).digest()
+            path.chmod(0o644)  # Mutate only the disposable cache, not commit objects.
+            path.write_bytes(graph)
+            self.assertEqual(git(root, "-c", "core.commitGraph=false", "rev-list", "--count", "HEAD"), b"3\n")
+            result, report = check(root)
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertEqual(codes(report), {"footprint-blob"})
+            self.assertEqual(report["findings"][0]["source"], offending)
 
     def test_invalid_root_and_subdirectory_fail_closed(self):
         with repository() as root, tempfile.TemporaryDirectory() as empty:

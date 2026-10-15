@@ -28,7 +28,8 @@ def git(root, *args, data=None, optional=False):
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_NO_LAZY_FETCH="1", GIT_TERMINAL_PROMPT="0")
     result = subprocess.run(
-        ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(root), *args],
+        ["git", "--no-optional-locks", "-c", "core.fsmonitor=false",
+         "-c", "core.commitGraph=false", "-C", str(root), *args],
         input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
     )
     if optional and result.returncode == 1:
