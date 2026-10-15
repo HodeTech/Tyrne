@@ -815,6 +815,21 @@ class MetadataTests(unittest.TestCase):
                            '// Audit: UNSAFE-2026-0001\n')
         self.clean("unsafe")
 
+    def test_unsafe_raw_attribute_identifiers_keep_source_scope(self):
+        self.audit_fixture()
+        self.write("kernel/src/extra.rs", "// Audit: UNSAFE-2026-0001\n")
+        for form in ('#[r#path = "%s"]', '#[r#cfg_attr(all(), path = "%s")]',
+                     '#[cfg_attr(all(), r#path = "%s")]',
+                     '#[r#cfg_attr(all(), r#cfg_attr(test, r#path = "%s"))]'):
+            with self.subTest(form=form):
+                self.write("kernel/src/lib.rs", form % "extra.rs" + "\nmod extra;\n")
+                self.clean("unsafe")
+                self.write("kernel/src/lib.rs", form % "hidden.inc" + "\nmod extra;\n")
+                self.rejects("unsafe", "unsafe-scope")
+        self.audit_fixture('#[r#cfg_attr(r#path = "production", allow(dead_code))]\n'
+                           '// Audit: UNSAFE-2026-0001\n')
+        self.clean("unsafe")
+
     def test_unsafe_root_patch_and_replace_paths_are_inventoried_transitively(self):
         for table in ('[patch.crates-io]\nother', '[patch."https://example.invalid/index"]\nother',
                       '[replace]\n"other:0.1.0"'):
@@ -984,6 +999,44 @@ class MetadataTests(unittest.TestCase):
                 source.write_text("<" + tag + ">\n```markdown\n<!-- current-state:example -->\n</" + tag + ">\n\n" + original,
                                   encoding="utf-8")
                 self.clean("live")
+
+    def test_live_cdata_processing_and_declaration_contexts_remain_literal(self):
+        source = self.live()
+        original = source.read_text()
+        for opening, closing in (("<![CDATA[", "]]>"), ("<?example", "?>"), ("<!EXAMPLE", ">")):
+            with self.subTest(opening=opening):
+                source.write_text(opening + "\n" + original + "\n" + closing + "\n", encoding="utf-8")
+                self.rejects("live", "live-state")
+                source.write_text(opening + "\n```markdown\n" + closing + "\n\n" + original, encoding="utf-8")
+                self.clean("live")
+
+    def test_live_blank_ended_html_blocks_and_cross_name_endings(self):
+        source = self.live()
+        original = source.read_text()
+        region = original[original.index("<!-- current-state:start -->"):]
+        for opening in ("<div>", "<custom>", "</custom>", "<div partial", "<!example"):
+            with self.subTest(opening=opening):
+                source.write_text(opening + "\n" + region, encoding="utf-8")
+                self.rejects("live", "live-state")
+                source.write_text(opening + "\n<!-- example -->\n\n" + original, encoding="utf-8")
+                self.clean("live")
+        source.write_text("<pre>\n```markdown\n</style>\n\n" + original, encoding="utf-8")
+        self.clean("live")
+
+    def test_unsafe_unsupported_redirections_do_not_copy_distant_suffixes(self):
+        import subprocess
+        self.audit_fixture('// Audit: UNSAFE-2026-0001\nfn f() {\n' +
+                           'include!(file!());\n' * 384000 + '}\nconst LAST: &str = "extra.rs";\n')
+        self.write("kernel/src/extra.rs", "// Audit: UNSAFE-2026-0001\n")
+        command = ('import sys; sys.path.insert(0, "tools"); from docs_consistency import Corpus; '
+                   'from docs_audit import check_unsafe; '
+                   'c = Corpus(sys.argv[1], checks=["unsafe"]); '
+                   'check_unsafe(c); '
+                   'assert len(c.report.findings) == 384000; '
+                   'assert all(x.code == "unsafe-scope" for x in c.report.findings)')
+        result = subprocess.run([sys.executable, "-B", "-c", command, str(self.root)],
+                                cwd=Path(__file__).resolve().parents[1], capture_output=True, timeout=10)
+        self.assertEqual(0, result.returncode, result.stderr.decode())
 
     def cli(self, *args):
         import os

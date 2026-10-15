@@ -17,6 +17,7 @@ NEWLINE = re.compile(r"\r\n?|\n")
 RAW_STRING = re.compile(r"(?:br|cr|r)(\#*)\"")
 SLASH_SUFFIX = re.compile(r"[ \t\r\n`]*/[ \t\r\n`]*([0-9][\w-]*)(?![\w-])")
 SHORT_ID = re.compile(r"[0-9]{4}(?![\w-])")
+SOURCE_SPACE = re.compile(r"\s*")
 
 
 class SyntaxErrorAt(ValueError):
@@ -504,7 +505,9 @@ def source_redirections(code, assembly=False):
                 re.finditer(r"(?m:^[ \t]*\.include[ \t]+)", code)]
     result = [(match.start(), match.end(), match[1] == "include") for match in
               re.finditer(r"\b(include|include_str)\s*!\s*[([{]", code)]
-    tokens = list(re.finditer(r"[A-Za-z_][A-Za-z0-9_]*|[^\s]", code))
+    if "#" not in code:
+        return result
+    tokens = list(re.finditer(r"(?:r#)?[A-Za-z_][A-Za-z0-9_]*|[^\s]", code))
     pairs = {}
     stack = []
     for n, token in enumerate(tokens):
@@ -529,9 +532,9 @@ def source_redirections(code, assembly=False):
         begin, end = attributes.pop()
         if begin >= end:
             continue
-        if tokens[begin][0] == "path" and begin + 1 < end and tokens[begin + 1][0] == "=":
+        if tokens[begin][0] in ("path", "r#path") and begin + 1 < end and tokens[begin + 1][0] == "=":
             result.append((tokens[begin].start(), tokens[begin + 1].end(), True))
-        elif (tokens[begin][0] == "cfg_attr" and begin + 1 < end and
+        elif (tokens[begin][0] in ("cfg_attr", "r#cfg_attr") and begin + 1 < end and
               tokens[begin + 1][0] == "(" and pairs.get(begin + 1) == end - 1):
             cursor = begin + 2
             argument = cursor
@@ -619,7 +622,7 @@ def check_unsafe(corpus):
         for begin, argument, rust in source_redirections(code, Path(path).suffix in (".s", ".S")):
             index = bisect_left(string_starts, argument)
             literal = None
-            if index < len(strings) and not code[argument:strings[index][0]].strip():
+            if index < len(strings) and SOURCE_SPACE.fullmatch(code, argument, strings[index][0]):
                 literal = strings[index][2]
             try:
                 if literal is None or not literal.startswith('"'):

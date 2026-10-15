@@ -73,3 +73,5 @@ One raw unittest assertion stream contains original trailing whitespace. Its [lo
 ## First-round integration corrections
 
 [Six-group correction evidence](r1-fixes.md) retains the actual tests-first failures, intermediate coordinator mistakes, complete source stages, lossless raw outputs and final161/111-method dual-runtime author results. R1 committed-fix verification and a different fresh R2 remain pending. The maintainer explicitly authorized combined publication into existing PR49; exact-source hosted execution is still required. Earlier paragraphs retain their original chronology and publication boundary.
+
+[Subsequent same-round repairs](r1-fixes.md#subsequent-same-round-residual-corrections) preserve raw-identifier, unsupported-resource and additional HTML context/termination controls, actual161/115-method author verification and the separately source-bound successful first hosted checkpoint. Earlier scoped approvals/HOLDs remain historical; no final review/delivery closure is inferred.

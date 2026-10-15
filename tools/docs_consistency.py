@@ -372,6 +372,25 @@ HTML_BLOCK_NAMES = frozenset((
     "p param search section summary table tbody td tfoot th thead title tr track ul"
 ).split())
 HTML_RAW_BLOCK_NAMES = frozenset(("pre", "script", "style", "textarea"))
+HTML_BLANK_END = re.compile(r"^[ \t]*$")
+
+
+def raw_html_closer(body, paragraph=False):
+    """Persistent literal HTML block forms; comments have their own context."""
+    tag = re.match(r" {0,3}<(pre|script|style|textarea)(?=[ \t>]|$)", body, re.IGNORECASE)
+    if tag:
+        return re.compile(r"</(?:pre|script|style|textarea)>", re.IGNORECASE)
+    for opening, closing in ((r" {0,3}<\?", r"\?>"),
+                             (r" {0,3}<!\[CDATA\[", r"\]\]>"),
+                             (r" {0,3}<![A-Za-z]", r">")):
+        if re.match(opening, body):
+            return re.compile(closing)
+    tag = re.match(r" {0,3}</?([A-Za-z][A-Za-z0-9-]*)(?=[ \t>]|/>|$)", body)
+    if tag and tag[1].lower() in HTML_BLOCK_NAMES:
+        return HTML_BLANK_END
+    if not paragraph and body.lstrip(" ").startswith("<") and table_interrupt(body):
+        return HTML_BLANK_END
+    return None
 
 
 def opening_fence(body):
@@ -392,7 +411,7 @@ def table_interrupt(body):
     stripped = body.lstrip(" ")
     if len(body) - len(stripped) > 3:
         return False  # Indentation alone cannot interrupt an existing table.
-    if re.match(r"<!--|<\?|<![A-Z]|<!\[CDATA\[", stripped):
+    if re.match(r"<!--|<\?|<![A-Za-z]|<!\[CDATA\[", stripped):
         return True
     tag = re.match(r"(</?)([A-Za-z][A-Za-z0-9-]*)(?=[ \t>]|/>|$)", stripped)
     if tag:
@@ -441,16 +460,16 @@ def blocks(text):
         events.append(BlockLine(begin, offset, begin, tuple(active), True))
         visual = line.expandtabs(4)
         if raw_opened:
-            name, parts, raw_begin = raw_opened
+            closer, parts, raw_begin = raw_opened
             body = continuation(visual, parts)
-            if body is None:
+            if body is None or (closer is HTML_BLANK_END and not body.strip(" \t\r\n")):
                 raw_html.append((raw_begin, begin))
                 raw_opened = None
-                active = []
+                active = [] if body is None else list(parts)
             else:
                 events[-1] = events[-1]._replace(kind="html-literal", parts=tuple(parts))
                 output.append(line)
-                if re.search(r"</" + name + r">", body, re.IGNORECASE):
+                if closer.search(body):
                     raw_html.append((raw_begin, offset))
                     raw_opened = None
                 html.cursor = offset
@@ -554,15 +573,14 @@ def blocks(text):
             paragraph_state.clear()
             continue
         spaces = len(body) - len(body.lstrip(" "))
-        raw_start = re.match(r" {0,3}<(pre|script|style|textarea)(?=[ \t>]|$)", body, re.IGNORECASE)
-        if raw_start:
-            name = raw_start[1].lower()
+        closer = raw_html_closer(body, paragraph)
+        if closer:
             events[-1] = events[-1]._replace(kind="html-literal")
             output.append(line)
-            if re.search(r"</" + name + r">", body, re.IGNORECASE):
+            if closer.search(body):
                 raw_html.append((begin, offset))
             else:
-                raw_opened = (name, list(active), begin)
+                raw_opened = (closer, list(active), begin)
             html.cursor = offset
             paragraph = indented = False
             paragraph_state.clear()
