@@ -88,6 +88,41 @@ A successor ADR superseding this one should be written when **any one** of the f
 - `Message::label` remains a plain caller-supplied `u64`. A badge scheme that writes into `label` is additive; a badge scheme that adds a separate `badge` field is also additive (a new public field in `Message` with a default of `0` is backwards-compatible). Both options remain open to the successor ADR.
 - The `CapabilityTable::cap_derive` signature is unchanged. A badge-aware `cap_derive` would gain a `badge: u64` parameter; that is an additive API change that does not break existing call sites (they can pass `0`).
 
+## Pros and cons of the options
+
+**Historical tradeoffs appended 2026-10-13.** This section reconstructs the six [Considered options](#considered-options) and the unchanged [Decision outcome](#decision-outcome), under [T-055](../analysis/tasks/phase-b2/T-055-adr-append-only-corrections.md). It does not select a new option or reopen the deferrals. The original sections remain the decision-time record. Their badge-emulation/API-compatibility statements must not be read as current authentication or source-compatibility guarantees: current IPC delivers a caller-controlled label without an authenticated sender-capability handle or kernel-injected badge; a changed message layout or function signature would require its own compatibility assessment. See the source-backed [IPC architecture](../architecture/ipc.md).
+
+### Option A — Defer kernel-injected badges (chosen)
+
+- Pro: leaves the security-critical derivation/message paths unchanged until a concrete multiplexed-server scenario can validate them.
+- Pro: retains freedom to settle badge provenance and delivery semantics together in a successor decision.
+- Con: supplies no kernel-authenticated per-derivation discriminator meanwhile; a protocol requiring one remains blocked on that decision.
+
+### Option B — User-space badge emulation
+
+- Pro: application-maintained bookkeeping can avoid adding a kernel badge field where the application's existing trusted channels already identify clients.
+- Con: local CapHandle bookkeeping alone does not authenticate the sender on a shared endpoint; current received messages expose no sender-capability handle and an untrusted caller controls label. This option does not substitute for kernel-authenticated injection.
+
+### Option C — Kernel-injected badges immediately
+
+- Pro: would make the kernel-supplied discriminator available without waiting for a successor.
+- Con: changes derivation and user-visible message behavior before the decision-time Phase A workload has a validating use case.
+
+### Option D — Defer reply_recv (chosen)
+
+- Pro: keeps base IPC/scheduler work bounded until a working scheduler and measured server loop can justify the combined operation.
+- Con: leaves separate reply/send and receive scheduling steps; any actual cost requires measurement rather than inference from this record.
+
+### Option E — Implement reply_recv with A5
+
+- Pro: would expose the combined server operation as the scheduler arrives.
+- Con: couples a new IPC-plus-scheduling transition to the first scheduler/assembly implementation, increasing verification scope before a measured motivation.
+
+### Option F — Make reply_recv the primary primitive
+
+- Pro: centers the API on the combined server-loop operation considered in the original option.
+- Con: would revisit ADR-0017's primitive set and tighten IPC/scheduler coupling beyond the chosen v1 scope.
+
 ## References
 
 - [ADR-0017: IPC primitive set](0017-ipc-primitive-set.md) — the ADR that opened these questions.

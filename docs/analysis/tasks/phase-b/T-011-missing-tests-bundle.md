@@ -22,7 +22,7 @@ Four distinct sources flagged missing tests:
 1. **Phase A code-review §Test coverage** — `IpcError::ReceiverTableFull` is reachable but not asserted; slot-reuse with a pending transfer `Capability` is not exercised.
 2. **ADR-0022 §Consequences/Negative** — `SchedError::Deadlock` is a defensive return variant; without a direct unit test it drifts into dead-variant rot. T-007 landed the test for this one case; the ADR's concern is more general.
 3. **T-007 deferred follow-ups** — `ipc_send_and_yield` has no symmetric state-restore test equivalent to T-007's `ipc_recv_and_yield` Deadlock test.
-4. **R2 coverage baseline** ([2026-04-23-coverage-baseline.md](../../reviews/business-reviews/../reports/2026-04-23-coverage-baseline.md)) — `sched::start` body (lines 426-473) entirely uncovered; `ipc_send_and_yield` entire body (lines 589-645) entirely uncovered; 40 error-return branches in `cap/table.rs` uncovered.
+4. **R2 coverage baseline** ([2026-04-23-coverage-baseline.md](../../reports/2026-04-23-coverage-baseline.md)) — `sched::start` body (lines 426-473) entirely uncovered; `ipc_send_and_yield` entire body (lines 589-645) entirely uncovered; 40 error-return branches in `cap/table.rs` uncovered.
 
 T-011 bundles these items into a single task so the test-writing discipline lands once, with one commit arc, rather than trickled in across later milestones where it would compete with feature work.
 

@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-1
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-12
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-034](T-034-ci-qemu-smoke-job.md), [T-074](T-074-phase-c-readiness-sweep.md)
@@ -72,3 +73,4 @@ Beyond the acceptance criteria:
 | 2026-10-12 | `b21_step2_round1_code`, `b21_step2_round1_integration` (gpt-6.1-sol/high) | Fresh round 1 on `3a7c264..d5c13a0`: both Approve, no introduced findings. [Full independent reports](../../reviews/code-reviews/2026-10-12-t033-qemu-tooling.md). Code reviewer reproduced the old timeout failure, ran 25 independent Bash 3 cases, rejected nine parser mutants and independently passed real single-core smoke. Integration reviewer passed 31 additional isolated probes, including the Perl fallback and profile/build-order checks. No SMP claim. |
 | 2026-10-12 | Codex (AI agent) | [Hosted CI at `d5c13a0`](https://github.com/HodeTech/Tyrne/actions/runs/38176428435) succeeded; inspected the fast-lane log confirming the new 59-case regression step passed. Round 2 and final maintainer PR review remain pending. |
 | 2026-10-12 | `b21_step2_round2_code`, `b21_step2_round2_integration` (gpt-6.1-sol/high requested) | Fresh round 2 on `3a7c264..eede01c`: both Approve; code found no new issue, integration found Low R2-INT-01 (new guide's inherited WFI description). Root verified task A actually spins and corrected guide plus matching live smoke/performance descriptions, preserving prior report prose with an explicit superseding note. [Full reports and reconciliation](../../reviews/code-reviews/2026-10-12-t033-qemu-tooling.md). Independent evidence: 47 code and 39 integration probes; code reviewer passed real default smoke with the unchanged 117-byte hash. Wording-fix Bash syntax and the 59-case harness passed. Both rounds complete; final maintainer PR review pending. |
+| 2026-10-12 | @cemililik; Codex recorded completion | Maintainer merged [PR #48](https://github.com/HodeTech/Tyrne/pull/48) at full `c16997e003fbd1726d1205734380394781c52002` and explicitly authorized Done promotion. First merged-main [CI 38217531542](https://github.com/HodeTech/Tyrne/actions/runs/38217531542) passes all seven jobs, including native ARM/Miri and both production QEMU profiles; downloaded controls are 23/23. Default-branch [performance dispatch 38217799773](https://github.com/HodeTech/Tyrne/actions/runs/38217799773) passes with 20 valid/0 failed samples. [Post-merge retrospective](../../reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) records exact-source evidence, remaining scope and next Ready task T-038. Status In Review → Done; date_done 2026-10-12. Phase B.2 remains Active. |

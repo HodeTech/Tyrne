@@ -1,5 +1,7 @@
 # Phase D — Raspberry Pi 4 (first real hardware)
 
+> **Planning clarification (2026-10-13).** Live planned ADRs use the stable purpose identities in this file's ledger under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md). This supersedes only the tentative-number/re-sequencing statements in the dated 2026-10-11 snapshot below. The Phase B.2 implementation gate remains unchanged; real governance ADR-0040 remains numeric.
+
 > **Gate (2026-10-11):** no Phase D milestone opens and no Phase D implementation task leaves `Draft` while [Phase B.2](phase-b2.md) is open ([ADR-0040](../../decisions/0040-phase-b2-consolidation-bridge.md), rule 2). The ADR numbers in this file's ledger are tentative placeholders that still collide with Phase C's; task T-054 re-sequences them.
 
 **Exit bar:** `bsp-pi4` boots on a real Pi 4 at feature parity with `bsp-qemu-virt` — all of Phase A / B / C features work on hardware.
@@ -16,14 +18,14 @@ A new BSP crate that compiles for `aarch64-unknown-none` and provides a minimal 
 
 ### Sub-breakdown
 
-1. **ADR-0042 — Pi 4 boot flow.** Load address under Pi firmware (`kernel_address` in `config.txt`); Pi firmware's initial CPU mode; what `config.txt` settings Tyrne expects.
+1. **[ADR-D1-pi4-boot-flow](#adr-d1-pi4-boot-flow) — Pi 4 boot flow.** Load address under Pi firmware (`kernel_address` in `config.txt`); Pi firmware's initial CPU mode; what `config.txt` settings Tyrne expects.
 2. **New crate** `bsp-pi4/` with its own `Cargo.toml`, `build.rs`, `linker.ld`, `boot.s`, `main.rs`, `console.rs` — mirroring `bsp-qemu-virt` structure.
 3. **Pi firmware interaction** — `config.txt` documentation and the expected load / entry addresses.
 4. **Placeholder main** that just spins in `wfe`; no console yet (D3 adds that).
 
 ### Acceptance criteria
 
-- ADR-0042 Accepted.
+- The filed record for [ADR-D1-pi4-boot-flow](#adr-d1-pi4-boot-flow) is Accepted.
 - `cargo build --target aarch64-unknown-none -p tyrne-bsp-pi4` produces an ELF.
 - `config.txt` example committed alongside.
 
@@ -35,7 +37,7 @@ Pi 4 uses GIC-400 (a GICv2 implementation). The `IrqController` impl differs fro
 
 ### Sub-breakdown
 
-1. **ADR-0043 — GIC-400 register layout.** Distributor / CPU-interface base addresses on BCM2711; register offsets used; which features are used vs. ignored.
+1. **[ADR-D2-gic400-register-layout](#adr-d2-gic400-register-layout) — GIC-400 register layout.** Distributor / CPU-interface base addresses on BCM2711; register offsets used; which features are used vs. ignored.
 2. **`IrqController` impl** in `bsp-pi4/src/irq.rs`.
 3. **Tests** — host-side register layout; the real verification is D8 on hardware.
 
@@ -52,14 +54,14 @@ Pi 4 has both a mini-UART and a PL011 (UART0). We use the PL011 for diagnostic o
 
 ### Sub-breakdown
 
-1. **ADR-0044 — Pi 4 console choice.** PL011 vs. mini-UART; which pins; what baud rate; whether GPIO pin-muxing is part of the BSP or out of scope.
+1. **[ADR-D3-pi4-console](#adr-d3-pi4-console) — Pi 4 console choice.** PL011 vs. mini-UART; which pins; what baud rate; whether GPIO pin-muxing is part of the BSP or out of scope.
 2. **PL011 init sequence** — baud-rate register programming (QEMU's PL011 is pre-initialized; Pi's is not).
 3. **`Console` impl** in `bsp-pi4/src/console.rs` using the same trait as `bsp-qemu-virt` with the Pi-specific init.
 4. **Tests** — host-side: none meaningful (hardware behaviour); D7 exercises it on real hardware.
 
 ### Acceptance criteria
 
-- ADR-0044 Accepted.
+- The filed record for [ADR-D3-pi4-console](#adr-d3-pi4-console) is Accepted.
 - `Console` impl compiles; the first real-hardware smoke will validate it.
 
 ---
@@ -86,14 +88,14 @@ MMU activation on Pi 4. Memory layout is different (RAM at `0x0000_0000` on Pi v
 
 ### Sub-breakdown
 
-1. **ADR-0045 — Pi 4 memory layout.** Kernel load address; peripheral window (`0xFE00_0000` class on BCM2711); identity vs. high-half choices here.
+1. **[ADR-D5-pi4-memory-layout](#adr-d5-pi4-memory-layout) — Pi 4 memory layout.** Kernel load address; peripheral window (`0xFE00_0000` class on BCM2711); identity vs. high-half choices here.
 2. **`Mmu` impl** — inherits VMSAv8 from QEMU's impl; differences in the linker script and the MMIO mapping tables.
 3. **Cache maintenance** — Pi 4 specifics (cache lines, I/D separation, which invalidate sequences are necessary).
 4. **Tests** — B2's test suite applied to Pi 4.
 
 ### Acceptance criteria
 
-- ADR-0045 Accepted.
+- The filed record for [ADR-D5-pi4-memory-layout](#adr-d5-pi4-memory-layout) is Accepted.
 - Kernel runs with the MMU on on Pi 4.
 
 ---
@@ -104,7 +106,7 @@ A userspace-agnostic library crate that parses a flattened device tree into a ty
 
 ### Sub-breakdown
 
-1. **ADR-0046 — DTB parsing scope.** Full FDT spec support vs. a minimal read-only subset; zero-copy vs. owned parsing; allocation strategy (probably `no_std + alloc` with an arena).
+1. **[ADR-D6-dtb-parsing](#adr-d6-dtb-parsing) — DTB parsing scope.** Full FDT spec support vs. a minimal read-only subset; zero-copy vs. owned parsing; allocation strategy (probably `no_std + alloc` with an arena).
 2. **New crate** `tyrne-dt/` — separate from `tyrne-hal` so BSPs opt in.
 3. **Parser API** — `DeviceTree::from_bytes(ptr) -> Result<DeviceTree, Error>`; iterators over nodes; property lookup.
 4. **Pi 4 integration** — `kernel_entry` parses the DTB passed in `x0` and emits a `BootInfo` struct.
@@ -112,7 +114,7 @@ A userspace-agnostic library crate that parses a flattened device tree into a ty
 
 ### Acceptance criteria
 
-- ADR-0046 Accepted.
+- The filed record for [ADR-D6-dtb-parsing](#adr-d6-dtb-parsing) is Accepted.
 - `tyrne-dt` parses a real DTB into typed records.
 - `bsp-pi4` uses it at boot; the kernel's `BootInfo` contains at least memory-map and UART-address entries read from the DTB.
 
@@ -159,16 +161,18 @@ Business review; the phase is the most significant in terms of validating that "
 
 ## ADR ledger for Phase D
 
-| ADR | Purpose | Expected state | Note |
-|-----|---------|----------------|------|
-| ADR-0042 | Pi 4 boot flow | D1 | renumbered 2026-05-22, was ADR-0032 (collided with the live Accepted ADR-0032 endpoint-rollback-and-cancel-recv; Phase D shifted above Phase C's new ceiling) |
-| ADR-0043 | GIC-400 register layout | D2 | renumbered 2026-05-22, was ADR-0033 (reserved by phase-b.md §B5 ledger for the kernel high-half migration) |
-| ADR-0044 | Pi 4 console choice (PL011 vs. mini-UART) | D3 | renumbered 2026-05-22, was ADR-0034 (reserved by phase-b.md §B5 ledger for kernel-image section permissions) |
-| _(none)_ | D4 — ARM generic timer on Pi 4 | D4 | implementation-only milestone; the generic-timer behaviour and the `Timer` trait are already settled by ADR-0010, so D4 requires no new ADR. The ledger jumps D3 → D5 for this reason. |
-| ADR-0045 | Pi 4 memory layout | D5 | renumbered 2026-05-22, was ADR-0035 (collided with the live Accepted ADR-0035 physical-memory-manager) |
-| ADR-0046 | DTB parsing scope | D6 | renumbered 2026-05-22, was ADR-0036 (avoids the ADR-0036 supersession slot reserved for the GICv2/no-IOMMU decision) |
+> **Identity workflow (2026-10-13).** Under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), each row below defines one stable milestone-plus-purpose planning identity. Assign the actual four-digit number only when filing via [write-adr](../../../.agents/skills/write-adr/SKILL.md); preserve the purpose identity as a historical alias in that record and link its ledger row to the filed ADR. Historical numeric aliases/notes below are evidence, not current allocations or reservations. Acceptance criteria above require the future filed record to be Accepted; the planning identity itself has no ADR status or implementation authorization.
 
-Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
+| Planned identity | Purpose | Milestone | Historical aliases / notes |
+|-----|---------|----------------|------|
+| <a id="adr-d1-pi4-boot-flow"></a>ADR-D1-pi4-boot-flow | Pi 4 boot flow | D1 | Historical aliases (superseded 2026-10-13): ADR-0042; renumbered 2026-05-22, was ADR-0032 (collided with the live Accepted ADR-0032 endpoint-rollback-and-cancel-recv; Phase D shifted above Phase C's new ceiling) |
+| <a id="adr-d2-gic400-register-layout"></a>ADR-D2-gic400-register-layout | GIC-400 register layout | D2 | Historical aliases (superseded 2026-10-13): ADR-0043; renumbered 2026-05-22, was ADR-0033 (reserved by phase-b.md §B5 ledger for the kernel high-half migration) |
+| <a id="adr-d3-pi4-console"></a>ADR-D3-pi4-console | Pi 4 console choice (PL011 vs. mini-UART) | D3 | Historical aliases (superseded 2026-10-13): ADR-0044; renumbered 2026-05-22, was ADR-0034 (reserved by phase-b.md §B5 ledger for kernel-image section permissions) |
+| _(none)_ | D4 — ARM generic timer on Pi 4 | D4 | implementation-only milestone; the generic-timer behaviour and the `Timer` trait are already settled by ADR-0010, so D4 requires no new ADR. The ledger jumps D3 → D5 for this reason. |
+| <a id="adr-d5-pi4-memory-layout"></a>ADR-D5-pi4-memory-layout | Pi 4 memory layout | D5 | Historical aliases (superseded 2026-10-13): ADR-0045; renumbered 2026-05-22, was ADR-0035 (collided with the live Accepted ADR-0035 physical-memory-manager) |
+| <a id="adr-d6-dtb-parsing"></a>ADR-D6-dtb-parsing | DTB parsing scope | D6 | Historical aliases (superseded 2026-10-13): ADR-0046; renumbered 2026-05-22, was ADR-0036 (avoids the ADR-0036 supersession slot reserved for the GICv2/no-IOMMU decision) |
+
+The former tentative-number workflow is superseded by the dated identity workflow above; filed ADR numbers remain stable history per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
 
 ## Open questions carried into Phase D
 
@@ -265,7 +269,7 @@ The remaining HAL/BSP hardware findings: GIC-400 register-programming completene
 - **[🟡 MEDIUM]** `high_half_alias` (`main.rs:800-808`)'s boot-time sanity checks are `debug_assert!`s that release builds silently drop — both the migration-target validity check and the >4 GiB kernel-image PA-mask guard. *(The review filed the migration-target check and the >4 GiB PA-mask guard as two items against the same function; merged here.)*
   - Location: `bsp-qemu-virt/src/main.rs:800-808 (fn high_half_alias)` (cross-ref `Cargo.toml:59-70` `overflow-checks`, `tools/smoke.sh:12-56`)
   - Action: The workspace already treats `overflow-checks` as a security property that must not be dropped for performance; apply the same reasoning to this function's checks — either (a) promote both `debug_assert!`s to unconditional `assert!`s (the function runs exactly twice per boot — negligible cost), or (b) set `debug-assertions = true` in `[profile.release]` for the workspace, consistent with the `overflow-checks` precedent already set two lines above it in the same file.
-  - Gates: Milestone D1/D7 — this guards the target of an unconditional `br` mid-boot; Pi 4's boot flow (ADR-0042) must not carry a release-mode-silent version of the same hazard. Also Milestone D5 (its ADR-0045 Pi 4 memory layout): Pi 4's RAM base (`0x0000_0000`) and peripheral window differ from QEMU's, and the 4 GiB PA-mask assumption behind the PA-guard is flagged in `boot.md` as a "forward limit" needing re-validation on real hardware.
+  - Gates: Milestone D1/D7 — this guards the target of an unconditional `br` mid-boot; Pi 4's boot flow ([ADR-D1-pi4-boot-flow](#adr-d1-pi4-boot-flow)) must not carry a release-mode-silent version of the same hazard. Also Milestone D5 (its [ADR-D5-pi4-memory-layout](#adr-d5-pi4-memory-layout) Pi 4 memory layout): Pi 4's RAM base (`0x0000_0000`) and peripheral window differ from QEMU's, and the 4 GiB PA-mask assumption behind the PA-guard is flagged in `boot.md` as a "forward limit" needing re-validation on real hardware.
 
 - **[🟡 MEDIUM]** `GICD_IPRIORITYR` is never programmed for IRQ IDs 0-31 (SGIs/PPIs, including the timer's own PPI 27) during `init()`.
   - Location: `bsp-qemu-virt/src/gic.rs:188-210 (Step 4, priority loop starts at FIRST_SPI = 32)`
@@ -295,7 +299,7 @@ The remaining HAL/BSP hardware findings: GIC-400 register-programming completene
 - **[⚪ LOW]** GICv2 `acknowledge()`/`end_of_interrupt()` mask away GICC_IAR's CPU-ID subfield (bits [12:10]), which GICv2 requires be echoed back verbatim in GICC_EOIR for SGIs. *(The review filed this against two slightly different line ranges in `gic.rs` as separate items; they are the same underlying gap, merged here.)*
   - Location: `bsp-qemu-virt/src/gic.rs:364-376` / `:369-370` (`acknowledge`) and `:378-385` (`end_of_interrupt`); `hal/src/irq_controller.rs:13 (IrqNumber)`.
   - Action: Zero-cost today; no action needed for v1 (single-core, timer-only — no SGI/IPI traffic). When the future SGI/IPI ADR is written, preserve the CPU-ID subfield explicitly: either widen `IrqNumber` (or add a parallel raw-acknowledge type / a dedicated `acknowledge_sgi()` path) to carry the untruncated GICC_IAR value through to `end_of_interrupt`, or scope a GIC-driver-private raw-EOI path for the SGI ID range. Leave a forward-note next to the relevant mask constant now so it is discoverable without re-deriving it later.
-  - Note: the review cites this as gated by "ADR-0043, roadmap C4" for the eventual SGI/IPI ADR — a number that now collides with Phase D's own ADR-0043 (GIC-400 register layout, per the ADR ledger below, renumbered 2026-05-22). Flag as an ADR-numbering item to reconcile when Phase C's SGI/IPI ADR is actually drafted (also tracked under Phase B.2 Track B.2-2's ADR-ledger cascade-renumbering finding).
+  - Note: the review's historical quotation "ADR-0043, roadmap C4" names the eventual SGI/IPI decision, now [ADR-C4-cross-core-wakeup](phase-c.md#adr-c4-cross-core-wakeup). It is distinct from Phase D's GIC-400 register-layout decision, [ADR-D2-gic400-register-layout](#adr-d2-gic400-register-layout). T-054/Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md) resolves the old numeric collision by purpose; the quoted old number is evidence, not an allocation.
   - Gates: none directly in Phase D (single-core Pi 4 has no SGI/IPI traffic yet); tracked here so it is not lost before Phase C's SGI/IPI work is ported to Pi 4 in a later phase.
 
 - **[⚪ LOW]** Reported per-op perf-bench numbers never disclose build profile, even though the default toolchain path is `dev` (opt-level=1), not `release`.

@@ -110,7 +110,7 @@ Each track agent must:
 
 **Inputs:**
 
-- [hal/src/lib.rs](../../../../hal/src/lib.rs), [console.rs](../../../../hal/src/console.rs), [cpu.rs](../../../../hal/src/cpu.rs), [context_switch.rs](../../../../hal/src/context_switch.rs), [mmu.rs](../../../../hal/src/mmu.rs), [timer.rs](../../../../hal/src/timer.rs), [irq_controller.rs](../../../../hal/src/irq_controller.rs)
+- [hal/src/lib.rs](../../../../hal/src/lib.rs), [console.rs](../../../../hal/src/console.rs), [cpu.rs](../../../../hal/src/cpu.rs), [context_switch.rs](../../../../hal/src/context_switch.rs), [mmu.rs](https://github.com/HodeTech/Tyrne/blob/214052d1bbcb0943ecdb236e7929f4698bac351a/hal/src/mmu.rs), [timer.rs](../../../../hal/src/timer.rs), [irq_controller.rs](../../../../hal/src/irq_controller.rs)
 - [test-hal/src/lib.rs](../../../../test-hal/src/lib.rs) and the five fakes (console, cpu, mmu, timer, irq_controller)
 - [hal/Cargo.toml](../../../../hal/Cargo.toml), [test-hal/Cargo.toml](../../../../test-hal/Cargo.toml)
 
@@ -215,7 +215,7 @@ Each track agent must:
 - *Standards:* every standards doc still describes what the project actually does. unsafe-policy.md is the most load-bearing — verify every recent UNSAFE-2026-NNNN entry follows it.
 - *Audit log:* one row per `unsafe` block / impl in the source. Run a grep diff: every `// SAFETY:` block in source must trace to a UNSAFE-2026-NNNN tag, and every UNSAFE-2026-NNNN must have a live `// SAFETY:` block (or be marked Removed with a removal commit SHA).
 - *Glossary:* every term used in three or more docs is defined once; entries are alphabetical; no orphaned entries from the umbrix→tyrne rename.
-- *Root docs:* CLAUDE.md / AGENTS.md / README.md / SECURITY.md / CONTRIBUTING.md still resolve every link they cite; no umbrix references remain (the [10e3351](../../../../docs/) sweep should have closed this — verify).
+- *Root docs:* CLAUDE.md / AGENTS.md / README.md / SECURITY.md / CONTRIBUTING.md still resolve every link they cite; no umbrix references remain (the [10e3351](https://github.com/HodeTech/Tyrne/commit/10e3351d59d1d31357661251e83d72bb431bb34c) sweep should have closed this — verify).
 - *Guides:* `two-task-demo.md` execution trace still matches main.rs's actual `writeln!` / `write_bytes` sites; `run-under-qemu.md` matches `.cargo/config.toml`'s runner; `ci.md` matches the (still-absent) workflow files or is honest about the absence.
 
 **Output:** sub-artifact `track-e-docs.md` — flat list of drift findings with `path:line` references.
@@ -224,7 +224,7 @@ Each track agent must:
 
 **Agent:** one agent.
 
-**Inputs:** every `#[cfg(test)]` block across the workspace, the [coverage-baseline report](../../reports/2026-04-23-coverage-baseline.md), the [coverage-rerun report](../../reports/2026-04-23-miri-validation.md and 2026-04-27-coverage-rerun.md), the `run-qemu.sh` smoke harness, and the QEMU expected-output table in two-task-demo.md.
+**Inputs:** every `#[cfg(test)]` block across the workspace, the [coverage-baseline report](../../reports/2026-04-23-coverage-baseline.md), the [Miri-validation report](../../reports/2026-04-23-miri-validation.md) and [coverage-rerun report](../../reports/2026-04-27-coverage-rerun.md), the `run-qemu.sh` smoke harness, and the QEMU expected-output table in two-task-demo.md.
 
 **Checklist:**
 
@@ -270,7 +270,7 @@ Each track agent must:
 
 - [Cargo.toml](../../../../Cargo.toml) (workspace), per-crate `Cargo.toml`, [Cargo.lock](../../../../Cargo.lock), [rust-toolchain.toml](../../../../rust-toolchain.toml), [rustfmt.toml](../../../../rustfmt.toml), [clippy.toml](../../../../clippy.toml), [.cargo/config.toml](../../../../.cargo/config.toml).
 - [.github/](../../../../.github/) (whatever lives there now).
-- [.gitignore](../../../../.gitignore), [.gitattributes](../../../../.gitattributes) if present.
+- [.gitignore](../../../../.gitignore), `.gitattributes` if present.
 - [tools/](../../../../tools/) (the `run-qemu.sh` and any helpers).
 
 **Checklist:**
@@ -401,3 +401,7 @@ Single-agent fallback: walk the tracks sequentially in the order listed (A → J
 
 - _2026-05-06_ — initial version; authored by Claude planner agent at maintainer's request, run targeting `214052d`.
 - _2026-05-06 (post-execution amendment)_ — **§5 Track H's "CI absence" framing is stale.** The plan was written assuming no CI workflow existed at HEAD; Track H's actual run discovered [`.github/workflows/ci.yml`](../../../../.github/workflows/ci.yml) was added on 2026-04-23 (covers fmt / clippy / host-test / kernel-build / kernel-clippy / miri / coverage). The plan's prose at §5 Track H (*"CI absence: no GitHub Actions / circle / etc. workflow at HEAD. **This is the largest documented gap in the project.**"*) and §11 (*"A formal `cargo-vet` or `cargo-deny` configuration does not exist; the workspace's zero-extern-deps stance makes it unnecessary today, but flag for revisit when ADR-0027 / Phase C drivers might pull crates in."*) describe a pre-2026-04-23 state. The actual remaining gap is narrower: CI exists but does **not** run [`cargo audit`](../../../standards/infrastructure.md) or `cargo vet check`, both of which `infrastructure.md` lists as required merge-blocker gates; and the `supply-chain/config.toml` / `supply-chain/audits.toml` / `.github/dependabot.yml` config files `infrastructure.md` mentions are not on disk. See [`2026-05-06-full-tree-comprehensive.md`](2026-05-06-full-tree-comprehensive.md)'s *Plan-level amendments worth recording* in the verdict for the same correction in artefact form. This amendment is appended here so future readers of the plan find the update without cross-referencing the merged artefact.
+
+## Navigation reconciliation — 2026-10-13
+
+The original `.gitattributes` optional-input item says “if present”. No such path exists in the working tree or available `git log --all -- .gitattributes` history; it is now explicit filename data rather than a false navigation target. Removed `hal/src/mmu.rs` navigation uses the reviewed May-6 source, not a later replacement module. The original report identities and review instructions are retained.

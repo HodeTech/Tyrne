@@ -97,11 +97,10 @@ pub trait Cpu: Send + Sync {
 /// in place rather than fully re-enabling interrupts.
 ///
 /// Generic over the concrete CPU type `C` to avoid fat-pointer vtable
-/// dispatch on critical-section paths. Dynamic dispatch (`&dyn Cpu`) is also
-/// avoided because coercing a concrete type to a trait object at certain
-/// inlining depths can produce vtable references that alias unrelated data
-/// in `.rodata`; using a concrete type parameter eliminates the coercion site
-/// entirely.
+/// dispatch on critical-section paths. A historical QEMU failure motivated
+/// this choice; the generalized vtable/`.rodata` aliasing explanation is
+/// unverified and retracted by ADR-0008's 2026-10-13 evidence correction.
+/// This is not a claim that trait objects or dynamic dispatch are unsound.
 ///
 /// # Example
 ///

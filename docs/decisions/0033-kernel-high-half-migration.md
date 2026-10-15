@@ -4,6 +4,8 @@
 - **Date:** 2026-05-30
 - **Deciders:** @cemililik
 
+> **Correction pointer applied 2026-10-13.** The shipped `KBASE` is `0xFFFF_FFFF_4008_0000`, not `0xFFFF_FFFF_8008_0000`; a single `KERNEL_HIGH_HALF_OFFSET = 0xFFFF_FFFF_0000_0000` replaces the body's two-offset model. The [2026-05-30 post-Accept correction in Revision notes](#revision-notes) is canonical; the original body remains historical.
+
 ## Context
 
 Milestone B6 ("first userspace hello") must run a real EL0 task: a separate binary in its own address space that makes a `console_write` syscall through the lower-EL `VBAR_EL1 + 0x400` vector and exits via `task_exit`. There is a hard architectural prerequisite that gates the entire milestone: **the kernel must stay reachable from every task's active translation regime.**

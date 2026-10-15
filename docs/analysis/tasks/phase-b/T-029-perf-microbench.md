@@ -1,8 +1,10 @@
 # T-029 — feature-gated micro-bench (EL0 round-trip / IPC / context-switch)
 
 - **Phase:** B (perf instrumentation; follow-up to the [B6 closure perf baseline](../../reviews/performance-optimization-reviews/2026-06-01-B6-closure.md))
-- **Status:** **Phase 1 (context-switch + IPC) — Done** (merged via PR #44). **Phase 2 (EL0 syscall round-trip) — In Review** (PR #45). All acceptance criteria are implemented and pass their gates; AC#4/#6 close on Phase 2 merge. Split into two phases per the maintainer (measure-then-halt build; methodical pace).
+- **Milestone:** B6 follow-on / Phase B closure tail — not gated on a numbered B-milestone
+- **Status:** Done
 - **Created:** 2026-06-01
+- **date_done:** 2026-06-01
 - **Author:** @cemililik (+ Claude Opus 4.8 agent)
 - **Dependencies:** the timer ([ADR-0010](../../../decisions/0010-timer-trait.md) — `Cpu::now_ns` / `CNTVCT_EL0`); the scheduler (`yield_now` / `context_switch`), IPC (`ipc_send`/`ipc_recv`), and the EL0 syscall path ([T-028](T-028-el0-userspace-wireup.md)).
 
@@ -43,3 +45,4 @@ Split into two phases (maintainer decision, 2026-06-01):
 - **2026-06-01 — opened Draft** in the B6-closure commit; the [B6 closure perf review](../../reviews/performance-optimization-reviews/2026-06-01-B6-closure.md) records the aggregate (sub-floor) finding and defers the per-op micro-measurements here so the instrumentation gets a focused, gated, audited pass.
 - **2026-06-01 — Phase 1 implemented** (merged via PR #44, incl. a review-round: `Relaxed` PHASE, WFI park, MD040 fence, cross-run-drift note). `perf-bench` feature + `perf_bench.rs` (ctx-switch + IPC) + measure-then-halt fork. Gates green; byte-identity (feature off) `.text`/`.data`/`.bss` + footprint identical (only `.rodata` panic-loc shift). Audit: UNSAFE-2026-0014 Amendment. Numbers (QEMU-virt/TCG, relative-only): ctx-switch 3 595 ns/switch; IPC send→recv cycle 23 308 ns/cycle.
 - **2026-06-01 — Phase 2 implemented.** EL0 syscall round-trip: a hand-assembled 12-byte EL0 image loops a rejected `svc`; `el0_roundtrip_tick` (feature-gated `syscall_entry` hook) times consecutive entries + force-`Terminate`s after N → hands off to the ctx/IPC benches (one combined measurement build). Un-gated `USER_TASK_STACK`/`USER_TASK_TABLE` (now the EL0 bench task's `SP_EL1` + empty table). Gates green (fmt, clippy ±feature, host tests, kernel build ±feature, feature-off smoke = unchanged demo trace, one feature-on run captured all three numbers + `perf-bench complete`, Miri). Byte-identity (feature off): `.text`/`.data`/`.bss` + footprint identical, 32-byte `.rodata` panic-loc shift. **EL0 syscall round-trip 9 108 ns/syscall** (QEMU-virt/TCG, N = 50 000) — ≈3.6× a context switch.
+- **2026-10-13 — Merge confirmation (T-048).** Verified PR #44, merge `9c61a8ec49ab571b1d9686cb709699bc2fd5879d` (2026-06-01); PR #45, merge `2ff65cb3bb12684092889fdb910d39af3fe2316d` (2026-06-01) against `origin/main` first-parent history and the recorded maintainer completion in [current.md](../../../roadmap/current.md). Reconciled the split Phase 1 Done / Phase 2 In Review status → `Done`; `date_done` is 2026-06-01, from the final merge. Earlier implementation/review entries remain historical; no new test execution or review approval is implied.

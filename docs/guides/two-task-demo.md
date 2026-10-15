@@ -1,102 +1,120 @@
-# Guide: Two-task IPC demo
+# Run and understand the two-task IPC demo
 
-This guide explains what the two-task IPC demo proves, how to run it, and how to interpret its output. It corresponds to Milestone A6, [T-005](../analysis/tasks/phase-a/T-005-two-task-ipc-demo.md).
+Run the current QEMU demo and follow its capability-checked IPC exchange. The two privileged demo tasks originated in Phase A ([T-005](../analysis/tasks/phase-a/T-005-two-task-ipc-demo.md)); today's reference BSP also schedules the EL0 hello program between them.
 
-## What the demo proves
+**Refresh status:** In Review — T-050; both fresh code/security rounds complete, maintainer review pending. **Verified:** 2026-10-13, source `75de2ba90e151bae33e14d2db4a8278837e7775d`; [fresh build/trace evidence](../analysis/reports/2026-10-13-t050-entry-document-verification.md).
 
-Phase A's exit bar states: *"two kernel tasks exchange IPC messages under capability control, scheduled cooperatively, running on QEMU `virt` aarch64."* The demo satisfies this bar end-to-end:
+## Goal
 
-- **Capability discipline.** Each task holds its own `CapabilityTable` with a `SEND | RECV` capability on a shared endpoint. Neither task has a raw pointer to the endpoint object; all access is through the capability system (ADR-0014, ADR-0016).
-- **IPC semantics.** Task A sends a message; Task B receives it and replies. Both directions go through `ipc_send` / `ipc_recv` (ADR-0017), not bare `yield_now`.
-- **Cooperative scheduling.** The scheduler's `ipc_send_and_yield` and `ipc_recv_and_yield` bridge (ADR-0019) parks blocked tasks and resumes them when the matching operation arrives. No timer, no preemption.
-- **Context switch.** Every yield invokes the `#[unsafe(naked)]` aarch64 context-switch assembly (ADR-0020) that saves and restores x19–x28, fp, lr, sp, and d8–d15.
+Build the matching userland/kernel profiles, observe B → A → EL0 hello/exit → B reply → A completion, and understand which capabilities and scheduler transitions the output exercises.
 
-## How to run
+## Prerequisites
 
-```shell
-cargo kernel-build          # build debug image (once)
-tools/run-qemu.sh           # run — terminate with Ctrl-A x
-```
+- A checkout with the pinned Rust toolchain, `aarch64-unknown-none`, `llvm-tools-preview`, and `qemu-system-aarch64`; follow [Run under QEMU](run-under-qemu.md#prerequisites).
+- Run commands from the repository root. The BSP embeds `userland/hello/hello.bin`, so build userland before the BSP and match debug/release profiles.
+- For bounded smoke runs, either `timeout` or Perl, as described in the [QEMU guide](run-under-qemu.md).
 
-To run the release build:
+## Steps
 
-```shell
-tools/run-qemu.sh --release
-```
+1. **Build and run the debug demo.** The first command creates the ignored raw userland image; the second embeds it in the kernel.
 
-To capture the exception log when debugging a silent hang:
+   ```sh
+   tools/build-userland.sh
+   cargo kernel-build
+   cargo kernel-run
+   ```
 
-```shell
-tools/run-qemu.sh --int-log
-# after the run:
-grep "Taking exception" /tmp/qemu_int.log
-```
+   Quit interactive QEMU with **Ctrl-A x** after completion. Task A spins permanently; successful completion does not exit QEMU.
 
-## Expected output
+2. **Run the bounded exception-logged smoke.** This entry point builds userland and the BSP in order, captures output, and checks the debug console/exit/completion contract.
+
+   ```sh
+   tools/smoke.sh --int
+   ```
+
+   `--int` selects QEMU `-d int,unimp`: exception and unimplemented-operation logging, not an instruction trace. The PID-scoped raw-log path is printed at startup.
+
+3. **Verify release separately.** Rebuild both artifacts with the same profile; release rejects debug console syscall number 5, so hello emits no greeting but still exits.
+
+   ```sh
+   tools/build-userland.sh --release
+   cargo kernel-build --release
+   tools/run-qemu.sh --release
+   ```
+
+   Or use the bounded integration entry point:
+
+   ```sh
+   tools/smoke.sh --release --int
+   ```
+
+   When returning to debug, rebuild debug userland before the debug BSP again: both profiles write the same `hello.bin` path.
+
+## Verifying it worked
+
+### Expected output
+
+The debug serial sequence below was checked against the fresh trace. `...` replaces build-dependent counts, addresses, frequency/resolution and elapsed time; exception-log records are omitted here.
 
 ```text
 tyrne: hello from kernel_main
-tyrne: timer ready (62500000 Hz, resolution 16 ns)
+tyrne: mmu activated
+tyrne: high-half active
+tyrne: pmm initialized (... frames available; ... reserved)
+tyrne: address-space-arena ready (... slots used; bootstrap AS root = ...)
+tyrne: timer ready (... Hz, resolution ... ns)
 tyrne: starting cooperative scheduler
 tyrne: task B — waiting for IPC
 tyrne: task A -- sending IPC
+hello from userspace
+tyrne: userspace task exited
 tyrne: task B — received IPC (label=0xaaaa); replying
 tyrne: task A — received reply (label=0xbbbb); done
 tyrne: all tasks complete
-tyrne: boot-to-end elapsed = <NNN> ns
+tyrne: boot-to-end elapsed = ... ns
 ```
 
-The frequency in `timer ready` (`62500000 Hz`) and the elapsed-time figure on the last line are QEMU-default values; on real hardware the frequency varies (see [ADR-0010 §References](../decisions/0010-timer-trait.md)) and the elapsed time depends on the host's QEMU performance — single-digit-millisecond order is typical on modern laptops. After printing "all tasks complete" and the boot-to-end timing line, Task A enters `loop { core::hint::spin_loop() }`. The cooperative scheduler does not preempt; Task A never yields out of this loop, so the CPU stays parked there indefinitely and QEMU continues running but produces no further serial output. Idle is registered separately via [`register_idle`](../../kernel/src/sched/mod.rs) per [ADR-0026](../decisions/0026-idle-dispatch-fallback.md) and is reachable in principle through the dispatcher's `ready.dequeue().or(s.idle)` fallback — but in this demo the application tasks never yield from their tails, so idle is structurally unreached and the WFI path stays cold. Terminate with **Ctrl-A x** (QEMU monitor quit).
+Release has the same ordering without `hello from userspace`. The smoke gate requires greeting in debug, forbids it in release, requires exit/completion, and rejects its listed panic/CPU-fault classes. Separately inspecting both fresh raw logs found exactly two EL0 SVCs per profile; the smoke script does not count SVCs.
 
-## Execution trace
+### Execution trace
 
-The scheduler adds **Task B first**, then Task A, then registers idle in a separate fallback slot per ADR-0026, so B runs first; idle is consulted only when the ready queue is empty:
+The FIFO starts with **[B, A, user]**; idle is registered separately as a fallback ([ADR-0026](../decisions/0026-idle-dispatch-fallback.md)).
 
-1. **Task B** starts, prints "waiting for IPC", calls `ipc_recv_and_yield`. No sender is ready → endpoint transitions to `RecvWaiting` → B is marked `Blocked`, B's context is saved, Task A is dequeued and restored.
+1. **B blocks on receive.** B prints waiting and calls `ipc_recv_and_yield`; the endpoint becomes `RecvWaiting`. B is blocked and A is selected, leaving user ready.
+2. **A delivers and yields.** A's send stages the message as `RecvComplete`, appends unblocked B behind user, then yields A to the queue tail. User is selected from [user, B, A].
+3. **The EL0 task runs and exits.** Its console call greets only in debug. `task_exit` abandons its syscall frame and dispatches B; the exiting task is not re-enqueued.
+4. **B collects and replies.** Receive collects the staged message and returns the endpoint to `Idle`. B sends its reply while A is ready rather than blocked: the endpoint becomes `SendPending`, and the send returns `Enqueued`. B explicitly yields so A can collect it.
+5. **A completes and spins.** A resumes, collects the reply, prints reply/completion/timing, then spins without yielding. B's post-yield tail never resumes; idle is not reached in this demo.
 
-2. **Task A** starts, prints "sending IPC", calls `ipc_send_and_yield`. A sender finds a registered receiver → endpoint advances to `RecvComplete` (the message is staged for B) → `unblock_receiver_on` re-enqueues B → `yield_now` re-enqueues A, dequeues B, context-switches to B.
+### Capability setup and scope
 
-3. **Task B** resumes inside `ipc_recv_and_yield`. A second `ipc_recv` call collects the staged message (`RecvComplete → Idle`). B prints "received IPC; replying", constructs a reply message, calls `ipc_send_and_yield`. A is not yet blocked on recv → endpoint transitions to `SendPending` → outcome is `Enqueued` (no auto-yield). B calls `yield_now` explicitly to give A the CPU, then prints "done; spinning".
+The privileged BSP creates one endpoint and two separate capability tables, each holding a root `SEND | RECV` capability to that endpoint. The scheduler bridges check the calling table's `SEND` or `RECV` right, then resolve the endpoint through its arena. The demo does not transfer a capability with either message.
 
-4. **Task A** resumes from `ipc_send_and_yield`, calls `ipc_recv_and_yield`. The endpoint is in `SendPending` → `ipc_recv` returns `Received` immediately (no blocking needed). A prints "received reply; done" and "all tasks complete", then enters the spin loop.
+These EL1 task bodies pass BSP raw pointers through the audited [ADR-0021](../decisions/0021-raw-pointer-scheduler-ipc-bridge.md) bridge; they do not retain mutable references across a context switch. The old UNSAFE-2026-0012 aliasing approach was removed; current bridge operations are covered by [UNSAFE-2026-0014](../audits/unsafe-log.md). Capability checks in privileged demo code demonstrate the API path, not isolation from malicious EL1 code. The separate [EL0 guide](first-userspace.md) explains the user/kernel boundary.
 
-## What each line tells you
+The elapsed line measures from the `kernel_main_high` snapshot after MMU activation/high-half migration to Task A's completion tail. It excludes earlier boot work and is host/QEMU dependent; it is not an IPC latency benchmark. The timer/GIC infrastructure exists, but this demo arms no deadline. Its banner and startup message do not prove timer-IRQ delivery, preemption or idle WFI execution.
 
-| Line | What it confirms |
-|------|-----------------|
-| `hello from kernel_main` | Boot succeeded; PL011 console is operational. |
-| `timer ready (62500000 Hz, resolution 16 ns)` | T-009: `Timer::now_ns` reads `CNTVCT_EL0` cleanly; cached frequency / resolution computation went through. |
-| `starting cooperative scheduler` | Capability tables, endpoint arena, IPC queues, scheduler, GIC v2, EL1 vector table, and DAIF unmask all initialised. |
-| `task B — waiting for IPC` | Task B's entry function ran; `ipc_recv_and_yield` was invoked. |
-| `task A -- sending IPC` | Context switch from B to A worked; A's stack is intact. |
-| `task B — received IPC (label=0xaaaa); replying` | Context switch back to B worked; B received A's message with correct label. |
-| `task A — received reply (label=0xbbbb); done` | Context switch from B to A worked a second time; IPC reply delivered with correct label. |
-| `all tasks complete` | Phase A exit bar met. |
-| `boot-to-end elapsed = <NNN> ns` | T-009 measurement scaffold: the difference between a `now_ns` snapshot taken in `kernel_entry` and a `now_ns` call after Task A's tail. Order-of-magnitude only; not a benchmark. |
+## Troubleshooting
 
-## Capability setup
+- **Missing hello.bin:** build userland first, with the same profile as the BSP. A plain runner does not build either artifact.
+- **No greeting in release:** expected; the debug console call returns `BadSyscallNumber`. Exit/completion must still appear.
+- **Silent hang:** use the interactive runner's exception log, then inspect the exact path it prints after quitting QEMU:
 
-`kernel_entry` creates one `Endpoint` in the global `EndpointArena` (`EP_ARENA`), then builds two separate `CapabilityTable`s (`TABLE_A`, `TABLE_B`) and inserts one root capability in each with `CapRights::SEND | CapRights::RECV`. The rights needed per operation are:
+  ```sh
+  tools/run-qemu.sh --int-log
+  grep 'Taking exception' '<path-printed-by-run-qemu>'
+  ```
 
-| Operation | Right checked |
-|-----------|--------------|
-| `ipc_send_and_yield` | `CapRights::SEND` |
-| `ipc_recv_and_yield` | `CapRights::RECV` |
+  This runner uses `-d int`; smoke's `--int` uses `-d int,unimp`. Consult the [BSP boot checklist](../standards/bsp-boot-checklist.md) for exception/stack/FP diagnostics.
+- **A never receives the reply after a modification:** preserve B's explicit post-send yield in this cooperative demo; its send does not block automatically.
 
-No capability escapes its owner's table. The tasks pass `&mut EP_ARENA` into the scheduler's IPC bridge — `ipc_send_and_yield` / `ipc_recv_and_yield` — so the scheduler can resolve the endpoint object, but the tasks themselves never dereference endpoint storage directly. Every authority check runs against the calling task's own `CapabilityTable`; the `EndpointArena` is only read through the scheduler path, never from a task body.
-
-## Known limitations (Phase A)
-
-- **No preemption.** Task B must call `yield_now` after sending the reply; without it, A never runs again.
-- **One endpoint, depth-1 queue.** A second concurrent sender would hit `IpcError::QueueFull`.
-- **Symmetric `SEND | RECV` on one endpoint is a demo convenience, not a recommended topology.** Both tasks are given the same rights on the same endpoint, so correct delivery depends entirely on scheduler order (Task B is added first, reaches `RecvWaiting` before A sends). A real server cannot distinguish senders without badges; [ADR-0018](../decisions/0018-badge-scheme-and-reply-recv-deferral.md) deferred the badge scheme and server-style IPC should wait on it. Flagged by the [security review of Phase A exit](../analysis/reviews/security-reviews/2026-04-21-tyrne-to-phase-a.md) §8.
-- **`&mut` aliasing.** The BSP uses `UnsafeCell` statics for shared kernel state. The aliasing across context switches is documented and justified in [UNSAFE-2026-0012](../audits/unsafe-log.md). It will be resolved by a raw-pointer API refactor in a future ADR.
-- **No timer.** IPC latency is not measured in Phase A; see the [baseline performance review](../analysis/reviews/performance-optimization-reviews/2026-04-21-A6-baseline.md).
+The symmetric endpoint rights and one-message pending capacity are demo constraints. The deferred [badge/reply-receive design](../decisions/0018-badge-scheme-and-reply-recv-deferral.md) is not implemented; server protocols can instead use separate endpoints or explicit protocol identity where appropriate. This guide does not prescribe a general server-security design.
 
 ## References
 
-- [ADR-0017: IPC primitive set](../decisions/0017-ipc-primitive-set.md)
-- [ADR-0019: Scheduler shape](../decisions/0019-scheduler-shape.md)
-- [ADR-0020: Cpu trait v2 / context-switch extension](../decisions/0020-cpu-trait-v2-context-switch.md)
-- [T-005: Two-task IPC demo](../analysis/tasks/phase-a/T-005-two-task-ipc-demo.md)
-- [BSP boot checklist](../standards/bsp-boot-checklist.md)
+- [ADR-0017 — IPC primitive set](../decisions/0017-ipc-primitive-set.md)
+- [ADR-0019 — Scheduler shape](../decisions/0019-scheduler-shape.md)
+- [ADR-0020 — Context-switch contract](../decisions/0020-cpu-trait-v2-context-switch.md)
+- [Scheduler/IPC architecture](../architecture/scheduler.md) and [IPC architecture](../architecture/ipc.md)
+- [First userspace task](first-userspace.md)
+- [Fresh T-050 verification](../analysis/reports/2026-10-13-t050-entry-document-verification.md)

@@ -2,18 +2,20 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** Ready
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
 - **Informs:** [T-056](T-056-docs-consistency-automation.md), [T-074](T-074-phase-c-readiness-sweep.md)
-- **ADRs required:** none
+- **ADRs required:** [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md) (Accepted 2026-10-12; reviewed execution and corpus policy)
 
 ---
 
+> **Approved contract reconciliation (2026-10-12).** The maintainer approved the [preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and ADR package. The criteria below are the executable contract; dated opening observations remain historical. This preparation records no task delivery. Each implementation step includes verification and two fresh independent review rounds under [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); new task states stop at `In Review`.
+
 ## User story
 
-As the author of a future ADR, I want the phase ledgers to assign each planned ADR a number that is unique and does not collide with a written ADR, so that "which number do I use" never needs a cascade-renumbering pass.
+As the author of a future ADR, I want the phase ledgers to assign each planned ADR a stable purpose identity and allocate its number only when filed, so that "which number do I use" never needs a cascade-renumbering pass.
 
 ## Context
 
@@ -23,13 +25,12 @@ Current ledger inventory (verify before editing): Phase C 5 rows (0040–0044), 
 
 ## Acceptance criteria
 
-- [ ] **Decision recorded** (see Open decisions) on numeric re-sequencing vs slug-based placeholders, in this task's review history.
-- [ ] After the change no two ledger rows across all phase files carry the same number (under the slug workflow: no ledger row carries a tentative number and every slug appears once), and no ledger row carries a number that belongs to a written ADR (`ls docs/decisions/` vs `grep -n '^| ADR-' docs/roadmap/phases/*.md`). With numeric re-sequencing the target mapping is: C 0041–0045, D 0046–0050, E 0051–0056, F 0057–0061, G 0062–0066, H 0067–0069, I 0070–0072 (adjust if the inventory above has changed).
-- [ ] Every prose reference to a planned ADR number inside the phase files is updated consistently with its ledger row — including cross-phase references, which must be resolved one by one because the same string means different ADRs in different files (for example `phase-d.md` quoting Phase C's "ADR-0043, roadmap C4").
-- [ ] Each ledger carries a dated note: under the numeric workflow a downstream-renumbering note analogous to the one already in `phase-e.md` (§"Downstream-renumbering note"), including `phase-d.md`; under the slug workflow a note that tentative numbers were removed. The Phase C note added at kickoff is updated to match.
-- [ ] `phase-b2.md`'s two mentions and `docs/decisions/README.md`'s *Numbering gaps* note are consistent with the new ledgers.
-- [ ] Historical documents (reviews, dated banners in `current.md`) keep the numbers they quoted; the note in the ledger states that older documents use the old tentative numbers.
-- [ ] A reproducible duplicate check exists and is recorded (a `grep`/`awk` one-liner in this task or, if [T-056](T-056-docs-consistency-automation.md) has landed, its check) and reports no duplicates (slug workflow: no duplicate slugs and no remaining tentative numbers).
+- [x] Record the maintainer-approved ADR-0043 stable-identity decision; do not execute another numeric cascade.
+- [x] Migrate all 32 numbered C–I ledger definitions to unique milestone-plus-purpose identifiers (for example ADR-C1-secondary-core-start and the distinct ADR-F2-i2c-service / ADR-F2-spi-service). No live ledger definition retains a tentative numeric allocation.
+- [x] Resolve every live prose/cross-phase reference by meaning to the unique definition and link its ledger location; never perform a global numeric replacement. Real filed references, especially ADR-0040, remain numeric.
+- [x] Add dated per-ledger notes explaining removal of tentative numbers, actual allocation at filing and historical aliases. Preserve reserved 0034, explicitly unallocated object-lifecycle/G1.5/J decisions and dated old numeric evidence without treating aliases as current allocations.
+- [x] Align phase-b2.md and the ADR index Numbering gaps note with the workflow. Verify the already-filed ADR-0040 Acceptance-time rider covers both numbering and the limited Track B.2-2 execution extension; do not rewrite its original body.
+- [x] Record a reproducible source-bound check showing exactly 32 unique definitions, resolved live references and no tentative numeric ledger definitions. Count repeated references separately from definitions.
 
 ## Out of scope
 
@@ -40,23 +41,24 @@ Current ledger inventory (verify before editing): Phase C 5 rows (0040–0044), 
 
 ## Approach
 
-Decide first (see Open decisions), then follow the matching workflow.
-
-**Numeric workflow** (if numeric placeholders are kept). Process one phase file at a time with its own old→new mapping; do **not** run one global search-and-replace, because Phase C's and Phase D's old numbers are the same strings. After each file, grep for the old numbers inside that file to catch leftovers, then resolve cross-phase references by reading the sentence. Update the ledger rows' *Note* column with "renumbered 2026-MM-DD, was ADR-00NN" in the existing style so history stays traceable. Finish with the duplicate check across all phase files.
-
-**Slug workflow** (if stable slugs are preferred). There is no old→new numeric mapping and no renumbering note. Replace each tentative number in a ledger row with a stable slug identifier (for example `ADR-C1 secondary-core-start`), use the same identifier in every prose reference, and add one dated note per ledger saying that tentative numbers were removed and that the real number is assigned when the ADR is written. Phase files can be done in any order because the identifiers are unique by construction. Finish by checking that each identifier appears in exactly one ledger row, that no tentative `ADR-004x…006x` number remains in any phase file, and that cross-phase references name the identifier rather than a number.
+Use Accepted ADR-0043's stable milestone-plus-purpose workflow.
+Read every ledger row and cross-reference by meaning, including the two F2 decisions and ambiguous C/D old numbers.
+Replace only live planned definitions/references, add navigable ledger anchors and retain dated historical aliases, filed numeric citations and unallocated planning.
+Verify all 32 definitions and their references, the ADR-0040 rider and the numbering note; record the reproducible output.
 
 ## Definition of done
 
-- [ ] Every relative link in each touched file resolves.
-- [ ] `git diff --stat` is limited to `docs/roadmap/phases/*.md`, `docs/decisions/README.md`, this task file and `docs/roadmap/current.md`.
-- [ ] The duplicate check output is pasted into the review history.
-- [ ] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `roadmap`).
-- [ ] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+- [x] Every relative link in each touched file resolves.
+- [x] `git diff --stat` is limited to `docs/roadmap/phases/*.md`, `docs/decisions/README.md`, this task file and `docs/roadmap/current.md`.
+- [x] The duplicate check output is pasted into the review history.
+- [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) (scope `roadmap`).
+- [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
+
+**Step-scoped evidence allowance.** In addition to the named content files, the step may update this task, `docs/roadmap/current.md`, the B.2 task/track indexes, governing decision references, source-bound reports/raw evidence, canonical review artifacts and their indexes where necessary. Verify this allowance against the step commit range, not the full stacked branch. Record a demonstrated existing-scope reason for any further file.
 
 ## Design notes
 
-- **Open decisions:** (a) re-sequence numerically once more (simple; stays correct only until the next real ADR is written), or (b) replace tentative numbers in the ledgers with stable slugs (for example `ADR-C1 secondary-core-start`) and assign the number only when the ADR is written. Option (b) removes the recurring cascade permanently; it costs one larger edit now. The recommended choice is (b); the criteria above are written to hold for either.
+- **Resolved 2026-10-12:** ADR-0043 selects stable purpose identities; the former numeric alternative is not executable. The opening numeric inventory is retained as dated provenance.
 - The ledger convention "Numbers are tentative" is already stated in every ledger; the problem is that readers (and review documents) still quote the numbers as if they were reserved.
 
 ## Review history
@@ -64,3 +66,10 @@ Decide first (see Open decisions), then follow the matching workflow.
 | Date | Reviewer | Note |
 |------|----------|------|
 | 2026-10-11 | Claude (AI agent) | opened under ADR-0040; status Ready |
+| 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: either numeric cascade or slugs, including a no-old-number-string check. Approved replacement: all 32 semantic purpose definitions/references, separate historical aliases/filed numbers/unallocated decisions and verification of the already-filed Acceptance-time rider. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
+| 2026-10-13 | Codex (AI agent), implementation author | Step 9 kickoff after Step 8 both-round canonical boundary at `f8c9b7f34a28d0974cbc9e03f1ef8355dc2df4f3`. [Preflight](../../reports/2026-10-13-t054-identity-preflight.md) records full semantic planning review, all 32 source definitions, explicit reference resolution and the additional write-adr procedural reason before mutation. Accepted ADR-0043 selects stable purposes, no numeric cascade/new ADR/phase opening. Status In Progress; criteria unchecked pending implementation and both fresh paired rounds. |
+| 2026-10-13 | Codex (AI agent), implementation author | [Implementation/evidence](../../reports/2026-10-13-t054-planned-adr-identity-migration.md): duplicate/source comparison `32 unique definitions; C5 D5 E6 F5 G5 H3 I3; 71 semantic reference source lines; 74 linked occurrences; 42 filed ADRs and 42 index record rows unchanged; errors 0`. All original purposes/milestones/complete notes preserved; numeric historical snapshots/filed citations remain distinct. In Progress/unchecked until both fresh paired review rounds and canonical publication. |
+| 2026-10-13 | Codex (AI agent), confirmed R1 correction | Primary R1-C01 and security T054-R1-S01 independently identify one unique Low: Phase I's new workflow note referred to nonexistent local acceptance criteria. Full-source validation confirmed it; removed only that fragment and retained no-status/no-authorization wording, with no new milestone criteria. [Separate corrected-source check](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t054-verification-evidence "Archived member: docs/analysis/reports/2026-10-13-t054-verification-evidence/r1-correction-verification.json") preserves original snapshots; 32/71/74/42/42 and zero errors. In Progress; actual peer cross-reading/fix verification and fresh R2 pending. |
+| 2026-10-13 | Codex coordinator; four distinct independent reviewers | [Both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t054-planned-adr-identities.md) Approve cumulative `f8c9b7f..a93926b`. One unique R1 Low (R1-C01 / T054-R1-S01) fixed in a93926b and independently verified; zero new R2 or unresolved findings. Actual immutable peer initials and R1 finals fully cross-read; full final reports retained, source/capture hashes and separate publication checks recorded. All 11 criteria checked; In Review, no date_done or maintainer approval. T-047 starts next. |
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

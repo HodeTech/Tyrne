@@ -15,7 +15,7 @@ Every change to `main`. During the current solo phase, the maintainer reviews th
 ## Author's responsibilities before requesting review
 
 1. **Self-review first.** Read the whole diff as if someone else wrote it. You will find at least one thing worth changing.
-2. **Run the local checks.** `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`, QEMU smoke if applicable.
+2. **Run the local checks.** `cargo fmt --all`, `cargo host-clippy` and `cargo host-test`. For bare-metal changes, build matching userland before kernel build/clippy and QEMU smoke; follow the explicit target/profile commands in [infrastructure.md](infrastructure.md). The BSP has no host test target, so a blanket workspace command is not the local recipe.
 3. **Write a good PR description.** Explain the *why*, the approach, the alternatives considered, and anything unusual.
 4. **Reference affected ADRs.** If the change implements or affects an ADR, link it. If it would require an ADR but does not have one, write the ADR first.
 5. **Flag risk.** If the change touches security-sensitive subsystems, an `unsafe` region, a capability contract, or the boot path, say so in the description and request security review.
@@ -125,8 +125,9 @@ This is not a substitute for a second set of eyes, but it is a substantial impro
 
 - GitHub PR reviews.
 - `gh pr view`, `gh pr review` — CLI for workflow.
-- CI (planned) enforces format, clippy, tests, coverage delta.
-- Branch protection (planned) blocks merges without review on `main`.
+- **Required:** live CI enforces format, target-aware host/kernel/userland Clippy, debug/release host tests, kernel builds, stable-host checks, Miri, native ARM workspace checks and debug/release QEMU smoke with rejection probes. See [infrastructure.md](infrastructure.md#required-gates-enforced-by-the-current-branch-protection) for exact coverage.
+- **Advisory:** coverage is informational and non-blocking; CI does not enforce a coverage delta threshold.
+- **Required:** versioned classic `main` protection requires six app-bound checks, strict checking, linear history and conversation resolution; force pushes/deletion are disabled. The current solo-phase approving-review count is 0 and admin enforcement is false, so it does not mechanically require a positive PR approval. The maintainer's cold-review obligation above remains the review policy; see [infrastructure.md](infrastructure.md#branch-protection-and-merge-rules).
 
 ## References
 

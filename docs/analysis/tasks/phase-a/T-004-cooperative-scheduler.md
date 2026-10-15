@@ -22,7 +22,7 @@ T-003 gave us `ipc_send` / `ipc_recv` / `ipc_notify` with correct waiter-state m
 The scheduler itself is deliberately simple: cooperative yield (no preemption, no timer tick in A5). Two design decisions drive the shape:
 
 - **ADR-0019** settles the scheduler's data structure (queue type, yield semantics, blocked-task representation).
-- **ADR-0020** introduces a separate [`tyrne-hal::ContextSwitch`](../../../hal/src/context_switch.rs) trait with `unsafe context_switch` / `init_context` and a `TaskContext` associated type, so the context-switch assembly lives in the BSP rather than the kernel crate.
+- **ADR-0020** introduces a separate [`tyrne-hal::ContextSwitch`](../../../../hal/src/context_switch.rs) trait with `unsafe context_switch` / `init_context` and a `TaskContext` associated type, so the context-switch assembly lives in the BSP rather than the kernel crate.
 
 The actual assembly for saving and restoring aarch64 register state (callee-saved registers, SP, LR/PC) lives in `bsp-qemu-virt` behind a safe Rust wrapper with a documented `# Safety` contract. The kernel crate calls the HAL trait and stays `unsafe`-free.
 

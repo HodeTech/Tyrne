@@ -49,8 +49,12 @@ pub trait Timer: Send + Sync {
 
     /// Return the timer's resolution in nanoseconds.
     ///
-    /// Deadlines round to the nearest multiple of this value; finer
-    /// precision at the call site is silently lost.
+    /// This describes resolution, not a quantum for nearest-multiple
+    /// deadline rounding. The shared [`resolution_ns_for_freq`] helper
+    /// reports a nearest-integer tick period (at least 1 ns), while
+    /// [`ns_to_ticks`] rounds absolute deadlines up to ticks and saturates
+    /// at `u64::MAX`. The at-or-after conversion guarantee applies only
+    /// when the requested deadline's tick count is representable.
     fn resolution_ns(&self) -> u64;
 }
 
@@ -116,12 +120,12 @@ pub const fn ticks_to_ns(count: u64, frequency_hz: u64) -> u64 {
 
 /// Round-to-nearest resolution in nanoseconds for the given counter frequency.
 ///
-/// Per ADR-0010 §Decision outcome, `resolution_ns` is the *minimum
-/// meaningful deadline granularity*. Round-to-nearest avoids understating
-/// the hardware period (which would mislead a caller into thinking the
-/// timer is finer-grained than it actually is). For a 62.5 MHz counter
-/// (QEMU virt) this gives 16 ns exactly; for a 19.2 MHz counter
-/// (52.0833… ns true period) it gives 52 ns.
+/// This is a whole-nanosecond approximation of the hardware tick period;
+/// nearest-integer reporting can round either up or down. For a 62.5 MHz
+/// counter (QEMU virt) it gives 16 ns exactly; for a 19.2 MHz counter
+/// (52.0833… ns true period) it gives 52 ns. As clarified in ADR-0010's
+/// revision notes, this reported value is not a deadline-rounding quantum:
+/// [`ns_to_ticks`] separately rounds absolute deadlines up to ticks.
 ///
 /// # Floor of 1 ns
 ///
@@ -131,11 +135,9 @@ pub const fn ticks_to_ns(count: u64, frequency_hz: u64) -> u64 {
 /// divide-by-zero in any code that uses the resolution as a divisor.
 /// The implementation therefore clamps the result to at least `1` ns,
 /// which is the smallest representable resolution at nanosecond unit.
-/// Sub-nanosecond precision is silently lost — consistent with the
-/// trait contract's "finer precision at the call site is silently
-/// lost" wording. No timer Tyrne currently targets runs above 1 GHz,
-/// but the clamp future-proofs against high-rate counters (e.g. x86
-/// invariant TSCs at 3+ GHz).
+/// The reported integer cannot express a sub-nanosecond period. This
+/// representational limit does not change the hardware frequency or the
+/// separate deadline conversion; it applies to this resolution report.
 ///
 /// # Panics
 ///

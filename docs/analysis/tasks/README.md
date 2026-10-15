@@ -19,7 +19,9 @@ tasks/
 
 Task IDs (`T-NNN`) are sequential **across the whole project**, not restarted per phase. The phase folder structure is for reading convenience, not for namespacing IDs.
 
-**Phase B.2 Track B.2-1 (2026-10-12):** The [approved eight-step sequence](phase-b2/README.md) is implemented on `development`, including optional T-036 and prerequisite T-037. Each step has two fresh independent rounds; verified findings are fixed and committed. All eight tasks remain In Review for final maintainer review. PR-specific, first-merged-main and default-branch dispatch evidence are recorded only when they exist; other Phase B.2 tasks retain their own scope/status.
+**Phase B.2 Track B.2-1 (2026-10-12):** The [approved eight-step sequence](phase-b2/README.md) is merged in [PR #48](https://github.com/HodeTech/Tyrne/pull/48), including optional T-036 and prerequisite T-037. T-030–T-037 are Done with date_done 2026-10-12 and explicit maintainer authorization. Each step has two fresh rounds and verified corrections; first-main CI and default-branch performance dispatch passed. The [post-merge retrospective](../reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) records completion and remaining scope. Phase B.2 stays Active with 38 tasks remaining; HIGH T-038 is the next Ready candidate, not started.
+
+**Phase B.2 Track B.2-2 (2026-10-15):** All twelve selected tasks T-045–T-056 are implemented/In Review. The [integrated record](../reports/2026-10-15-phase-b2-track2-completion-readiness.md) traces 58 opening findings and 156 criteria; one maintainer SECURITY wording criterion remains pending. Both integrated review rounds are complete; final publication-tip CI is recorded at handoff in explicitly authorized combined [PR #49](https://github.com/HodeTech/Tyrne/pull/49). The phase has 8 Done/12 In Review/26 unimplemented tasks; next implementation is HIGH T-038, Ready and unstarted. Only maintainer-approved review/merge permits Done.
 
 ## Status vocabulary
 
@@ -41,13 +43,13 @@ Status transitions are author-driven. Only the maintainer authorizes `Done`.
 2. **Move to `In Progress`** when work begins. Update [`../../roadmap/current.md`](../../roadmap/current.md) to point at the task.
 3. **Work the acceptance criteria.** Any ADRs listed as dependencies are written (via `write-adr`) before implementation code lands.
 4. **Move to `In Review`** when all criteria appear satisfied. The maintainer's review confirms.
-5. **Move to `Done`** after review. Update `current.md`; if it was the last task of the milestone, trigger a business review via [`conduct-review`](../../../.agents/skills/conduct-review/SKILL.md).
+5. **Move to `Done`** after maintainer-authorized review/merge. Insert the optional `- **date_done:** YYYY-MM-DD` immediately after `Created`, using the real ISO completion date. Omit it while open; do not fabricate historical dates. Update `current.md`; if it was the last task of the milestone, trigger a business review via [`conduct-review`](../../../.agents/skills/conduct-review/SKILL.md).
 
 ## Conventions
 
 - Filename: `T-NNN-<kebab-slug>.md`, where `<slug>` is an imperative-verb phrase (`capability-table-foundation`, `el-drop-to-el1`).
 - Exactly one task per file.
-- Frontmatter fields are always present — no placeholder values left over from the template.
+- Required frontmatter fields are always present — no placeholder values left over from the template. The optional `date_done` follows the lifecycle rule above.
 - Acceptance criteria are concrete and testable (3–8 items; at most 10, or split the task).
 - If a task has open design decisions, they become ADR acceptance criteria on the task.
 

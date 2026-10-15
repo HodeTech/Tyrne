@@ -106,9 +106,13 @@ The [new exact-byte hosted snapshot](perf-baseline-2026-10-12-t035-pr48-p99-foll
 
 This completion/publication record changes no runtime, protection policy or Accepted ADR. Final publication-tip CI is verified separately in PR48 rather than attributed to the earlier reviewed/measured source.
 
-## Remaining review and merge boundary
+## Remaining review and merge boundary (pre-merge snapshot)
 
 All eight requested tasks remain **In Review** for the maintainer in PR48; none is promoted to Done by this document.
 Existing **HIGH T-038** remains open and excluded; smoke, lint and Miri successes do not certify the x2 assembly contract.
 First merged-main runs and the default-branch performance dispatch require the maintainer's merge and remain explicitly pending in [T-035](../tasks/phase-b2/T-035-ci-hygiene-tail.md).
 They are merge-dependent evidence, not deferred implementation of this follow-up.
+
+## Post-merge completion — 2026-10-12
+
+The maintainer merged [PR #48](https://github.com/HodeTech/Tyrne/pull/48) at `c16997e003fbd1726d1205734380394781c52002` and explicitly authorized T-030–T-037 as Done. This supersedes the pre-merge task and pending-evidence statements above without relabeling earlier reviewed/measured source. First-main [CI 38217531542](https://github.com/HodeTech/Tyrne/actions/runs/38217531542) passes all seven jobs; default-branch [performance dispatch 38217799773](https://github.com/HodeTech/Tyrne/actions/runs/38217799773) passes with 20 valid/0 failed samples. The [exact-byte main snapshot](perf-baseline-2026-10-12-t035-main-dispatch-check.md) and [post-merge retrospective](../reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) preserve evidence and the remaining 38-task inventory. The read-only full live-policy check still matches the committed definition. HIGH T-038 remains open in its owning track and is the next Ready candidate; Phase B.2 remains Active and gates C/D.

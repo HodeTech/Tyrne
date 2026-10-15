@@ -1,336 +1,142 @@
 # Hardware Abstraction Layer (HAL) design
 
-The HAL is the trait surface that separates the kernel core from any specific CPU, board, or peripheral. The kernel depends only on the traits; a per-board **Board Support Package (BSP)** implements the traits concretely. Drivers are **not** part of the HAL — they live in userspace as ordinary tasks with capability-granted access to hardware (see [overview.md](overview.md)). This document describes what the HAL covers, what it deliberately does not, the initial trait surface, how BSPs plug in, and the two BSPs that bootstrap the project: `bsp-qemu-virt` and `bsp-pi4`.
+The HAL separates portable kernel mechanisms from privileged CPU and board operations. The kernel calls Rust traits; the QEMU virt Board Support Package (BSP) implements them. This chapter describes the current interfaces, the live EL0 entry mechanism and the limits a new BSP must respect. Userspace drivers are the architectural direction; today's boot console, interrupt controller and timer implementations run in the privileged BSP.
+
+> **Last verified against:** 2026-10-13; source da18ed5c2a2d8b3d61f82337a9da021d05d73451; owner [T-046](../analysis/tasks/phase-b2/T-046-docs-subsystem-chapters-refresh.md).
 
 ## Context
 
-The HAL exists because of three commitments:
+[ADR-0001](../decisions/0001-microkernel-architecture.md), [ADR-0004](../decisions/0004-target-platforms.md) and architectural [principles P3/P6](../standards/architectural-principles.md) motivate a narrow privileged surface and per-board builds. A [capability](../glossary.md) grants authority; a HAL trait abstracts the operation that implements a mechanism. A trait call alone is not an untrusted caller's authorization check.
 
-- [ADR-0004: Target hardware platforms and support tiers](../decisions/0004-target-platforms.md) — Tyrne targets multiple aarch64 platforms (QEMU, Pi 4, Pi 5, Jetson CPU, eventually RISC-V). Per-target code must be isolated behind a stable interface.
-- [Architectural principle P6](../standards/architectural-principles.md#p6--hal-separation) — kernel code does not directly reference any specific CPU, board, or peripheral. Hardware details live behind HAL traits and types.
-- [Architectural principle P3](../standards/architectural-principles.md#p3--drivers-filesystems-and-network-stacks-live-in-userspace) — drivers run as userspace tasks, not in the kernel. The HAL is therefore *not* a driver framework; it is strictly what the kernel itself needs.
-
-The HAL is narrow for the same reason the kernel is small: every line of HAL code runs in privileged mode, is part of the TCB, and shows up in `unsafe` audits. A wide HAL would undo the TCB-minimization work that [ADR-0001](../decisions/0001-microkernel-architecture.md) is founded on.
+Only `bsp-qemu-virt` exists today. Pi 4 and later platforms remain roadmap work; an interface implemented on QEMU is not evidence of hardware correctness on those boards.
 
 ## Design
 
 ### What the HAL is, and is not
 
-The HAL **is**:
+The HAL contains types and traits for CPU state, cooperative context switching, translation, IRQ control, time and console output. Pure descriptor/timer arithmetic also lives here so host tests can exercise it. Privileged register writes, MMIO and assembly live in BSP implementations, under the [unsafe policy](../standards/unsafe-policy.md).
 
-- A set of Rust traits (plus a few associated types and constants) that the kernel core calls to perform architecture- and board-specific operations.
-- The boundary the kernel uses to abstract CPU privileged state, the MMU, the interrupt controller, the monotonic timer, and a minimal boot-time console.
-- Where the majority of the kernel's `unsafe` code lives (MMIO, barrier instructions, translation-table manipulation, inline assembly). Each `unsafe` region is audited per [unsafe-policy.md](../standards/unsafe-policy.md).
-
-The HAL **is not**:
-
-- A driver layer. Drivers for UART beyond boot, block devices, network interfaces, USB, GPIO, sensors, and every other peripheral live in userspace tasks with capability-granted access.
-- A device-tree parser. Device-tree handling, where needed (e.g. Pi 4), is performed by a separate crate and fed into boot-info; the HAL traits see only typed memory ranges and IRQ numbers.
-- A portable POSIX-style device abstraction. Tyrne does not promise a "common driver API"; drivers talk to services above them in their own protocol.
-- A runtime that the kernel queries to discover hardware. The BSP is selected at build time and the kernel knows what it got.
+It is not a general peripheral framework, device-tree parser, service discovery mechanism or POSIX API. Userspace block/network/device services are planned. No portable `BootInfo` handoff, hardware-discovery service or userspace IRQ delivery API exists in the current tree.
 
 ### Where the HAL lives in the layering
 
+The BSP binary composes portable kernel mechanisms with concrete implementations. Host tests substitute fakes at the trait boundary.
+
 ```mermaid
 flowchart TB
-    subgraph Kernel["Kernel core (architecture-agnostic)"]
-        Core["caps · sched · IPC · mm · irq dispatch"]
-    end
-    subgraph HALTraits["HAL traits"]
-        TCpu["Cpu"]
-        TMmu["Mmu"]
-        TIrq["IrqController"]
-        TTimer["Timer"]
-        TConsole["Console"]
-        TIommu["Iommu (planned — stub)"]
-    end
-    subgraph BSP["BSP (per-board, selected at build time)"]
-        BCpu["aarch64 Cpu + ContextSwitch impl"]
-        BMmu["VMSAv8 Mmu impl"]
-        BIrq["GICv2 / GIC-400 impl"]
-        BTimer["ARM generic timer impl"]
-        BConsole["PL011 / mini-UART impl"]
-        BIommu["Iommu impl (planned — none yet)"]
-    end
-    subgraph HW["Hardware"]
-        CPU["CPU cores"]
-        MMU["MMU"]
-        GIC["Interrupt controller"]
-        TIM["System timer"]
-        UART["UART"]
-        SMMU["IOMMU (optional)"]
-    end
-    Kernel --> HALTraits
-    HALTraits --> BSP
-    BSP --> HW
+    K[Portable kernel] --> H[HAL traits and types]
+    B[QEMU virt BSP binary] --> K
+    B --> H
+    B --> HW[AArch64 CPU / MMU / GICv2 / PL011]
+    T[Host kernel tests] --> F[test-hal fakes]
+    F --> H
 ```
 
-The kernel depends only on the trait layer. A build with a different BSP is a different binary; the kernel's `Cargo.toml` cannot name any specific BSP.
+The kernel manifest does not depend on a BSP. Changing the BSP produces a different binary; no runtime board selector exists.
 
 ### HAL trait surface
 
-This section describes the traits at a high level. Each trait will have a dedicated ADR when its signature is finalized in Phase 4, because small decisions (error-type shape, `&self` vs. `&mut self`, generic vs. associated types) compound. Treat the bullet points below as the trait's *responsibilities*, not its final signature.
+These are implemented interfaces, not provisional Phase-A sketches. Their exact signatures and safety contracts are in [`hal/src`](../../hal/src/). Additive changes require their motivating decision record.
 
 #### `Cpu`
 
-Privileged CPU state and control. Implementations are architecture-specific. The trait as shipped ([`hal/src/cpu.rs`](../../hal/src/cpu.rs)) carries exactly these methods:
+[`Cpu`](../../hal/src/cpu.rs), governed by [ADR-0008](../decisions/0008-cpu-trait.md), is `Send + Sync` and object-safe:
 
-- `current_core_id()` — identifier of the core this call runs on.
-- `disable_irqs()` / `restore_irq_state(state)` — mask CPU-level interrupts and later restore the saved mask (PSTATE/DAIF on aarch64). Paired to form a critical section; the `IrqGuard` RAII wrapper is layered on top.
-- `wait_for_interrupt()` — low-power halt until the next interrupt (`WFI` on aarch64).
-- `instruction_barrier()` — synchronize the instruction stream after writing privileged system registers (`ISB` on aarch64). Data memory barriers are covered by Rust's `core::sync::atomic::fence` and are not on this trait.
+- `current_core_id()` returns a `CoreId`.
+- `disable_irqs()` saves an `IrqState`; `restore_irq_state(state)` restores it.
+- `wait_for_interrupt()` provides WFI on the QEMU BSP.
+- `instruction_barrier()` provides ISB.
 
-Context save / restore is **not** on `Cpu`; it lives in the separate `ContextSwitch` trait (see below). The trait deliberately exposes no "number of cores online," no secondary-core start (PSCI), and no `enable_interrupts()`; those are **future / planned** surfaces that arrive with the multi-core ADR. Boot-time interrupt unmasking is done by the BSP via DAIF manipulation (`restore_irq_state`) plus the GIC enable sequence, not a `Cpu` method.
-
-Most methods touch privileged state internally; the kernel wraps them with safe helpers that encode the preconditions.
+`IrqGuard` pairs disable/restore through RAII. There is no secondary-core-start, online-core-count or dedicated enable-interrupts method. `IrqState(0)` represents the unmasked state in the current implementation. Boot/GIC setup remains BSP-owned; the trait does not initialize an interrupt controller.
 
 #### `ContextSwitch`
 
-Cooperative register save/restore for task switching. Settled by [ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md), which split this out of `Cpu` so that `Cpu` stays object-safe and so the `unsafe` audit surface around register manipulation is concentrated in one place rather than diffused across the CPU trait. Defined in [`hal/src/context_switch.rs`](../../hal/src/context_switch.rs).
+[ADR-0020](../decisions/0020-cpu-trait-v2-context-switch.md) separates [`ContextSwitch`](../../hal/src/context_switch.rs) from `Cpu`. It defines `TaskContext: Default + Send` and three unsafe operations:
 
-- An associated `TaskContext` type — the BSP-specific saved-register layout (`Default + Send`).
-- `context_switch(current, next)` — `unsafe`; atomically saves the calling task's callee-saved register set into `current` and restores `next`. The caller must have interrupts disabled across the call.
-- `init_context(ctx, entry, stack_top)` — `unsafe`; writes an initial register state so the first restore begins executing `entry` on `stack_top`.
-- `init_user_context(ctx, user_entry, user_sp, kernel_stack_top)` — `unsafe`; the **userspace (EL0) sibling** of `init_context` (B6 / [ADR-0037](../decisions/0037-el0-entry-context.md)). Seeds the context so the first restore drops to EL0 at `user_entry`: the BSP's `enter_el0` trampoline sets `SP_EL0`/`ELR_EL1`/`SPSR_EL1`, **scrubs the EL0-visible register file** (`x0`–`x30` + `v0`–`v31` + `FPCR`/`FPSR`/`TPIDR_EL0`/`TPIDRRO_EL0`, so no kernel state leaks and EL0's FP/TLS environment is defined on real HW), and `ERET`s. `kernel_stack_top` becomes the task's `SP_EL1`. Shipped by [T-023](../analysis/tasks/phase-b/T-023-el0-entry-context.md) as a *dormant* mechanism — the first runnable EL0 task arrives with the B6 wire-up.
+| Operation | Contract |
+|-----------|----------|
+| `context_switch(current, next)` | Save current callee-saved state and restore an initialized next context while IRQs are masked. The saving call returns when that original task is later resumed. |
+| `init_context(ctx, entry, stack_top)` | Seed a non-returning EL1 entry on a live, aligned stack. |
+| `init_user_context(ctx, user_entry, user_sp, kernel_stack_top)` | Seed first entry to EL0; caller supplies valid user mappings and an adequate live kernel trap stack, and activates the task AS before dispatch. |
 
-The scheduler is generic over this trait: `Scheduler<C: ContextSwitch + Cpu>` — the BSP type provides both the CPU control surface and the context-switch primitive, and the scheduler never inspects the saved context's contents (see [scheduler.md](scheduler.md)).
+The QEMU context saves `x19`–`x28`, FP/LR/SP and `d8`–`d15` (lower 64 bits of `v8`–`v15`), as required by the cooperative ABI. This is not full asynchronous FP/SIMD preservation.
+
+The EL0 path is live: [T-023](../analysis/tasks/phase-b/T-023-el0-entry-context.md) supplies the context/trampoline, [T-024](../analysis/tasks/phase-b/T-024-task-create-from-image.md) creates the Task, and [T-028](../analysis/tasks/phase-b/T-028-el0-userspace-wireup.md) registers and runs the [ADR-0039](../decisions/0039-userland-build-pipeline.md) image. Before first ERET, the trampoline installs SP_EL0/ELR_EL1, selects EL0t with DAIF masked and scrubs `x0`–`x30`, `v0`–`v31`, FPCR/FPSR and both EL0 thread-ID registers, per [ADR-0037](../decisions/0037-el0-entry-context.md). This initial scrub does not prove ongoing FP/SIMD trap isolation. The current 4 KiB per-task SP_EL1 stack still needs high-water validation before the richer IRQ work identified in [Phase C](../roadmap/phases/phase-c.md).
 
 #### `Mmu`
 
-Virtual memory management primitives. Settled by [ADR-0009](../decisions/0009-mmu-trait.md); the `MapperFlush` flush-token extension from [ADR-0027](../decisions/0027-kernel-virtual-memory-layout.md) is **live as of [T-016](../analysis/tasks/phase-b/T-016-mmu-activation.md) (Done 2026-05-08)**. The translation-table format is an associated type; the kernel sees page-table entries only through typed helpers.
+[`Mmu`](../../hal/src/mmu/mod.rs) follows [ADR-0009](../decisions/0009-mmu-trait.md) and [ADR-0027](../decisions/0027-kernel-virtual-memory-layout.md). Its associated `AddressSpace: Send` has eight operations: unsafe `create_address_space(root)`, `address_space_root`, `activate`, `map`, `unmap`, `translate`, `invalidate_tlb_address` and `invalidate_tlb_all`. `map`/`unmap`/`translate` report `MmuError`; there is no shared `HalError`.
 
-- Activate a translation-table base (set TTBR0/TTBR1 on aarch64).
-- Install a page-table entry mapping virtual → physical with rights flags. Returns `Result<MapperFlush, MmuError>` — the caller must `.flush(mmu)` or `.ignore()` the token.
-- Remove a page-table entry. Returns `Result<(MapperFlush, PhysFrame), MmuError>` — the unmapped frame paired with a flush token.
-- Invalidate TLB entries — per-ASID, global, per-address.
-- Emit the cache maintenance sequence required by the architecture between writing a table entry and relying on the MMU having seen it.
-- Expose the supported granule sizes and permission flag set as compile-time constants.
+`map` accepts a kernel-provided `FrameProvider` for intermediate tables. Thus HAL mapping can request physical frames through a callback; it does not depend on a global heap. The current format is 4 KiB VMSAv8 with lazy intermediate tables; map does not split an existing block mapping. Pure [descriptor encoders](../../hal/src/mmu/vmsav8.rs) implement permission bits and are host-tested.
 
-Pure VMSAv8 descriptor-encoding helpers (block / page / table descriptors + `MappingFlags` → AP / PXN / UXN translation) live in [`tyrne_hal::mmu::vmsav8`](../../hal/src/mmu/vmsav8.rs) — host-testable `const fn`s consumed by every aarch64 BSP. The shape mirrors the [`tyrne_hal::timer`](../../hal/src/timer.rs) precedent (cross-impl pure arithmetic).
-
-Memory allocation for page tables is not the HAL's job — the kernel owns a physical-frame allocator and hands the HAL frames to fill in.
-
-**`MapperFlush` flush-token discipline** ([ADR-0027 §Decision outcome (c)](../decisions/0027-kernel-virtual-memory-layout.md), [memory-management.md §"The MapperFlush flush-token discipline"](memory-management.md)). Mapping mutations (`Mmu::map`, `Mmu::unmap`) return a `#[must_use]` newtype carrying the just-mutated `VirtAddr`. The caller must explicitly `flush(mmu: &impl Mmu)` (executes `mmu.invalidate_tlb_address(va)`) or `ignore()` (documented no-op for bulk operations followed by a single `invalidate_tlb_all`). Forgetting both is a `unused_must_use` lint failure (denied workspace-wide). The discipline converts "did you remember to flush?" from a reviewer-attention concern into a compile-time error — pattern-of-record for future HAL trait surfaces where mutation requires a follow-up step.
+`map` returns a `MapperFlush`; `unmap` returns a flush token and the removed frame. Callers explicitly flush the VA or document `ignore()` followed by a batched full invalidation. `#[must_use]` and the workspace lint catch accidental unused returns; explicit discarding can bypass that lint, so this is not a linear type proof. Current activation uses ASID 0 and invalidates translations; no per-ASID or generic cache-maintenance/granule-selection API exists. See [memory management](memory-management.md).
 
 #### `IrqController`
 
-Dispatch and control of the board's interrupt controller.
+[`IrqController`](../../hal/src/irq_controller.rs), [ADR-0011](../decisions/0011-irq-controller-trait.md), exposes `enable`, `disable`, `acknowledge() -> Option<IrqNumber>` and `end_of_interrupt`. Routing, priority and trigger configuration are not methods on this trait. BSP initialization configures GICv2 directly.
 
-- Enable / disable a specific IRQ line.
-- Acknowledge the current IRQ at entry (returns the IRQ number).
-- End-of-interrupt signalling at exit.
-- Route an IRQ to a specific CPU (optional; SGI/PPI vs. SPI distinctions on GIC).
-- Set priority and edge/level configuration (optional; some hardware is fixed).
-
-The kernel uses this trait from inside its minimal ISR, which is deliberately short (identify → notify → EOI). Drivers never see this interface; they receive asynchronous notifications on their `IrqCap`'s endpoint.
+The current ISR acknowledges, handles the known timer source or panics after EOI for an unexpected nonspurious interrupt. It does not notify a userspace driver. Spurious acknowledge returns None without EOI. The default demo arms no deadline; installed IRQ support is distinct from demonstrated delivery.
 
 #### `Timer`
 
-Monotonic time and timed deadlines. Settled by [ADR-0010](../decisions/0010-timer-trait.md); the BSP-side implementation for QEMU virt landed in [T-009](../analysis/tasks/phase-b/T-009-timer-init-cntvct.md).
+[`Timer`](../../hal/src/timer.rs), [ADR-0010](../decisions/0010-timer-trait.md), has `now_ns`, `arm_deadline(absolute_ns)`, `cancel_deadline` and `resolution_ns`. QEMU uses the virtual generic-timer family: CNTVCT for reads, CNTV_CVAL/CNTV_CTL for deadlines. Counter-to-nanosecond conversion rounds down with saturating arithmetic; nanosecond-to-tick conversion rounds up so a sub-tick deadline is not programmed early. Resolution rounds the period and clamps it to at least one nanosecond.
 
-- `now_ns() -> u64` — nanoseconds since boot, monotonic, never goes backwards across suspends.
-- `arm_deadline(deadline_ns)` — arm a one-shot deadline; arrival is delivered as an IRQ on the timer's line.
-- `cancel_deadline()` — cancel a previously armed deadline.
-- `resolution_ns() -> u64` — the timer's minimum meaningful deadline granularity.
-
-On aarch64 the BSP reads the **virtual** counter family — `CNTVCT_EL0` for the time source and `CNTV_CVAL_EL0` / `CNTV_CTL_EL0` for deadline arming — rather than the physical family (`CNTPCT_EL0`). The choice is recorded in [ADR-0010 §References](../decisions/0010-timer-trait.md) and re-confirmed in T-009's review-fix arc: the read side and the deferred deadline-arming side must live in the same register family, otherwise a non-zero `CNTVOFF_EL2` would silently desynchronise them. The full rationale is in [UNSAFE-2026-0015](../audits/unsafe-log.md) (the audit entry plus its two Amendments).
-
-Helper conversions live in `tyrne_hal::timer` — `ticks_to_ns(count, frequency_hz)` uses 128-bit intermediate arithmetic and a saturating cast back to `u64` so monotonicity holds at the wrap edge; `resolution_ns_for_freq(frequency_hz)` returns the round-to-nearest period in nanoseconds, clamped to a floor of 1 ns to keep callers from dividing by zero on >2 GHz counters. Both functions are pure, host-testable, and sit at 100 % region coverage per the [2026-04-27 coverage rerun](../analysis/reports/2026-04-27-coverage-rerun.md).
-
-The IRQ-armed half of the trait — `arm_deadline` / `cancel_deadline` — is fully implemented in QEMU virt's BSP as of T-012 (Done 2026-04-28); the bodies write `CNTV_CVAL_EL0` / `CNTV_CTL_EL0` and route through `gic.enable(TIMER_IRQ)` / `gic.disable(TIMER_IRQ)`, audited under [UNSAFE-2026-0021](../audits/unsafe-log.md) (timer compare-register writes). [ADR-0010 §Revision notes 2026-04-28](../decisions/0010-timer-trait.md) records the closure: the time-source half landed with T-009 and the IRQ-delivery half with T-012, so both deferred halves of ADR-0010 are now live.
-
-The kernel will use this trait for scheduler tick, deadline-based wakeups, and the `time_now` / `time_sleep_until` syscalls. In v1 the read side is exercised by the BSP's boot-to-end measurement; the IRQ-armed bodies are kernel-build clean but not exercised by the cooperative IPC demo (no caller arms a deadline). Their `Pending QEMU smoke verification` notation in [UNSAFE-2026-0021](../audits/unsafe-log.md) records this — the deadline-fire path lights up only when a future preemption-using task arrives.
+These are counter-derived timestamps, not timestamps rebased to zero at kernel entry. Default boot measures elapsed time by subtraction. Arming enables the virtual timer PPI; cancellation masks/disables it. The known future arming/race and IRQ-verification limits remain in [exceptions.md](exceptions.md) and the audit record.
 
 #### `Console`
 
-A byte sink for the earliest possible diagnostic output.
+[`Console`](../../hal/src/console.rs) exposes `write_bytes(&[u8])` with no Result. `FmtWriter` adapts it to formatting. QEMU's privileged PL011 console remains available for boot and panic reporting; its polling behavior is not a bounded availability guarantee. The debug EL0 console syscall performs capability/user-memory checks before calling it, as described in [overview](overview.md#syscall-surface).
 
-- `write_bytes(&[u8])` — writes synchronously, ignoring partial failures during panic.
-- No formatting, no levels, no buffering. That's the log service's job (userspace).
-- Typically implemented over a single UART's MMIO registers.
-- Works before the MMU is active (BSP early-init) and continues to work after.
+#### `Iommu`
 
-The console is used during boot (before the log service is up), during panic (when nothing else can be trusted), and — optionally, gated by a build flag — for debug output in development builds.
+`Iommu` in [`hal/src/lib.rs`](../../hal/src/lib.rs) is an empty placeholder with no implementation or isolation guarantee. [ADR-0036](../decisions/0036-qemu-virt-gicv2-no-iommu-v1.md) records the deferred SMMUv3 direction; see [security model](security-model.md).
 
-#### `Iommu` (planned — stub)
+### BSPs: what each BSP crate owns
 
-Programming the system IOMMU to scope a peripheral's DMA to the regions granted to its driver. The eventual responsibilities are:
-
-- Install a stream-to-address-space mapping.
-- Update or remove such a mapping.
-- Invalidate IOMMU caches when mappings change.
-
-**Current status.** QEMU virt is GICv2 / no IOMMU in v1; the `Iommu` trait ([`hal/src/lib.rs`](../../hal/src/lib.rs)) is an empty stub (`pub trait Iommu {}`) reserved for a future SMMUv3 ADR. No BSP implements it today — `bsp-qemu-virt` does not, and `bsp-pi4` has no IOMMU hardware at all. See [security-model.md — Trust boundary 7](security-model.md) for the security role the IOMMU will play and the honest description of the present DMA-scoping gap.
-
-### BSP structure
-
-A BSP is a Rust crate named `bsp-<board>` that provides:
-
-1. **An entry point** — the architecture reset vector (`_start`), implemented as a small assembly stub that sets up a stack, zeros BSS, and jumps into Rust early-init.
-2. **Early-init Rust code** that configures the MMU with a minimal identity + high-half mapping, installs exception vectors, and hands control to `kernel_main(boot_info)`.
-3. **Implementations of the HAL traits** — `Cpu`, `ContextSwitch`, `Mmu`, `IrqController`, `Timer`, and `Console`. (`Iommu` is a stub today; no BSP implements it yet — see the `Iommu` trait note above.)
-4. **Board-specific constants** — MMIO base addresses, IRQ numbers, expected memory layout — as a `bsp::config` module, not spread across the crate.
-5. **A linker script** specifying where the kernel image is loaded, where RAM begins, and any reserved regions.
-
-A BSP is expected to be roughly 1 000 – 2 500 lines of Rust plus a few dozen lines of assembly. Significantly larger suggests driver logic has sneaked in and should be extracted to userspace.
+The current BSP owns reset assembly, linker layout, concrete CPU/MMU/GIC/timer/console implementations, exception vectors and syscall entry, trusted image embedding, boot object/table setup and scheduler publication. Constants currently live in those concrete modules; no `bsp::config` organization or source-line threshold is a correctness contract.
 
 ### BSP selection
 
-BSPs are selected at **build time**, not runtime. The mechanism is a workspace-level target configuration plus a single-BSP dependency per kernel binary. Two binaries differing only in BSP are different artifacts.
-
-- `cargo build --target aarch64-unknown-none -p tyrne-kernel-qemu-virt`
-- `cargo build --target aarch64-unknown-none -p tyrne-kernel-pi4`
-
-Runtime multi-board support (one kernel binary that detects its host and selects a BSP) is explicitly **not** a goal. The policy is justified by ADR-0004 and by the security argument: runtime detection expands the TCB with detection logic and conditional code paths that no deployment exercises all of.
+The real package is `tyrne-bsp-qemu-virt`. Build the matching user image first with `tools/build-userland.sh`, then `cargo build -p tyrne-bsp-qemu-virt --target aarch64-unknown-none`; the [QEMU guide](../guides/run-under-qemu.md) and smoke tooling describe orchestration. The shared generated image path requires sequential matching-profile builds. No Pi package exists yet.
 
 ### Initial BSPs
 
-#### `bsp-qemu-virt` — primary dev BSP
-
-| Property | Value |
-|----------|-------|
-| Architecture | aarch64 |
-| CPU | generic ARMv8-A (whatever QEMU exposes for `-cpu max` / `-cpu cortex-a72`) |
-| RAM base | `0x4000_0000` |
-| Interrupt controller | GICv2 |
-| Console | PL011 UART at `0x0900_0000` |
-| Timer | ARM generic timer |
-| IOMMU | none in v1 (QEMU virt is GICv2 / no IOMMU); the `Iommu` trait is a stub reserved for a future SMMUv3 ADR |
-| Boot loader | none — QEMU loads the ELF and jumps to `_start` |
-| Secondary-core start | PSCI |
-| Virtio | present (virtio-mmio); used by userspace drivers in future phases |
-
-This is the first target Tyrne boots on and the one where every feature's first QEMU smoke test runs.
-
-#### `bsp-pi4` — first real-hardware BSP
-
-| Property | Value |
-|----------|-------|
-| Architecture | aarch64 |
-| CPU | Cortex-A72 (BCM2711), 4 cores |
-| RAM base | `0x0000_0000` (RAM starts at zero on Pi) |
-| Interrupt controller | GIC-400 (v2, compatible subset) |
-| Console | PL011 UART (primary); mini-UART available as alternate |
-| Timer | ARM generic timer |
-| IOMMU | **none** — see [security-model.md](security-model.md) for the consequences and release-note policy |
-| Boot loader | Pi firmware (`start4.elf`) loads `kernel8.img`; `config.txt` sets `arm_64bit=1`, `kernel_address=0x80000` |
-| Secondary-core start | PSCI via firmware / spin-table on some revisions |
-| Peripherals | BCM2711 ARM local peripherals + legacy BCM2835-descended block |
-
-The Pi 4 bring-up is the first exit from QEMU. The work exercises every assumption the kernel has been making about aarch64 generality.
-
-#### `bsp-pi5` — follow-on
-
-Cortex-A76 on BCM2712. Follows Pi 4 once the Pi 4 BSP is stable. The HAL trait surface must be sufficient unchanged; Pi 5 should add only what is genuinely new to the SoC (RP1 southbridge, etc.).
-
-#### Future BSPs
-
-- **Jetson Orin Nano / NX / AGX Orin** (aarch64 CPU only, per security-model caveat): once the Pi 4 and Pi 5 BSPs shape the HAL's final form.
-- **RISC-V embedded boards** (SiFive HiFive, ESP32-C6 class): triggers adding RISC-V to the set of architectures the HAL accommodates. Several traits (`Cpu`, `Mmu`, `IrqController`) will gain a second architecture-specific implementation lineage.
-- **Mobile-class aarch64 SoCs**: years out. The HAL trait surface should require no structural change; the work is a new BSP.
+QEMU virt is the current development target: one active core, 128 MiB RAM at `0x4000_0000`, image PA `0x4008_0000`, PL011 at `0x0900_0000`, GICv2 and the virtual generic timer. These describe the supplied configuration, not arbitrary QEMU machines. Pi 4 is the first planned hardware BSP in [Phase D](../roadmap/phases/phase-d.md); Pi 5 and later targets follow the support-tier policy in ADR-0004. Their firmware, DMA, address layout and secondary-core contracts require bring-up evidence rather than copying QEMU assumptions.
 
 ### Boot handoff, in detail
 
-```mermaid
-sequenceDiagram
-    participant HW as Hardware reset
-    participant Asm as BSP _start (asm stub)
-    participant Early as BSP early-init (Rust)
-    participant K as kernel_main
-    participant HAL as HAL traits
-    HW->>Asm: reset vector
-    Asm->>Asm: set SP, zero BSS, copy DATA
-    Asm->>Early: br early_init
-    Early->>Early: set up minimal MMU mapping
-    Early->>Early: install exception vectors
-    Early->>Early: configure Cpu trait state
-    Early->>K: kernel_main(boot_info)
-    K->>HAL: Mmu::activate(kernel_tt)
-    K->>HAL: IrqController init + GIC enable sequence
-    K->>HAL: Timer::init()
-    K->>HAL: unmask DAIF.I (BSP, via the CPU IRQ-state path)
-    K->>HAL: Console::write_bytes(b"tyrne: online\n")
-    Note over K: scheduler, init task, steady state
-```
-
-The BSP's responsibility ends at the call to `kernel_main`; from that point the kernel owns the CPU and calls the HAL for specific operations. The BSP does not run a "main loop" of its own.
-
-### `boot_info`
-
-The BSP hands `kernel_main` a `BootInfo` structure describing what the kernel can assume about the machine. At this level of detail the shape will be refined in an ADR; the responsibilities are:
-
-- **Memory map.** Regions of usable RAM, regions reserved (BSP code, firmware, device MMIO windows).
-- **Boot CPU ID and the total core count** (which need not match — the BSP may choose to leave some cores offline).
-- **Device-tree pointer** or a BSP-specific equivalent configuration handle. The kernel treats the DT as opaque; a future `tyrne-dt` crate parses it into typed records.
-- **Initial capability seed.** The first capabilities the init task will hold — typically a handful: its own `TaskCap`, an address-space cap, a handful of memory caps covering the init image, an IRQ cap for the console, and nothing else.
-
-`BootInfo` is typed Rust; the BSP constructs it and passes it by value. No mutation is expected after handoff.
+The actual handoff stays in the BSP: `_start` reaches `kernel_entry`, then high-half `kernel_main_high` composes portable mechanisms and starts the scheduler. There is no `kernel_main(boot_info)` or `Timer::init()` trait call. [Boot flow](boot.md) documents reset, TTBR migration, PMM/image construction, per-task table publication and EL0 dispatch.
 
 ### Error handling in the HAL
 
-Most HAL methods that can fail at runtime return `Result<_, HalError>`. A small number (the ones called during panic, or the ones whose failure would indicate a hardware bug the kernel cannot meaningfully handle) are allowed to `panic!` — because at that point the kernel is already corrupted. This is consistent with [error-handling.md — Panic strategy](../standards/error-handling.md).
-
-HAL methods **do not allocate**. The kernel hands the HAL any working memory it needs (physical frames for page tables, stack space for secondary-core start, etc.). This keeps the HAL free of allocator dependencies and makes its behaviour deterministic.
+The signatures determine error behavior. MMU operations use typed errors, frame provision uses Option, and CPU/IRQ/timer/console methods generally return no error. Trusted boot uses fail-stop checks for unrecoverable setup failures. No blanket permission to panic on privileged hot paths follows from this chapter; [error handling](../standards/error-handling.md) and scoped lint policy still apply.
 
 ### `unsafe` in the HAL
 
-The HAL is where most of Tyrne's `unsafe` lives. By construction:
-
-- Every MMIO access goes through an `unsafe` region.
-- Every privileged-state manipulation (system registers, barriers, CPU mode changes) is `unsafe`.
-- Every context-switch primitive is `unsafe` at least internally.
-
-The [unsafe-policy.md](../standards/unsafe-policy.md) applies in full: each `unsafe` block has a `SAFETY:` comment, an entry in [`docs/audits/unsafe-log.md`](../audits/unsafe-log.md) (created with the first `unsafe` block that lands), and security-review approval on the commit that introduces it.
-
-A well-structured BSP wraps most of its unsafe code in a small number of typed abstractions (`Mmio<T>`, `SystemRegister<T>`) and implements the HAL traits in terms of those. This keeps the audit surface concentrated rather than diffuse.
+Traits concentrate explicit context/mapping contracts; implementations contain audited register/MMIO/assembly operations. Each applicable site needs its SAFETY rationale, audit entry and independent security review. A trait's safe method does not remove the implementation's unsafe obligations or prove a future BSP's compliance.
 
 ### Testing the HAL
 
-Testing a HAL is largely testing that two independent BSP implementations behave the same at the trait boundary.
-
-- **`test-hal`** — a separate crate (planned with Phase 4 scaffolding) that provides fake implementations of the HAL traits for host-side tests. The fake `Timer` is deterministic (`advance(ns)`); the fake `IrqController` is a queue of pending IRQs; the fake `Console` captures output. The fake `Mmu` is metadata-only (it records "this VA is mapped to this PA with these rights") without real page tables. This lets the kernel core be unit-tested on a laptop.
-- **QEMU smoke tests** — exercise a real BSP (`bsp-qemu-virt`) against QEMU's fidelity. Any behaviour divergence between `test-hal` and QEMU is a bug in whichever side claims to match the architecture.
-- **Hardware smoke tests** — run on the Pi 4 during release preparation. Required per [release.md](../standards/release.md) before a release that claims Tier-2 support for that board.
+[`test-hal`](../../test-hal/src/) exists: fake CPU/context switch, metadata MMU, queued IRQ controller, captured console and deterministic timer. The timer allows setting/advancing time and recording deadlines; it does not automatically emulate physical IRQ delivery. Host tests exercise portable contracts; QEMU smoke exercises composition on the real BSP. Neither supplies Pi hardware validation. Current retained debug/release evidence is [source-bound](../analysis/reports/2026-10-13-t045-architecture-verification.md); no new host/coverage run is claimed here.
 
 ## Invariants
 
-- **Kernel core contains no architecture- or board-specific code.** If the word `aarch64`, `cortex`, `bcm`, `pi`, `qemu`, `x86`, or a numeric MMIO address appears in a kernel-core crate, that is a review-level bug.
-- **The HAL is a trait surface, not a driver layer.** No peripheral driver (UART-beyond-boot, block, network, USB, GPIO, sensor) is part of a BSP or the HAL.
-- **BSP selection is compile-time.** No runtime dispatch over "which BSP am I on."
-- **HAL methods do not allocate.** They are handed any working memory they need.
-- **Every HAL `unsafe` block is audited.** An entry in the audit log, a `SAFETY:` comment, a security-review sign-off.
-- **BSP code paths are deterministic at boot.** A given BSP on a given board produces the same sequence of HAL calls on every cold boot.
-- **No proprietary binary blob enters a BSP.** Firmware loaded by the pre-kernel boot loader (e.g., Pi `start4.elf`) lives outside the Tyrne build; an Tyrne BSP does not embed closed-source code.
+- Kernel mechanisms consume HAL types/traits without depending on the QEMU BSP crate.
+- Context-switch callers keep contexts/stacks live and mask IRQs across the unsafe switch; resumed calls return to their original task.
+- First EL0 dispatch requires an active task AS, valid user PC/SP and a live kernel trap stack.
+- Mapping changes carry an explicit flush decision; review still checks correct invalidation scope.
+- BSP selection is compile-time, and no proprietary blob is added to the Tyrne build.
 
 ## Trade-offs
 
-- **Narrow HAL means more code overall.** Pushing drivers to userspace makes the kernel simpler and smaller but the system as a whole larger. We accept this because review complexity is what scales badly with TCB size; total code size is manageable.
-- **Compile-time BSP selection forecloses a "universal kernel."** A single binary that boots on Pi 4, QEMU virt, and Jetson is impossible under this design. It is also unnecessary: Tyrne ships per-board artifacts.
-- **Multi-architecture support compounds the trait count.** Adding RISC-V later means a second implementation lineage under every architecture-sensitive trait. The blast radius is bounded by the HAL's narrowness.
-- **IOMMU optionality is a real gap on Pi 4.** We pay this in the security model; the HAL does not paper over it. See [security-model.md](security-model.md).
-- **Runtime errata handling is inconvenient.** CPU errata workarounds have to live somewhere. A first cut keeps them in the BSP (per-CPU-variant feature flag); a future ADR may introduce a per-CPU crate layer above the BSP if the bookkeeping outgrows the BSP.
+A narrow HAL reduces portable kernel coupling but leaves substantial privileged bring-up in the BSP. Compile-time selection requires per-board artifacts. Single-core, ASID-0 translation and cooperative context switching simplify today's contracts while leaving preemption, shootdown and complete asynchronous register preservation for later work. Host fakes provide repeatable contract tests with less hardware fidelity than QEMU or silicon.
 
 ## Open questions
 
-- Final trait signatures — each HAL trait gets its own ADR at Phase 4 implementation time.
-- Handle-based vs. module-level trait usage — does the kernel carry a `&mut HalCtx` with every call, or are traits static-like through a selected implementation crate? Both patterns exist in embedded Rust; the choice affects how the test-hal overrides work.
-- Errata layer — BSP-embedded vs. per-CPU crate above the BSP.
-- Device-tree parser placement — separate crate fed into boot-info, or a HAL service the kernel can call?
-- IOMMU trait shape — one trait for all IOMMU families, or per-architecture (SMMUv2, SMMUv3, Intel VT-d)? Relevant once the first non-SMMU IOMMU is in scope.
-- Multi-socket systems — out of initial scope; the HAL accommodates "cores" but not "sockets"; deferred.
-- Power-management interfaces — idle states, DVFS. Not in the initial HAL; added when a concrete deployment requires it.
-- Secondary-core rendezvous semantics when PSCI is not available or is buggy — Pi 4 has quirks.
+Secondary-core rendezvous and shootdown belong to [Phase C](../roadmap/phases/phase-c.md); hardware trap-state/cache/translation correctness belongs to [Phase D](../roadmap/phases/phase-d.md). Device-tree handoff, errata organization, power management and an implemented IOMMU require concrete platform requirements and decision records. Today's signatures must not be treated as a promise that these additions require no changes.
 
 ## References
 
-- [ADR-0001: Capability-based microkernel architecture](../decisions/0001-microkernel-architecture.md).
-- [ADR-0004: Target hardware platforms and support tiers](../decisions/0004-target-platforms.md).
-- [Architectural principles — P3, P6](../standards/architectural-principles.md).
-- [overview.md](overview.md) — the architectural context this document elaborates.
-- [security-model.md](security-model.md) — for the trust-boundary role of the IOMMU / BSP.
-- [unsafe-policy.md](../standards/unsafe-policy.md) — for the `unsafe` audit discipline the HAL lives inside.
-- ARM *Reference Manual* (ARMv8-A) — PSCI, GIC, generic timer, MMU, SMMU.
-- *BCM2711 ARM Peripherals* — Raspberry Pi 4 SoC documentation.
-- QEMU aarch64 `virt` machine documentation: https://qemu.readthedocs.io/en/latest/system/arm/virt.html
-- Hubris HAL abstractions — https://hubris.oxide.computer/
-- `cortex-a` / `aarch64-cpu` crate documentation.
+- [CPU/context implementation](../../bsp-qemu-virt/src/cpu.rs), [MMU](../../bsp-qemu-virt/src/mmu.rs), [GIC](../../bsp-qemu-virt/src/gic.rs), [console](../../bsp-qemu-virt/src/console.rs).
+- [Scheduler](scheduler.md), [exceptions](exceptions.md), [task loader](task-loader.md), [unsafe audit](../audits/unsafe-log.md).
+- [Architecture index and freshness convention](README.md#conventions).

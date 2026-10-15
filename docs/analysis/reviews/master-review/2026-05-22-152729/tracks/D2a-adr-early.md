@@ -155,7 +155,7 @@ Minor formatting inconsistency: the `Pros and cons of the options` section uses 
 
 `file: docs/decisions/0009-mmu-trait.md:224`
 
-The ADR-0009 revision note (2026-05-08) says "Mirrors the [ADR-0017 §Revision rider for `ipc_cancel_recv`](0017-ipc-primitive-set.md) precedent". The `ipc_cancel_recv` rider in ADR-0017 is dated 2026-05-07, one day earlier than the ADR-0009 rider. If the ADR-0009 rider was written to mirror a precedent from ADR-0017, the chronology is plausible. This is noted for accuracy but is not an error.
+The ADR-0009 revision note (2026-05-08) says "Mirrors the ``[ADR-0017 §Revision rider for `ipc_cancel_recv`](0017-ipc-primitive-set.md)`` [Navigation annotation, 2026-10-13: [original ADR-0009 source](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/decisions/0009-mmu-trait.md?plain=1#L224); [ADR-0017](../../../../../decisions/0017-ipc-primitive-set.md).] precedent". The `ipc_cancel_recv` rider in ADR-0017 is dated 2026-05-07, one day earlier than the ADR-0009 rider. If the ADR-0009 rider was written to mirror a precedent from ADR-0017, the chronology is plausible. This is noted for accuracy but is not an error.
 
 ---
 
@@ -310,3 +310,7 @@ All 20 files in scope were read in full.
 | `docs/decisions/template.md` | 121 | [x] |
 
 Total lines read: 3063 across the 20 in-scope files. Lens documents read in full: `docs/standards/documentation-style.md`, `.agents/skills/write-adr/SKILL.md`, `.agents/skills/supersede-adr/SKILL.md`, `.agents/skills/sync-adr-index/SKILL.md`, `docs/decisions/0025-adr-governance-amendments.md`. Code files cross-checked: `hal/src/console.rs`, `hal/src/cpu.rs`, `hal/src/mmu/mod.rs`, `hal/src/irq_controller.rs`, `hal/src/timer.rs`, `hal/src/lib.rs`, `kernel/src/cap/table.rs`, `kernel/src/cap/mod.rs`, `kernel/src/cap/rights.rs`, `kernel/src/obj/arena.rs`, `kernel/src/ipc/mod.rs`, `bsp-qemu-virt/src/gic.rs`, `bsp-qemu-virt/src/main.rs`, `bsp-qemu-virt/linker.ld`, `Cargo.toml`.
+
+## Navigation reconciliation — 2026-10-13
+
+Quoted ADR-0009 Markdown above is literal historical evidence, including its original relative destination. Functional navigation: [review-era ADR-0009 revision note](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/decisions/0009-mmu-trait.md?plain=1#L224) and [ADR-0017](../../../../../decisions/0017-ipc-primitive-set.md). No original finding or chronology is changed.

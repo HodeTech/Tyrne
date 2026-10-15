@@ -134,8 +134,8 @@ The 14-day window establishes the post-2026-04-27 ADR-governance regime as **exe
 ## References
 
 - [ADR-0025 — ADR governance amendments: forward-reference contract, rider hygiene](../../../../decisions/0025-adr-governance-amendments.md) — §Rule 1, §Rule 2, §Revision notes (cool-down withdrawal).
-- [`.claude/skills/write-adr/SKILL.md`](../../../../../.claude/skills/write-adr/SKILL.md) — full procedure, especially §10 separate-commit Accept and §Simulation (added in PR #16 commit `77a578a`).
-- [`.claude/skills/supersede-adr/SKILL.md`](../../../../../.claude/skills/supersede-adr/SKILL.md) — §7 solo-phase combined-commit clause invoked by ADR-0026's landing.
+- [`.claude/skills/write-adr/SKILL.md`](https://github.com/HodeTech/Tyrne/blob/c258ee308ad479d41086082d350458f1b7d73c82/.claude/skills/write-adr/SKILL.md) — full procedure, especially §10 separate-commit Accept and §Simulation (added in PR #16 commit `77a578a`).
+- [`.claude/skills/supersede-adr/SKILL.md`](https://github.com/HodeTech/Tyrne/blob/c258ee308ad479d41086082d350458f1b7d73c82/.claude/skills/supersede-adr/SKILL.md) — §7 solo-phase combined-commit clause invoked by ADR-0026's landing.
 - [`docs/standards/commit-style.md`](../../../../standards/commit-style.md) — trailer hygiene + merging-strategy clauses.
 - [`docs/analysis/reviews/business-reviews/master-plan.md`](../../business-reviews/master-plan.md) §Acceptance criteria — smoke-trace AC added by commit `77a578a`.
 - [`docs/analysis/reviews/business-reviews/2026-05-07-B1-closure.md`](../../business-reviews/2026-05-07-B1-closure.md) — the retrospective that produced the §Simulation + smoke-trace rules.

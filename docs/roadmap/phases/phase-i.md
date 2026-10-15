@@ -20,7 +20,7 @@ Pick a target SoC that is approachable (community-supported, documented) and com
 
 ### Sub-breakdown
 
-1. **ADR-0066 — Mobile target.** Specific device, specific SoC, exhaustive list of required peripherals, policy on required blobs.
+1. **[ADR-I1-mobile-target](#adr-i1-mobile-target) — Mobile target.** Specific device, specific SoC, exhaustive list of required peripherals, policy on required blobs.
 2. **Availability survey** — prices, lead times, reliability of the supply.
 3. **Prior-art survey** — who else has built non-Linux kernels on this SoC family; what they learned.
 
@@ -30,7 +30,7 @@ A display panel writes pixels; a touch panel reports events; these compose into 
 
 ### Sub-breakdown
 
-1. **ADR-0067 — Display stack architecture.** Framebuffer vs. compositor vs. direct-panel. Probably direct-panel + a tiny software compositor for Phase I.
+1. **[ADR-I2-display-stack](#adr-i2-display-stack) — Display stack architecture.** Framebuffer vs. compositor vs. direct-panel. Probably direct-panel + a tiny software compositor for Phase I.
 2. **Display driver** for the chosen panel.
 3. **Touch driver** (often I2C-attached; reuses F2 work).
 4. **Input service** mapping raw touch events to typed events.
@@ -41,7 +41,7 @@ Mobile requires battery-aware CPU scaling, suspend / resume, screen blanking, ag
 
 ### Sub-breakdown
 
-1. **ADR-0068 — Power management scope.** What levels (idle, suspend-to-RAM, hibernate) and what invariants.
+1. **[ADR-I3-power-management](#adr-i3-power-management) — Power management scope.** What levels (idle, suspend-to-RAM, hibernate) and what invariants.
 2. **Scheduler integration** — CPU-frequency hints, big.LITTLE awareness if the SoC has it.
 3. **Battery service** — SoC-specific PMIC driver + SOC / voltage monitoring.
 4. **Wake sources** — timer, touch, modem (if applicable).
@@ -63,11 +63,13 @@ The mobile milestone is explicitly a stretch goal. Reaching I4 makes Tyrne a cre
 
 ## ADR ledger for Phase I
 
-| ADR | Purpose | Expected state | Notes |
+> **Identity workflow (2026-10-13).** Under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), each row below defines one stable milestone-plus-purpose planning identity. Assign the actual four-digit number only when filing via [write-adr](../../../.agents/skills/write-adr/SKILL.md); preserve the purpose identity as a historical alias in that record and link its ledger row to the filed ADR. Historical numeric aliases/notes below are evidence, not current allocations or reservations. The planning identity itself has no ADR status or implementation authorization.
+
+| Planned identity | Purpose | Milestone | Historical aliases / notes |
 |-----|---------|----------------|-------|
-| ADR-0066 | Mobile target | I1 | renumbered 2026-05-22, was ADR-0055 (cascade from the Phase C/D collision fix, MR-001) |
-| ADR-0067 | Display stack architecture | I2 | renumbered 2026-05-22, was ADR-0056 (cascade) |
-| ADR-0068 | Power management scope | I3 | renumbered 2026-05-22, was ADR-0057 (cascade; frees ADR-0057 for the Phase F5 field-update placeholder) |
+| <a id="adr-i1-mobile-target"></a>ADR-I1-mobile-target | Mobile target | I1 | Historical aliases (superseded 2026-10-13): ADR-0066; renumbered 2026-05-22, was ADR-0055 (cascade from the Phase C/D collision fix, MR-001) |
+| <a id="adr-i2-display-stack"></a>ADR-I2-display-stack | Display stack architecture | I2 | Historical aliases (superseded 2026-10-13): ADR-0067; renumbered 2026-05-22, was ADR-0056 (cascade) |
+| <a id="adr-i3-power-management"></a>ADR-I3-power-management | Power management scope | I3 | Historical aliases (superseded 2026-10-13): ADR-0068; renumbered 2026-05-22, was ADR-0057 (cascade; frees ADR-0057 for the Phase F5 field-update placeholder) |
 
 ## Open questions carried into Phase I
 

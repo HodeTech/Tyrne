@@ -28,8 +28,8 @@ The links are broken on disk: `ls .claude/skills/` returns "No such file."
 `infrastructure.md` is load-bearing: its "conditional — see add-dependency skill" note is the **trigger** that tells maintainers when and how to wire up cargo-audit and cargo-vet.
 If a contributor follows the link they reach a 404, which breaks the cargo-vet onboarding path entirely.
 
-Line 72: *(Conditional — currently dormant … wired in once the first external dependency lands per [add-dependency](../../.claude/skills/add-dependency/SKILL.md).)*
-Line 192: *The `supply-chain/` directory does not exist at HEAD — see [add-dependency](../../.claude/skills/add-dependency/SKILL.md) for the trigger that creates it.*
+Line 72: *(Conditional — currently dormant … wired in once the first external dependency lands per `[add-dependency](../../.claude/skills/add-dependency/SKILL.md)` [Navigation annotation, 2026-10-13: [review-era line 72](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/standards/infrastructure.md?plain=1#L72); [earlier pre-migration skill](https://github.com/HodeTech/Tyrne/blob/097acfd1eef6549f2f2fcec4bc2333285efbf507/.claude/skills/add-dependency/SKILL.md), absent at the reviewed May-22 HEAD.].)*
+Line 192: *The `supply-chain/` directory does not exist at HEAD — see `[add-dependency](../../.claude/skills/add-dependency/SKILL.md)` [Navigation annotation, 2026-10-13: [review-era line 192](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/standards/infrastructure.md?plain=1#L192); [earlier pre-migration skill](https://github.com/HodeTech/Tyrne/blob/097acfd1eef6549f2f2fcec4bc2333285efbf507/.claude/skills/add-dependency/SKILL.md), absent at the reviewed May-22 HEAD.] for the trigger that creates it.*
 
 **Suggested fix.**
 Replace both occurrences:
@@ -159,7 +159,7 @@ Any reviewer following the checklist will treat this item as "not yet actionable
 
 **Suggested fix.**
 Remove the conditional and make the checklist item unconditional:
-> - [ ] The change is reconciled with the documented threat model in [`docs/architecture/security-model.md`](../architecture/security-model.md).
+> - [ ] The change is reconciled with the documented threat model in ``[`docs/architecture/security-model.md`](../architecture/security-model.md)`` [Navigation annotation, 2026-10-13: [current threat model](../../../../../architecture/security-model.md).].
 
 ---
 
@@ -497,3 +497,7 @@ All 15 files were read in full. Line counts are from `wc -l docs/standards/*.md`
 | **Total** | **2,178** | | |
 
 Cross-checked against: `git ls-files docs/standards` (confirmed 15 files exactly matching the above list).
+
+## Navigation reconciliation — 2026-10-13
+
+The two quoted add-dependency links and proposed threat-model link above are literal source/proposal Markdown. The retired skill target was already absent at the reviewed May-22 source: see [infrastructure line 72](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/standards/infrastructure.md?plain=1#L72) and [line 192](https://github.com/HodeTech/Tyrne/blob/288ddb2be98e4a679cb5a07ba8a70e52b82c21a7/docs/standards/infrastructure.md?plain=1#L192). For archived skill content, [the last pre-migration skill](https://github.com/HodeTech/Tyrne/blob/097acfd1eef6549f2f2fcec4bc2333285efbf507/.claude/skills/add-dependency/SKILL.md) is explicitly an earlier source, not a file present at May-22 HEAD. Current functional navigation for the proposed threat-model reference is [security-model.md](../../../../../architecture/security-model.md). No historical defect is erased.

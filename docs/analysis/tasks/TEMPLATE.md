@@ -4,6 +4,7 @@
 - **Milestone:** <A1 / A2 / …>
 - **Status:** Draft
 - **Created:** YYYY-MM-DD
+  <!-- Insert - **date_done:** YYYY-MM-DD here only on maintainer-authorized Done, using the real ISO completion date. Omit while open; never fabricate historical dates. -->
 - **Author:** @cemililik (or the AI agent that opened it)
 - **Dependencies:** <comma-separated T-NNN list, or "none">
 - **Informs:** <what downstream tasks become reachable once this is done>

@@ -34,7 +34,7 @@ A single reviewer can cover all roles sequentially; the benefit of naming them i
 
 **Task:** enumerate how the plan itself changed.
 
-- Diff [`../../roadmap/phases/`](../../roadmap/phases/) between the previous review and today.
+- Diff [`../../roadmap/phases/`](../../../roadmap/phases) between the previous review and today.
 - Identify: added / removed / reordered milestones, added / deprecated tasks at the phase level, wording changes to acceptance criteria, any structural changes.
 - Cross-check against the decision log: ADRs that superseded earlier ones or amended the roadmap belong here.
 
@@ -85,6 +85,8 @@ When roles are run in parallel, combine outputs by pasting each role's section i
 - [ ] Each role's output has been produced by the maintainer or an agent; notes are traceable.
 - [ ] The index in [`README.md`](README.md) has a new row for this review.
 - [ ] [`../../../roadmap/current.md`](../../../roadmap/current.md) is updated to match the Pathfinder's output.
+- [ ] **For phase-closure triggers:** re-verify every existing `docs/architecture/` chapter against the closure source, update each source/date/task freshness marker, and reconcile the architecture README's coverage and document-edit Status cells in the same closure batch. Record the source and verification evidence; an older Accepted label alone is insufficient. See the [architecture conventions](../../../architecture/README.md#conventions).
+- [ ] **For milestone-completion and phase-closure triggers:** perform a closure-batch index sweep. Every canonical review in the batch is listed in its family README; companion plans, nested tracks and master-review run evidence have explicit discovery links from their proper surfaces. Reconcile the family navigation in [reviews/README.md](../README.md). Copy original dates/verdicts; do not re-judge them while indexing.
 - [ ] **For *milestone-completion* and *phase-closure* triggers only:** the *What landed* section includes a verbatim copy of the most recent QEMU smoke trace (full serial output through the milestone's success marker, plus the `boot-to-end elapsed = ... ns` line if the BSP emits it) and an `-d int,unimp,guest_errors` event count. A milestone cannot promote past `In Review` to `Done` without this evidence; *narrative* claims of smoke-pass are insufficient. Codified after the [2026-05-06 B1 smoke-regression mini-retro](2026-05-06-B1-smoke-regression.md) and the [2026-05-07 B1 closure retrospective](2026-05-07-B1-closure.md) §"What we learned" — host tests + miri + paper-review can pass a kernel that hangs at runtime; the smoke is the project's only end-to-end liveness oracle. Maintainer-initiated mini-retros and adhoc reviews are exempt (no closure semantics).
 
 ## Output template
@@ -135,3 +137,5 @@ When roles are run in parallel, combine outputs by pasting each role's section i
 This master plan is a living document. When the process evolves, amend the relevant sections and note the change at the bottom here.
 
 - _2026-04-20_ — initial version; scaffolded by [ADR-0013](../../../decisions/0013-roadmap-and-planning.md).
+
+- _2026-10-13_ — [T-049](../../tasks/phase-b2/T-049-review-indices-sync.md) adds the approved closure-batch discovery sweep and corrects roadmap navigation under [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); historical review verdicts and measurements remain unchanged.

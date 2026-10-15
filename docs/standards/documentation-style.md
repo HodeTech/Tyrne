@@ -83,9 +83,21 @@ flowchart LR
 - Deprecating a document: leave it in place, add a `> **Deprecated.** See [new-doc.md](new-doc.md) for the current guidance.` note at the top, and set its links to point at the replacement.
 - ADRs are append-only. To reverse a decision, write a new ADR that supersedes the old one; do not rewrite history.
 
+## Evidence storage
+
+[ADR-0044](../decisions/0044-review-evidence-retention.md) keeps canonical Markdown findings, verdicts, measurements, reading limits and original execution identities in Git with compact archive metadata. Bulk raw logs, intermediate JSON, source exports and encoded scratch archives belong in a digest-verified durable archive, with independent recovery tested before removal. Expiring Actions output alone is insufficient. Preserve original evidence and attach dated navigation/recovery context; a rewritten SHA does not identify a historical execution.
+
+The indexed tree and every complete HEAD-history snapshot obey these inclusive limits: 1 MiB per stored blob, 512 KiB total non-Markdown content under docs/analysis/reports/, and 128 KiB total for each `*-evidence-catalog.md`/`.json` pair there. The full per-file inventory belongs outside Git. Gitlinks store external commit identities, not parent-repository blobs. There are no initial exceptions; any future exception is exact-path, justified and reviewed with fixtures, never a directory-wide bypass.
+
+Stage intended files before running the [separate footprint command](../../tools/check-repo-footprint.py); it checks Git objects/index, including artifacts later deleted from history, rather than untracked/build/worktree-only bytes. It requires complete local history/objects and refuses shallow/promisor inputs. The [CI guide](../guides/ci.md#repository-footprint) documents execution and the [recovery guide](../guides/review-evidence.md) restores archived source. Existing documentation-corpus checks retain their offline/no-Git contract.
+
 ## What not to put in documentation
 
 - Secrets or credentials.
 - Contributor personal identifiers beyond GitHub handles.
 - Internal chat logs (these may be in a non-English language per [ADR-0005](../decisions/0005-documentation-language-english.md)).
 - Auto-generated content without a note indicating how it was generated and where the generator lives.
+
+## References
+
+- [ADR-0044 — Review evidence retention and delivery](../decisions/0044-review-evidence-retention.md).

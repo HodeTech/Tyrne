@@ -159,3 +159,14 @@ Steps 4–7 close under their own tasks; this ADR is *in effect* from step 3 and
 - [`docs/roadmap/README.md`](../roadmap/README.md) §"Changing the roadmap".
 - [`docs/analysis/tasks/phase-b2/README.md`](../analysis/tasks/phase-b2/README.md) — the task index and recommended order.
 - [`docs/roadmap/phases/phase-c.md`](../roadmap/phases/phase-c.md) §"Review-derived work items" — the two SMP-critical entry gates that remain in Phase C.
+
+## Revision notes
+
+### 2026-10-12 — Track B.2-2 clarification and limited execution extension
+
+The maintainer accepted [ADR-0043 — Documentation corpus consistency and planned ADR identities](0043-documentation-corpus-consistency.md) on 2026-10-12 after approving its reviewed plan and task-contract reconciliations.
+This dated rider is filed in that same Acceptance commit; the original decision body above remains preserved.
+
+- **Decision outcome rule 7:** [T-054](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md) implements the historical numeric re-sequencing requirement through stable milestone-plus-purpose identifiers. Filed ADR numbers and reserved 0034 remain intact; actual numeric allocation happens when an ADR is written.
+- **Track B.2-1 implementation policy rule 4:** ADR-0043 extends the reviewed stacked-execution exception to the maintainer-requested Track B.2-2 sequence only. Prerequisite implementation, applicable verification and both fresh independent review rounds must pass on `development` before dependent work starts. New tasks remain `In Review` until maintainer approval/merge.
+- **Decision outcome rule 3 and whole-phase gate:** [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) remains optional for general phase-exit accounting. This selected sequence implements and verifies it fully; required CI enforcement begins on revisions containing its delivered wiring. Acceptance alone does not deliver the tool. Phase C/D remain gated by the whole B.2 exit bar.

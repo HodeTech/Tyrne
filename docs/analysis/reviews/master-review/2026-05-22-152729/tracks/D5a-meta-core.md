@@ -117,7 +117,7 @@ All three terms are project-specific vocabulary that a newcomer needs to underst
 
 Rule 2 states: *"Audit tracking for `unsafe` is defined in `[docs/standards/](docs/standards/)`."* While `docs/standards/unsafe-policy.md` does define the *policy*, the actual audit log that tracks every block is at `docs/audits/unsafe-log.md`. An agent following this rule and navigating to `docs/standards/` would find the policy but not the log. This creates a navigability gap for any agent that needs to add or verify an audit entry.
 
-**Suggested fix:** Change rule 2 to: *"Audit tracking for `unsafe` is governed by [`docs/standards/unsafe-policy.md`](docs/standards/unsafe-policy.md); each block's audit entry is in [`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md)."*
+**Suggested fix:** Change rule 2 to: *"Audit tracking for `unsafe` is governed by ``[`docs/standards/unsafe-policy.md`](docs/standards/unsafe-policy.md)`` [Navigation annotation, 2026-10-13: [unsafe policy](../../../../../standards/unsafe-policy.md).]; each block's audit entry is in ``[`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md)`` [Navigation annotation, 2026-10-13: [audit log](../../../../../audits/unsafe-log.md).]."*
 
 ---
 
@@ -159,7 +159,7 @@ The Quick Start section includes the comment `# 259 tests across kernel, HAL, te
 
 Similar to D5a-011, the README embeds two volatile counts: the specific audit entry tag `UNSAFE-2026-0027` (described as "the task-loader byte-copy") and "currently 27 `unsafe` audit entries." Both will be stale as soon as Phase B5 or B6 adds any `unsafe` block.
 
-**Suggested fix:** Either link to the audit log rather than citing counts, or remove the count and tag: *"Every `unsafe` block carries a SAFETY comment ... and is tracked in [`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md) with a numbered audit entry."*
+**Suggested fix:** Either link to the audit log rather than citing counts, or remove the count and tag: *"Every `unsafe` block carries a SAFETY comment ... and is tracked in ``[`docs/audits/unsafe-log.md`](docs/audits/unsafe-log.md)`` [Navigation annotation, 2026-10-13: [audit log](../../../../../audits/unsafe-log.md).] with a numbered audit entry."*
 
 ---
 
@@ -262,3 +262,7 @@ All 30 files read in full. Line counts from `wc -l`.
 | `.agents/skills/write-adr/SKILL.md` | 91 | [x] |
 | `.agents/skills/write-architecture-doc/SKILL.md` | 130 | [x] |
 | `.agents/skills/write-guide/SKILL.md` | 111 | [x] |
+
+## Navigation reconciliation — 2026-10-13
+
+The suggested root-document Markdown above is retained literally; its relative paths were intended for those proposed root edits. Functional archive navigation: [unsafe policy](../../../../../standards/unsafe-policy.md) and [unsafe audit log](../../../../../audits/unsafe-log.md). This changes navigation only, not the original suggestions or verdict.

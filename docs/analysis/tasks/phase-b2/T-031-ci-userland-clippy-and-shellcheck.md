@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-1
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-12
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** none
@@ -82,3 +83,4 @@ Beyond the acceptance criteria:
 | 2026-10-12 | Codex (AI agent) | Corrected-head [hosted retry `0acf0cd`](https://github.com/HodeTech/Tyrne/actions/runs/38178035728) passed all five jobs. Fast-lane log measures ShellCheck 0.9.0 and rejects the isolated SC2086 fixture (exit 1); kernel-job log shows positive userland clippy and rejects the isolated `clippy::clone_on_copy` fixture (exit 101). Local 0.11.0 and hosted 0.9.0 evidence are separate; the earlier failed run is retained above. |
 | 2026-10-12 | Codex (AI agent) | [First fresh code/integration round](../../reviews/code-reviews/2026-10-12-t031-lint-gates.md): both Approve; shared Low R1-CODE-01 verified and fixed in testing/release standards. Both agents independently ran real negative gates and harness false-green/error/isolation probes under Bash 3.2; code reviewer also repeated all local gates and real debug smoke. Second fresh round pending; final maintainer PR review outstanding. |
 | 2026-10-12 | Codex (AI agent) | [Second fresh code/integration round](../../reviews/code-reviews/2026-10-12-t031-lint-gates.md#round-2-code-review): both Approve. Shared Low R2-CODE-01 verified and corrected in all three current-focus live pointers. Real lint negatives, false-green/wrong-error rejection, setup-failure propagation and cleanup pass; code reviewer also independently repeated fmt, clippy, 366 host tests, 59 QEMU cases and real debug smoke. Both rounds complete; final maintainer PR review and Done promotion remain pending. |
+| 2026-10-12 | @cemililik; Codex recorded completion | Maintainer merged [PR #48](https://github.com/HodeTech/Tyrne/pull/48) at full `c16997e003fbd1726d1205734380394781c52002` and explicitly authorized Done promotion. First merged-main [CI 38217531542](https://github.com/HodeTech/Tyrne/actions/runs/38217531542) passes all seven jobs, including native ARM/Miri and both production QEMU profiles; downloaded controls are 23/23. Default-branch [performance dispatch 38217799773](https://github.com/HodeTech/Tyrne/actions/runs/38217799773) passes with 20 valid/0 failed samples. [Post-merge retrospective](../../reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) records exact-source evidence, remaining scope and next Ready task T-038. Status In Review → Done; date_done 2026-10-12. Phase B.2 remains Active. |

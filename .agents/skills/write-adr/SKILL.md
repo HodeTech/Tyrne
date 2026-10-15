@@ -21,6 +21,7 @@ Before starting, the agent must have:
 1. **Determine the next ADR number.**
    - List files in `docs/decisions/` matching `NNNN-*.md`.
    - The next number is the highest existing number + 1, zero-padded to four digits.
+   - For a planned ledger decision, use its stable milestone-plus-purpose identity to locate the row; its historical numeric aliases do not reserve a number ([ADR-0043](../../../docs/decisions/0043-documentation-corpus-consistency.md)). The explicitly reserved 0034 slot is unchanged.
 
 2. **Create the file** at `docs/decisions/NNNN-<slug>.md`.
 
@@ -51,6 +52,7 @@ Before starting, the agent must have:
    - Format: `| NNNN | [Title](NNNN-slug.md) | Proposed | YYYY-MM-DD |`.
 
 8. **Cross-link** the new ADR from any standard or architecture document that motivated it.
+   - If a phase ledger planned this decision, preserve its purpose identity as a historical alias in the filed record and update the existing ledger row to link to the real ADR. Do not delete the purpose identity or create a second live definition.
 
 9. **Commit** per [commit-style.md](../../../docs/standards/commit-style.md):
    - Message: `docs(adr): propose ADR-NNNN — <short title>`.
@@ -69,6 +71,7 @@ Before starting, the agent must have:
 - [ ] **Decision outcome includes a *Dependency chain* subsection** with every step grounded in either an existing T-NNN file or one opened as part of the same commit. No "future, not-yet-opened task" wording.
 - [ ] Consequences include both positive and negative items.
 - [ ] ADR index at [`docs/decisions/README.md`](../../../docs/decisions/README.md) has the new row.
+- [ ] For a planned ledger decision, the filed record preserves its purpose identity as a historical alias and the existing ledger definition links to that record; historical numbers are not treated as reservations.
 - [ ] No contradiction with a prior Accepted ADR; if there was one, the [supersede-adr](../supersede-adr/SKILL.md) skill was used instead.
 - [ ] **Initial commit lands the ADR at `Proposed`.** The Propose commit is separate from any subsequent Accept commit so the careful-re-read pass shows up as its own diff. Accept may follow same-day after the re-read of step 10 (no calendar gate per [ADR-0025 §Revision notes](../../../docs/decisions/0025-adr-governance-amendments.md)), but never in the same commit as the initial draft.
 
@@ -89,3 +92,4 @@ Before starting, the agent must have:
 - [docs/decisions/template.md](../../../docs/decisions/template.md) — the template to copy from.
 - [commit-style.md](../../../docs/standards/commit-style.md) — commit format.
 - [architectural-principles.md](../../../docs/standards/architectural-principles.md) — principles that constrain every ADR.
+- [ADR-0043](../../../docs/decisions/0043-documentation-corpus-consistency.md) — stable planned-decision identities and allocation at filing.

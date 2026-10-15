@@ -58,6 +58,8 @@ Every kernel, HAL, driver, and service change is subject to these principles. Do
 
 **Applies to.** Any code in a kernel crate that references a register, an instruction, or a board-specific detail. That code belongs in a HAL trait implementation (i.e., a BSP), not in the kernel.
 
+<a id="p7--no-proprietary-blobs"></a>
+
 ### P7 — No proprietary binary blobs in the kernel
 
 **Statement.** Tyrne does not link, embed, or depend on proprietary binary firmware or drivers in the kernel. Open-source firmware that the board requires (e.g. Raspberry Pi boot firmware) may be documented and used *outside* the kernel, but no closed-source code is part of the Tyrne build.
@@ -97,6 +99,8 @@ Every kernel, HAL, driver, and service change is subject to these principles. Do
 **Why.** Security review, incident response, and trust-transfer all depend on being able to verify that the binary we shipped matches the source we inspected.
 
 **Applies to.** Every build configuration. Every toolchain choice. Every dependency addition (see [infrastructure.md](infrastructure.md)).
+
+**Delivery status (2026-10-13).** P11 above is the required property, not a claim that CI certifies it today. Toolchain and workspace dependency state are pinned; `cargo-vet`/`cargo-audit` are planned for the first external dependency and no cross-run binary-comparison job exists. See [infrastructure.md](infrastructure.md#reproducibility). This does not relax the reproducibility or dependency-audit requirement.
 
 ### P12 — No half-finished subsystems on main
 

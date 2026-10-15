@@ -14,13 +14,13 @@ On hardware that supports it (Pi 4 via its secure-boot chain, or a future board 
 
 ### Sub-breakdown
 
-1. **ADR-0058 — Boot measurement scheme.** PCR-like registers, event log, chaining algorithm (SHA-256 vs. -384), where measurements are stored.
+1. **[ADR-G1-boot-measurement](#adr-g1-boot-measurement) — Boot measurement scheme.** PCR-like registers, event log, chaining algorithm (SHA-256 vs. -384), where measurements are stored.
 2. **BSP integration** — measurement computed for the kernel image before `kernel_entry`; recorded somewhere the kernel can query.
 3. **Verification path** — a post-boot service that reads the measurement log and compares against expected values (signed manifest).
 
 ### Acceptance criteria
 
-- ADR-0058 Accepted.
+- The filed record for [ADR-G1-boot-measurement](#adr-g1-boot-measurement) is Accepted.
 - Measurement log produced on a supported board and inspectable from userspace.
 
 ## Milestone G1.5 — TEE support in the HAL
@@ -50,14 +50,14 @@ A crypto crate with audited implementations: hash (SHA-2, SHA-3), AEAD (ChaCha20
 
 ### Sub-breakdown
 
-1. **ADR-0059 — Crypto crate choice.** RustCrypto crates vs. one curated alternative vs. in-tree impls. Auditability, formal guarantees where applicable, no-std support.
+1. **[ADR-G2-crypto-crate](#adr-g2-crypto-crate) — Crypto crate choice.** RustCrypto crates vs. one curated alternative vs. in-tree impls. Auditability, formal guarantees where applicable, no-std support.
 2. **`tyrne-crypto`** — the crate that wraps the chosen primitives with Tyrne-native types (`Hash`, `Key`, `Signature`, `Nonce`).
 3. **Security review** per [`analysis/reviews/security-reviews/`](../../analysis/reviews/security-reviews/) — mandatory for every primitive.
 4. **Constant-time audit** — where timing side channels matter, document which paths are constant-time and which are not.
 
 ### Acceptance criteria
 
-- ADR-0059 Accepted.
+- The filed record for [ADR-G2-crypto-crate](#adr-g2-crypto-crate) is Accepted.
 - Each primitive's security review recorded.
 - No primitive is in-tree hand-rolled without explicit justification.
 
@@ -67,13 +67,13 @@ For network services (Phase E6) to talk securely. Probably `rustls` if `no_std +
 
 ### Sub-breakdown
 
-1. **ADR-0060 — TLS library choice.** rustls (preferred), mbedtls, in-tree. Covers version-pinning, maintenance, supply-chain posture.
+1. **[ADR-G3-tls-library](#adr-g3-tls-library) — TLS library choice.** rustls (preferred), mbedtls, in-tree. Covers version-pinning, maintenance, supply-chain posture.
 2. **Integration** with the network service from E6.
 3. **Test** — TLS 1.3 handshake with a known server.
 
 ### Acceptance criteria
 
-- ADR-0060 Accepted.
+- The filed record for [ADR-G3-tls-library](#adr-g3-tls-library) is Accepted.
 - Network service completes a TLS handshake and exchanges encrypted data.
 
 ## Milestone G4 — Formal verification pilot
@@ -82,14 +82,14 @@ Pick one kernel primitive — probably the capability table's derivation/revocat
 
 ### Sub-breakdown
 
-1. **ADR-0061 — Verification tool choice.** What tool for what scope; how it interacts with the build.
+1. **[ADR-G4-verification-tool](#adr-g4-verification-tool) — Verification tool choice.** What tool for what scope; how it interacts with the build.
 2. **Specification** of the chosen primitive's invariants in machine-checkable form.
 3. **Proof** (or counterexamples that correct the implementation).
 4. **CI integration** — verification runs per-commit on the verified subset.
 
 ### Acceptance criteria
 
-- ADR-0061 Accepted.
+- The filed record for [ADR-G4-verification-tool](#adr-g4-verification-tool) is Accepted.
 - At least one invariant proved on a real kernel primitive.
 - CI fails if the verification breaks.
 
@@ -100,12 +100,12 @@ Revisit the threat model from [`security-model.md`](../../architecture/security-
 ### Sub-breakdown
 
 1. **Review of the existing threat model** against Phase F deployment learnings.
-2. **ADR-0062 — Threat model v2.** Explicit supersession of security-model's Phase-1 threat statements where warranted.
+2. **[ADR-G5-threat-model-v2](#adr-g5-threat-model-v2) — Threat model v2.** Explicit supersession of security-model's Phase-1 threat statements where warranted.
 3. **`security-model.md` update** to reflect v2 (standards-update skill + ADR-first discipline).
 
 ### Acceptance criteria
 
-- ADR-0062 Accepted.
+- The filed record for [ADR-G5-threat-model-v2](#adr-g5-threat-model-v2) is Accepted.
 - `security-model.md` updated.
 - Business review captures "what the deployment taught us about the model."
 
@@ -115,15 +115,17 @@ Business review. Tyrne now has the security engineering to back the "high assura
 
 ## ADR ledger for Phase G
 
-| ADR | Purpose | Expected state | Note |
-|-----|---------|----------------|------|
-| ADR-0058 | Boot measurement scheme | G1 | renumbered 2026-05-22, was ADR-0047 (cascade from the Phase C/D renumbering). G1.5's TEE-trait ADR remains an unnumbered placeholder. |
-| ADR-0059 | Crypto crate choice | G2 | renumbered 2026-05-22, was ADR-0048 (cascade) |
-| ADR-0060 | TLS library choice | G3 | renumbered 2026-05-22, was ADR-0049 (cascade) |
-| ADR-0061 | Verification tool choice | G4 | renumbered 2026-05-22, was ADR-0050 (cascade) |
-| ADR-0062 | Threat model v2 | G5 | renumbered 2026-05-22, was ADR-0051 (cascade). Phase G's ceiling is ADR-0062; phases H and I were renumbered in the same pass (H → 0063–0065, I → 0066–0068), completing the cascade — see the §Downstream-renumbering note in [phase-e.md](phase-e.md). |
+> **Identity workflow (2026-10-13).** Under Accepted [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md), each row below defines one stable milestone-plus-purpose planning identity. Assign the actual four-digit number only when filing via [write-adr](../../../.agents/skills/write-adr/SKILL.md); preserve the purpose identity as a historical alias in that record and link its ledger row to the filed ADR. Historical numeric aliases/notes below are evidence, not current allocations or reservations. Acceptance criteria above require the future filed record to be Accepted; the planning identity itself has no ADR status or implementation authorization.
 
-Numbers are tentative; final numbers are assigned when the ADR is actually written, per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
+| Planned identity | Purpose | Milestone | Historical aliases / notes |
+|-----|---------|----------------|------|
+| <a id="adr-g1-boot-measurement"></a>ADR-G1-boot-measurement | Boot measurement scheme | G1 | Historical aliases (superseded 2026-10-13): ADR-0058; renumbered 2026-05-22, was ADR-0047 (cascade from the Phase C/D renumbering). G1.5's TEE-trait ADR remains an unnumbered placeholder. |
+| <a id="adr-g2-crypto-crate"></a>ADR-G2-crypto-crate | Crypto crate choice | G2 | Historical aliases (superseded 2026-10-13): ADR-0059; renumbered 2026-05-22, was ADR-0048 (cascade) |
+| <a id="adr-g3-tls-library"></a>ADR-G3-tls-library | TLS library choice | G3 | Historical aliases (superseded 2026-10-13): ADR-0060; renumbered 2026-05-22, was ADR-0049 (cascade) |
+| <a id="adr-g4-verification-tool"></a>ADR-G4-verification-tool | Verification tool choice | G4 | Historical aliases (superseded 2026-10-13): ADR-0061; renumbered 2026-05-22, was ADR-0050 (cascade) |
+| <a id="adr-g5-threat-model-v2"></a>ADR-G5-threat-model-v2 | Threat model v2 | G5 | Historical aliases (superseded 2026-10-13): ADR-0062; renumbered 2026-05-22, was ADR-0051 (cascade). Phase G's ceiling is ADR-0062; phases H and I were renumbered in the same pass (H → 0063–0065, I → 0066–0068), completing the cascade — see the §Downstream-renumbering note in [phase-e.md](phase-e.md). |
+
+The former tentative-number workflow is superseded by the dated identity workflow above; filed ADR numbers remain stable history per [ADR-0013](../../decisions/0013-roadmap-and-planning.md).
 
 ## Open questions carried into Phase G
 
@@ -159,10 +161,10 @@ This phase's "prove-it" posture (Milestone G4 in particular) is best served by t
 
 ### Epic G-R2 — Formal-verification pilot candidates
 
-Milestone G4 names its target only tentatively ("probably the capability table's derivation/revocation logic"). Based on this review, three primitives are strong, concretely-scoped candidates for the ADR-0061 tool pilot (gates Milestone G4's Specification sub-step):
+Milestone G4 names its target only tentatively ("probably the capability table's derivation/revocation logic"). Based on this review, three primitives are strong, concretely-scoped candidates for the [ADR-G4-verification-tool](#adr-g4-verification-tool) tool pilot (gates Milestone G4's Specification sub-step):
 
 - **Capability derivation/revocation logic** — `kernel/src/cap/table.rs`'s `cap_derive` (table.rs:258) and `cap_revoke` (table.rs:329), including the BFS descendant-collection loops at table.rs:341-410. This is the primitive G4 already names as the likely target, and it is the highest-value candidate: it is security-critical, its invariants are genuinely multi-step (spanning several functions, per Epic G-R1 above), and Epic G-R1's property tests are a direct, low-cost precursor to G4's Specification sub-step — the same parent-liveness / no-cycles / BFS-completeness invariants that a property test defends empirically are exactly what a machine-checkable specification needs to state formally.
-- **`SchedQueue`'s bounded-FIFO wraparound arithmetic** — `kernel/src/sched/mod.rs:104-134`. Small, self-contained, free of external dependencies or `unsafe`, and already isolated behind a `const`-generic capacity (mod.rs:91). A good lower-risk warm-up candidate for exercising whichever tool ADR-0061 selects before committing to the higher-stakes capability-table primitive.
+- **`SchedQueue`'s bounded-FIFO wraparound arithmetic** — `kernel/src/sched/mod.rs:104-134`. Small, self-contained, free of external dependencies or `unsafe`, and already isolated behind a `const`-generic capacity (mod.rs:91). A good lower-risk warm-up candidate for exercising whichever tool [ADR-G4-verification-tool](#adr-g4-verification-tool) selects before committing to the higher-stakes capability-table primitive.
 - **Syscall status-code encoding** — `kernel/src/syscall/error.rs`'s `as_status` (error.rs:95) and `kernel/src/syscall/abi.rs`'s `encode_cap_handle`/`decode_cap_handle` (abi.rs:213 area). Purely combinatorial, `unsafe`-free code with an existing exhaustive-match discipline (error.rs:24-27) — well suited to a tool that specializes in bounded model-checking over a finite state space, and complementary to the pairwise-disjointness property test in Epic G-R1.
 
 ### Epic G-R3 — Decisions to formalize
@@ -171,7 +173,7 @@ Milestone G4 names its target only tentatively ("probably the capability table's
   - Location: [ADR-0035](../../decisions/0035-physical-memory-manager.md):33 ("Capability-aware extension point... the future capability-system grants will sit on top of `Pmm::alloc_frame`"); `kernel/src/mm/pmm.rs` — the module doc's "zero-fill every allocated frame" statement (pmm.rs:18) confirms the current posture is zero-on-alloc-only; `alloc_frame`'s doc (pmm.rs:327-335).
   - Action: write an ADR making the zero-on-free vs. zero-on-alloc-only decision explicit before B5+'s `MemoryRegionCap` revocation model creates the first real reader of freed-but-unreused physical frames. Per CLAUDE.md's security-first rule ("when in doubt, choose the more conservative option"), the current zero-on-alloc-only behavior should be either upgraded to zero-on-free or explicitly justified against a stated threat model — not inherited silently as the default. Number per the Phase G ADR ledger's normal allocation process.
 
-- **Measured-boot items** — cross-checked against Milestone G1, not new scope. The review found no measured-boot decision point that Milestone G1's ADR-0058 sub-breakdown (item 1: "PCR-like registers, event log, chaining algorithm (SHA-256 vs. -384), where measurements are stored") does not already track. This bullet records that cross-check for completeness; ADR-0058 remains the single place these decisions land, and no additional decision item is proposed here.
+- **Measured-boot items** — cross-checked against Milestone G1, not new scope. The review found no measured-boot decision point that Milestone G1's [ADR-G1-boot-measurement](#adr-g1-boot-measurement) sub-breakdown (item 1: "PCR-like registers, event log, chaining algorithm (SHA-256 vs. -384), where measurements are stored") does not already track. This bullet records that cross-check for completeness; [ADR-G1-boot-measurement](#adr-g1-boot-measurement) remains the single place these decisions land, and no additional decision item is proposed here.
 
 ### HAL/BSP: documentation accuracy
 

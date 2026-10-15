@@ -1,26 +1,28 @@
 # Guides
 
-Task-oriented walkthroughs for contributors and users of Tyrne. Guides answer *"how do I do X?"* — they are step-by-step, they assume little, and they link out to architecture and ADRs when background is needed.
+Task-oriented walkthroughs for contributors and users of Tyrne. Guides answer “how do I do X?” with prerequisites, steps and verification, linking architecture/ADRs for background.
 
 ## Status
 
-Tyrne is in the architecture phase. Guides will be added as the corresponding implementation work is done. The list below is a placeholder so that folder structure and naming are clear.
+Tyrne is pre-alpha. Phase B is complete; Phase B.2 consolidation/hardening is active, and Phase C opens after its exit gate. QEMU boots the cooperative IPC demo and the first EL0 task today. The available-guide inventory below contains all five substantive guide files; this README is their index, not a sixth guide.
 
-## Planned guides
+## Available guides
 
 | Guide | Audience | Status |
 |-------|----------|--------|
-| `toolchain-setup.md` | First-time contributor setting up the Rust cross-compiler and QEMU. | Planned — Phase 3 |
-| [`run-under-qemu.md`](run-under-qemu.md) | Running the kernel under QEMU `virt` aarch64. | Accepted guide; T-033 refresh In Review |
-| [`ci.md`](ci.md) | What the GitHub Actions pipeline runs, when it runs, and what each job gates. | Accepted (2026-04-23, R6) |
-| `debug-with-gdb.md` | Attaching GDB to a QEMU-hosted kernel. | Planned — Phase 3 |
-| `port-to-new-board.md` | Adding a new board support package to the HAL. | Planned — Phase 4 |
-| `write-a-driver.md` | Implementing a userspace driver with capability grants. | Planned — Phase 4 |
-| `write-an-adr.md` | Proposing, writing, and accepting an ADR. | Planned — Phase 2 |
+| [run-under-qemu.md](run-under-qemu.md) | Build and boot the reference QEMU BSP. | Accepted guide; T-033 refresh merged in PR #48. |
+| [ci.md](ci.md) | Understand pipeline jobs and their gates. | Accepted (2026-04-23, R6); Track B.2-1 refresh merged in PR #48. |
+| [two-task-demo.md](two-task-demo.md) | Run and interpret the capability-checked IPC demo with EL0 interleaving. | Available; T-050 refresh In Review, both fresh rounds complete; maintainer review pending. |
+| [first-userspace.md](first-userspace.md) | Build and inspect hello's EL0 entry, console return and exit. | Available; T-050 refresh In Review, both fresh rounds complete; maintainer review pending. |
+| [review-evidence.md](review-evidence.md) | Recover exact archived evidence/original source and verify its integrity. | Available; Migration both fresh rounds complete; prevention/final publication verification remains. |
+
+## Planned topics
+
+The following filenames are ideas, not existing guides or scheduled milestones: `toolchain-setup.md`, `debug-with-gdb.md`, `port-to-new-board.md`, `write-a-driver.md` and `write-an-adr.md`. Use the available guides and [procedure library](../../.agents/skills/README.md) for current workflows.
 
 ## Conventions
 
-- Every guide starts with **Goal** and **Prerequisites** sections.
-- Commands are shown in fenced code blocks with the shell language tag.
-- File paths and command output are verbatim; placeholders use `<angle-brackets>`.
-- When a guide is long, split it into numbered sub-steps and include a final **Verifying it worked** section.
+- Every task guide has Goal, Prerequisites, numbered Steps, Verifying it worked, Troubleshooting and References.
+- Commands use fenced `sh` blocks; output uses separate `text` blocks.
+- Paths and output are verbatim; placeholders use `<angle-brackets>`.
+- Status records distinguish availability, implementation review and maintainer acceptance.

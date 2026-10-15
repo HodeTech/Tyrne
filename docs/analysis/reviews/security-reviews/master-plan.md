@@ -8,7 +8,7 @@ This plan is written to be parallelizable across multiple agents — up to eight
 
 - The **change under review** — PR URL, commit range, or branch.
 - The PR / change **description**, with security context flagged by the author.
-- Access to: the source, the affected ADRs, [`../../../architecture/security-model.md`](../../../architecture/security-model.md), the [`../../audits/unsafe-log.md`](../../audits/unsafe-log.md), and any prior security reviews on the same subsystem.
+- Access to: the source, the affected ADRs, [`../../../architecture/security-model.md`](../../../architecture/security-model.md), the [`../../audits/unsafe-log.md`](../../../audits/unsafe-log.md), and any prior security reviews on the same subsystem.
 
 ## Output
 
