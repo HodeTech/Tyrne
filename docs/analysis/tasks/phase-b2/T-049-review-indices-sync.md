@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Progress
+- **Status:** In Review
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -82,8 +82,8 @@ A scratch relative-link scan of `docs/analysis/reviews` (fenced blocks skipped) 
 
 The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidence-cleanup.md) and [ADR-0044](../../../decisions/0044-review-evidence-retention.md). The original checked criteria remain historical delivery evidence; these additional criteria close before this maintenance returns to In Review. No Done promotion or phase inventory expansion is authorized.
 
-- [ ] Preserve all 804 migrated payloads and original source history in a digest-verified durable archive; verify independent downloaded restoration before removal.
-- [ ] Reconcile all affected citations and historical source identities without changing original findings, verdicts, measurements or procedural limits.
+- [x] Preserve all 804 migrated payloads and original source history in a digest-verified durable archive; verify independent downloaded restoration before removal.
+- [x] Reconcile all affected citations and historical source identities without changing original findings, verdicts, measurements or procedural limits.
 
 ## Review history
 
@@ -100,3 +100,4 @@ The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidenc
 | 2026-10-16 | Codex, maintainer-approved maintenance | Reopened In Progress for Accepted ADR-0044 archive/migration/prevention followup under the approved cleanup plan. Original delivery evidence remains historical; new criteria unchecked, no date_done or phase expansion. Governance/recovery both fresh rounds complete; archival execution begins. |
 
 > **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.
+| 2026-10-16 | Codex, both maintenance rounds complete | Immutable publication/download recovery, all804 payloads/old source,151-map invariants and348/46 reversible citations verified. [Both fresh complementary rounds](../../reviews/code-reviews/2026-10-16-pr49-evidence-migration.md) close Low MRC1-01 at3a17c3d; zero unresolved findings. Both new maintenance criteria checked; returns In Review, no date_done. T-056 prevention/remote lease/final hosted and maintainer merge remain separate. |

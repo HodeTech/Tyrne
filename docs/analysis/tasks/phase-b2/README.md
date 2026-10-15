@@ -70,7 +70,7 @@ All work stays on development. The maintainer explicitly authorized combined pub
 | [T-046](T-046-docs-subsystem-chapters-refresh.md) | Refresh the subsystem architecture chapters (hal, scheduler, exceptions, security-model, memory-management, boot, ipc) | B.2-2 | In Review | — |
 | [T-047](T-047-roadmap-state-and-phase-index-sync.md) | Synchronise roadmap live state and phase index | B.2-2 | In Review | — |
 | [T-048](T-048-phase-b-task-corpus-sync.md) | Synchronise the Phase B task corpus and fix task-file links | B.2-2 | In Review | — |
-| [T-049](T-049-review-indices-sync.md) | Synchronise the review-family indices | B.2-2 | In Progress | — |
+| [T-049](T-049-review-indices-sync.md) | Synchronise the review-family indices | B.2-2 | In Review | — |
 | [T-050](T-050-entry-docs-and-glossary-sync.md) | Refresh README, guides index, glossary, and the add-bsp skill trace | B.2-2 | In Review | — |
 | [T-051](T-051-contributing-and-security-status.md) | Update CONTRIBUTING.md and SECURITY.md to the post-Phase-B state | B.2-2 | In Review | — |
 | [T-052](T-052-standards-docs-reality-sync.md) | Reconcile standards claims with CI and lint reality (decisions required) | B.2-2 | In Review | T-032 |
@@ -152,18 +152,18 @@ flowchart LR
 
 ## Remaining work after Track B.2-2 implementation
 
-There are 46 tasks:8 Done,19 Ready,10 In Review,2 In Progress and 7 Draft. T-049/T-056 are reopened for the maintainer-approved ADR-0044 cleanup; the original twelve-task delivery remains subject to maintainer review/merge; 26 other tasks remain unimplemented. Thus 38 tasks are not Done, which does not mean 38 tasks still need implementation. T-056 remains optional for general phase exit, and is fully implemented in this selected sequence.
+There are 46 tasks:8 Done,19 Ready,11 In Review,1 In Progress and 7 Draft. T-049 archival/citation maintenance returned In Review; T-056 remains In Progress for the approved ADR-0044 prevention/final-validation unit; the original twelve-task delivery remains subject to maintainer review/merge; 26 other tasks remain unimplemented. Thus 38 tasks are not Done, which does not mean 38 tasks still need implementation. T-056 remains optional for general phase exit, and is fully implemented in this selected sequence.
 
 | Scope | Tasks | Count | Current boundary |
 |-------|-------|------:|------------------|
-| B.2-2 documentation cascade | T-045–T-056 | 12 | Original delivery reviewed; T-049/T-056 In Progress for approved ADR-0044 maintenance; final hosted and maintainer gates remain. |
+| B.2-2 documentation cascade | T-045–T-056 | 12 | Original delivery reviewed; T-049 archival/citation review complete, In Review; T-056 In Progress for prevention/final validation; maintainer gates remain. |
 | B.2-3 correctness and robustness | T-038–T-044 | 7 | Unimplemented; T-038 Ready/HIGH is next. |
 | B.2-4 code quality and API design | T-057–T-068 | 12 | Unimplemented; individual dependency/decision gates apply. |
 | B.2-5 unsafe-audit and doc comments | T-069–T-072; T-064 supplies shared docs | 4 | Unimplemented; shared ownership adds no extra task. |
 | B.2-6 performance decisions | T-073 | 1 | Unimplemented. |
 | Readiness and phase closure | T-074, T-075 | 2 | Unimplemented; whole-phase gates remain. |
 
-**Current maintenance (2026-10-16):** T-049/T-056 execute the approved [PR49 cleanup plan](../../reports/2026-10-16-pr49-evidence-cleanup.md) under [ADR-0044](../../../decisions/0044-review-evidence-retention.md); both stop In Review after the archival/guard/hosted gates.
+**Current maintenance (2026-10-16):** T-049 has completed archival/citation maintenance and T-056 executes the remaining prevention/final-validation unit of the approved [PR49 cleanup plan](../../reports/2026-10-16-pr49-evidence-cleanup.md) under [ADR-0044](../../../decisions/0044-review-evidence-retention.md); both stop In Review after the archival/guard/hosted gates.
 
 **Following implementation:** HIGH [T-038](T-038-console-write-x2-clobber.md), Ready after completed T-037; no new ADR required, but its UNSAFE-2026-0033 amendment, separate security review and userland/QEMU verification remain binding. It has not started in this track. Prioritize remaining correctness work under the existing waves; T-039/T-040 and other decision-bearing tasks need their recorded decisions first. ADR-0040's scope checkpoint follows CI and HIGH-correctness work; documentation delivery alone does not clear it. C/D remain gated on whole-phase closure, owned by T-075.
 

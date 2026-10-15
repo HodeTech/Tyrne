@@ -24,6 +24,7 @@ The ADR-0040 approval follow-up in this index is explicitly an independent appro
 
 | Date | Scope | File |
 |------|-------|------|
+| 2026-10-16 | PR49 immutable archive/local history/citations; both fresh complementary rounds; one Low fixed/verified, zero unresolved; prevention/remote/hosted gates pending | [2026-10-16-pr49-evidence-migration.md](2026-10-16-pr49-evidence-migration.md) |
 | 2026-10-16 | PR49 governance/recovery; both fresh complementary rounds; one Medium fixed/verified, zero unresolved findings; migration/hosted gates pending | [2026-10-16-pr49-evidence-governance.md](2026-10-16-pr49-evidence-governance.md) |
 | 2026-10-15 | B.2-2 integrated Step13 ab847ee..7d1eca0; both fresh rounds, one Low fixed/verified, zero new R2 or unresolved findings; final-tip/human gates separate | [2026-10-15-phase-b2-track2-integration.md](2026-10-15-phase-b2-track2-integration.md) |
 | 2026-10-15 | T056 integration91a64b5..4044b79, both fresh rounds and committed-fix reconciliations; nine groups closed, Step13/final-tip/maintainer gates pending | [2026-10-15-t056-integration.md](2026-10-15-t056-integration.md) |

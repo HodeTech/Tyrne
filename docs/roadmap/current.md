@@ -6,13 +6,13 @@ The live pointer to selected work, task states and review triggers. Dated banner
 ## Live state — 2026-10-16
 
 - **Active phase:** [B.2 — Consolidation & Hardening](phases/phase-b2.md), mandatory whole-phase gate before C/D under [ADR-0040](../decisions/0040-phase-b2-consolidation-bridge.md). Phase C and D remain gated.
-- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps 0–13 completed their required review boundaries; original implementation is complete; ten selected tasks are In Review and T-049/T-056 are In Progress for approved evidence-retention maintenance.
-- **Active task:** [T-056 — evidence-retention maintenance](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) In Progress; [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) also In Progress for archive/citation reconciliation. Both reopened for the maintainer-approved [PR49 evidence cleanup](../analysis/reports/2026-10-16-pr49-evidence-cleanup.md) under Accepted [ADR-0044](../decisions/0044-review-evidence-retention.md). Governance/recovery passed both fresh complementary rounds. [Immutable archival, verified public recovery and local history/citation migration](../analysis/reports/2026-10-16-pr49-evidence-migration.md) are implemented; migration review closure, footprint prevention, exact remote development lease publication and final hosted verification remain.
+- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps 0–13 completed their required review boundaries; original implementation is complete; eleven selected tasks are In Review and T-056 is In Progress for approved evidence-retention maintenance.
+- **Active task:** [T-056 — footprint prevention and final validation](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) In Progress under Accepted [ADR-0044](../decisions/0044-review-evidence-retention.md). [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) returns In Review after [both fresh archive/citation rounds](../analysis/reviews/code-reviews/2026-10-16-pr49-evidence-migration.md). Immutable archive/public recovery/local migration are verified; footprint implementation/reviews, exact remote lease and final hosted/clone gates remain.
 - **Working branch:** development, as requested by the maintainer.
 - **Last completed work:** Track B.2-1 plus prerequisite T-037 (T-030–T-037 overall), Done after [PR #48](https://github.com/HodeTech/Tyrne/pull/48) merged 2026-10-12 at `c16997e`; the [completion retrospective](../analysis/reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) retains merged-main evidence.
 - **Historical completion:** [T-029](../analysis/tasks/phase-b/T-029-perf-microbench.md), Phase 1 [PR #44](https://github.com/HodeTech/Tyrne/pull/44) and Phase 2 [PR #45](https://github.com/HodeTech/Tyrne/pull/45), both merged 2026-06-01. Its recovered dated banner is in the archive.
 - **Last completed milestone:** B6 / Phase B, closed by [PR #43](https://github.com/HodeTech/Tyrne/pull/43) on 2026-06-01 at `ca932ac`; b6-closure is merged and retired. No Phase B closure review remains pending.
-- **In review:** 10 selected B.2-2 tasks, pending maintainer PR approval/merge. **In progress:** T-049/T-056 maintenance. **Phase inventory:** 46 tasks — 8 Done, 19 Ready, 10 In Review, 2 In Progress, 7 Draft; see the [task index](../analysis/tasks/phase-b2/README.md).
+- **In review:** 11 selected B.2-2 tasks, pending maintainer approval/merge. **In progress:** T-056 prevention/final validation. **Phase inventory:** 46 tasks — 8 Done, 19 Ready, 11 In Review, 1 In Progress, 7 Draft; see the [task index](../analysis/tasks/phase-b2/README.md).
 
 ### Selected task states
 
@@ -22,7 +22,7 @@ The live pointer to selected work, task states and review triggers. Dated banner
 | [T-046](../analysis/tasks/phase-b2/T-046-docs-subsystem-chapters-refresh.md) | In Review |
 | [T-047](../analysis/tasks/phase-b2/T-047-roadmap-state-and-phase-index-sync.md) | In Review |
 | [T-048](../analysis/tasks/phase-b2/T-048-phase-b-task-corpus-sync.md) | In Review |
-| [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) | In Progress |
+| [T-049](../analysis/tasks/phase-b2/T-049-review-indices-sync.md) | In Review |
 | [T-050](../analysis/tasks/phase-b2/T-050-entry-docs-and-glossary-sync.md) | In Review |
 | [T-051](../analysis/tasks/phase-b2/T-051-contributing-and-security-status.md) | In Review |
 | [T-052](../analysis/tasks/phase-b2/T-052-standards-docs-reality-sync.md) | In Review |
@@ -33,8 +33,8 @@ The live pointer to selected work, task states and review triggers. Dated banner
 
 ### Next work and review triggers
 
-- **Next work:** close fresh archive/citation reviews for the [verified local migration](../analysis/reports/2026-10-16-pr49-evidence-migration.md), implement footprint prevention, validate the final candidate, then publish development with the approved exact lease and verify hosted CI. Maintainer [PR49](https://github.com/HodeTech/Tyrne/pull/49)/SECURITY wording review follows; no Done promotion before authorized merge.
-- **Next review trigger:** complete the archive/citation unit’s two different fresh complementary rounds and verified corrections; afterward review the prevention/final-validation unit. Governance/recovery rounds are complete. Original Step13 reviews and the [integrated readiness record](../analysis/reports/2026-10-15-phase-b2-track2-completion-readiness.md) remain historical delivery evidence.
+- **Next work:** implement footprint prevention, complete its two fresh complementary review rounds, validate the final candidate, then publish development with the approved exact lease and verify hosted CI/ordinary remote clone. Maintainer [PR49](https://github.com/HodeTech/Tyrne/pull/49)/SECURITY wording review follows; no Done before authorized merge.
+- **Next review trigger:** prevention/final-validation unit’s two different fresh complementary rounds and verified corrections. Governance/recovery and archive/citation units have both rounds complete. Original Step13 reviews and the [integrated readiness record](../analysis/reports/2026-10-15-phase-b2-track2-completion-readiness.md) remain historical delivery evidence.
 - **Following correctness work:** [T-038 — console_write x2 clobber](../analysis/tasks/phase-b2/T-038-console-write-x2-clobber.md) is Ready/HIGH and has not started. T-037 is Done; the documentation track does not clear this checkpoint. Eventual whole-phase closure reviews belong to [T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md); all B.2 exit gates still apply to C/D.
 
 ### Active decisions
