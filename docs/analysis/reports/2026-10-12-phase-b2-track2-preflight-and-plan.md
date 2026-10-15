@@ -163,6 +163,8 @@ At preparation, PR #49 owns this same remote source branch, so pushing new commi
 Keep proposals/local implementation local until its merge, unless the maintainer explicitly chooses to combine the work; do not close, merge or repurpose PR #49 silently.
 After its merge, fetch and reconcile ancestry on development without changing main or discarding local commits, then publish the Track B.2-2 PR from the same branch.
 
+**Maintainer publication choice, 2026-10-15:** explicitly combine B.2-2 with the existing PR #49 and publish from development. This selects the exception above; the local-only barrier is cleared. Keep the same branch and PR, update its scope to the final combined implementation, and verify the actual published commit's hosted gates. This authorization does not merge the PR or certify unfinished reviews/tasks.
+
 Selecting this documentation track is the maintainer's requested order, not a claim that T-038 or the other correctness work completed.
 HIGH T-038 remains Ready; T-039/T-040 and later decision-bearing tasks keep their own preconditions.
 ADR-0040's scope checkpoint still follows CI and HIGH-correctness work, and all Phase B.2 exit criteria still gate C/D.

@@ -4,7 +4,7 @@ Python 3.9 standard library only. Unsupported relevant scope/lexical forms fail
 with diagnostics rather than silently narrowing the workspace inventory.
 """
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 import json
 from pathlib import Path
 import re
@@ -249,6 +249,32 @@ def workspace_sources(corpus):
             corpus.issue("Cargo.toml", 1, "unsafe-scope", str(error))
     if len(set(pending)) != len(pending):
         corpus.issue("Cargo.toml", 1, "unsafe-scope", "Duplicate workspace member")
+
+    def enqueue_path(manifest, value):
+        try:
+            target = source_path(corpus, manifest, value)
+            if not (corpus.root / target).is_dir():
+                raise ValueError("Path dependency/override requires a package directory")
+            pending.append(source_path(corpus, manifest, value.rstrip("/") + "/Cargo.toml"))
+        except (OSError, ValueError, RuntimeError) as error:
+            corpus.issue(manifest, 1, "unsafe-scope", str(error))
+
+    # Cargo applies overrides from the workspace root, including virtual roots.
+    # Inventory every declared local override, without resolving registry graphs.
+    patches = root.get("patch", {})
+    replacements = root.get("replace", {})
+    if not isinstance(patches, dict) or not isinstance(replacements, dict):
+        corpus.issue("Cargo.toml", 1, "unsafe-scope", "Unsupported Cargo patch/replace table")
+    else:
+        for overrides in [replacements, *patches.values()]:
+            if not isinstance(overrides, dict):
+                corpus.issue("Cargo.toml", 1, "unsafe-scope", "Unsupported Cargo override source table")
+                continue
+            for dependency in overrides.values():
+                if not isinstance(dependency, dict):
+                    corpus.issue("Cargo.toml", 1, "unsafe-scope", "Cargo override requires a dependency table")
+                elif "path" in dependency:
+                    enqueue_path("Cargo.toml", dependency["path"])
     sources = set()
     seen = set()
     while pending:
@@ -307,13 +333,7 @@ def workspace_sources(corpus):
                             dependency = shared[name]
                             dependency_manifest = "Cargo.toml"
                         if isinstance(dependency, dict) and "path" in dependency:
-                            try:
-                                target = source_path(corpus, dependency_manifest, dependency["path"])
-                                if not (corpus.root / target).is_dir():
-                                    raise ValueError("Path dependency requires a package directory")
-                                pending.append(source_path(corpus, dependency_manifest, dependency["path"].rstrip("/") + "/Cargo.toml"))
-                            except (OSError, ValueError, RuntimeError) as error:
-                                corpus.issue(manifest, 1, "unsafe-scope", str(error))
+                            enqueue_path(dependency_manifest, dependency["path"])
                 elif isinstance(value, dict) and key != "metadata":
                     stack.append(value)
     return sorted(sources)
@@ -436,7 +456,10 @@ def comment_tags(content):
             references.append((identity[:12] + suffix[1], suffix.start(1), bool(SHORT_ID.fullmatch(suffix[1]))))
             cursor = suffix.end()
     active = set()
+    explanation_end = 0
     for marker in ANNOTATION.finditer(content):
+        if marker.start() < explanation_end:
+            continue
         cursor = marker.end()
         year = None
         while cursor < len(content):
@@ -458,6 +481,7 @@ def comment_tags(content):
                 cursor += 1
             if cursor < len(content) and content[cursor] == "(":
                 cursor = closing_parentheses.get(cursor, len(content) - 1) + 1
+                explanation_end = cursor
                 while cursor < len(content) and content[cursor] in " \t\r\n":
                     cursor += 1
             if cursor >= len(content) or content[cursor] not in "+/,":
@@ -467,6 +491,61 @@ def comment_tags(content):
             if separator != "/":
                 year = None
     return references, active
+
+
+def source_redirections(code, assembly=False):
+    """Return literal-argument offsets from masked source tokens, not an AST.
+
+    Delimiter indexing is linear. Conditional attribute traversal skips the
+    predicate argument: a cfg key named path is not a module source attribute.
+    """
+    if assembly:
+        return [(match.start(), match.end(), False) for match in
+                re.finditer(r"(?m:^[ \t]*\.include[ \t]+)", code)]
+    result = [(match.start(), match.end(), match[1] == "include") for match in
+              re.finditer(r"\b(include|include_str)\s*!\s*[([{]", code)]
+    tokens = list(re.finditer(r"[A-Za-z_][A-Za-z0-9_]*|[^\s]", code))
+    pairs = {}
+    stack = []
+    for n, token in enumerate(tokens):
+        value = token[0]
+        if value in ("(", "[", "{"):
+            stack.append(n)
+        elif value in (")", "]", "}"):
+            if stack and tokens[stack[-1]][0] == {")": "(", "]": "[", "}": "{"}[value]:
+                pairs[stack.pop()] = n
+            else:
+                stack.clear()
+    attributes = []
+    for n, token in enumerate(tokens):
+        if token[0] != "#":
+            continue
+        begin = n + 1
+        if begin < len(tokens) and tokens[begin][0] == "!":
+            begin += 1
+        if begin < len(tokens) and tokens[begin][0] == "[" and begin in pairs:
+            attributes.append((begin + 1, pairs[begin]))
+    while attributes:
+        begin, end = attributes.pop()
+        if begin >= end:
+            continue
+        if tokens[begin][0] == "path" and begin + 1 < end and tokens[begin + 1][0] == "=":
+            result.append((tokens[begin].start(), tokens[begin + 1].end(), True))
+        elif (tokens[begin][0] == "cfg_attr" and begin + 1 < end and
+              tokens[begin + 1][0] == "(" and pairs.get(begin + 1) == end - 1):
+            cursor = begin + 2
+            argument = cursor
+            predicate = True
+            while cursor < end - 1:
+                if tokens[cursor][0] == ",":
+                    if not predicate:
+                        attributes.append((argument, cursor))
+                    predicate = False
+                    argument = cursor + 1
+                cursor = pairs.get(cursor, cursor) + 1
+            if not predicate:
+                attributes.append((argument, end - 1))
+    return sorted(result)
 
 
 def check_unsafe(corpus):
@@ -531,26 +610,32 @@ def check_unsafe(corpus):
         # Source redirection must stay within the enumerated workspace inventory.
         visible = list(text)
         for begin, content, _ in regions:
-            visible[begin:begin + len(content)] = " " * len(content)
+            visible[begin:begin + len(content)] = re.sub(r"[^\r\n]", " ", text[begin:begin + len(content)])
         for begin, end, _ in strings:
-            visible[begin:end] = " " * (end - begin)
+            visible[begin:end] = re.sub(r"[^\r\n]", " ", text[begin:end])
         code = "".join(visible)
-        redirections = list(re.finditer(r"\b(?:include|include_str)!\s*\(|#\s*\[\s*path\s*=|(?m:^[ \t]*\.include[ \t]+)", code))
-        for match in redirections:
-            literal = next((raw for begin, _, raw in strings if begin >= match.end() and not code[match.end():begin].strip()), None)
+        string_starts = [begin for begin, _, _ in strings]
+        resolved = {}
+        for begin, argument, rust in source_redirections(code, Path(path).suffix in (".s", ".S")):
+            index = bisect_left(string_starts, argument)
+            literal = None
+            if index < len(strings) and not code[argument:strings[index][0]].strip():
+                literal = strings[index][2]
             try:
                 if literal is None or not literal.startswith('"'):
                     raise ValueError("Dynamic/raw source redirection requires supported scope handling")
-                destination = json.loads(literal)
-                if not isinstance(destination, str):
-                    raise ValueError("Source redirection requires a literal path")
-                target = source_path(corpus, path, destination)
+                if literal not in resolved:
+                    destination = json.loads(literal)
+                    if not isinstance(destination, str):
+                        raise ValueError("Source redirection requires a literal path")
+                    resolved[literal] = source_path(corpus, path, destination)
+                target = resolved[literal]
                 if target not in sources:
                     raise ValueError("Redirected source must be stored .rs/.s/.S inside the enumerated workspace scope")
-                if (match[0].lstrip().startswith("include!") or match[0].startswith("#")) and Path(target).suffix != ".rs":
+                if rust and Path(target).suffix != ".rs":
                     raise ValueError("Rust include!/path attributes require stored .rs source in this profile")
             except (OSError, ValueError, RuntimeError) as error:
-                corpus.issue(path, bisect_right(newlines, match.start() - 1) + 1, "unsafe-scope", str(error))
+                corpus.issue(path, bisect_right(newlines, begin - 1) + 1, "unsafe-scope", str(error))
     for identity, (status, line) in sorted(entries.items()):
         if status == "Active" and identity not in annotations:
             corpus.issue(log_path, line, "unsafe-log", "Active entry has no active source audit annotation: " + identity)

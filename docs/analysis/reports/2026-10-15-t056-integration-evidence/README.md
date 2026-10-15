@@ -69,3 +69,7 @@ The default command runs all eight named families; explicit distinct comma subse
 Full-Step12 fresh paired R1/fixes/different fresh R2/fixes, exact-source hosted Linux execution and Step13 integrated closure remain pending. PR49 still owns the remote development branch; the approved publication barrier applies. T-056 remains In Progress/all16unchecked/no date_done. Earlier paragraphs retain their own source/chronology boundaries.
 
 One raw unittest assertion stream contains original trailing whitespace. Its [lossless JSON envelope](cli-before.stderr.json) preserves exact recoverable UTF-8 bytes and payload hash without introducing artifact whitespace errors; the original raw TMP stream is unchanged. This is encoding, not a diagnostic/oracle rewrite.
+
+## First-round integration corrections
+
+[Six-group correction evidence](r1-fixes.md) retains the actual tests-first failures, intermediate coordinator mistakes, complete source stages, lossless raw outputs and final161/111-method dual-runtime author results. R1 committed-fix verification and a different fresh R2 remain pending. The maintainer explicitly authorized combined publication into existing PR49; exact-source hosted execution is still required. Earlier paragraphs retain their original chronology and publication boundary.

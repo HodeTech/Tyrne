@@ -419,6 +419,33 @@ class MetadataTests(unittest.TestCase):
         target.symlink_to(other)
         self.rejects("reviews", "input", path)
 
+    def test_review_discovery_requires_visible_reference_uses(self):
+        path = self.review()
+        orphan = "docs/analysis/reviews/code-reviews/nested/orphan.md"
+        self.write(orphan, "# Orphan\n")
+        for body in ("[hidden]: nested/orphan.md\n", "[hidden]: nested/\n",
+                     "![hidden]\n\n[hidden]: nested/orphan.md\n"):
+            with self.subTest(body=body):
+                self.write(path, "# Review\n\n" + body)
+                self.rejects("reviews", "review-index", orphan)
+                self.clean("links")
+        for body in ("[Visible][hidden]\n\n[hidden]: nested/orphan.md\n",
+                     "[hidden][]\n\n[hidden]: nested/orphan.md\n",
+                     "[hidden]\n\n[hidden]: nested/orphan.md\n",
+                     '<a href="nested/orphan.md">Visible</a>\n'):
+            with self.subTest(body=body):
+                self.write(path, "# Review\n\n" + body)
+                self.clean("reviews")
+        self.write(path, "# Review\n\n[hidden]: missing.md\n")
+        self.rejects("links", "path")
+
+    def test_master_discovery_ignores_unused_reference_definitions(self):
+        folder = self.master_run()
+        self.write(folder + "/consolidated.md", "# Consolidated\n\n[Coverage](00-coverage-manifest.md)\n\n[unused]: tracks/\n")
+        self.rejects("reviews", "review-index", folder + "/tracks/c1.md")
+        self.write(folder + "/consolidated.md", "# Consolidated\n\n[Coverage](00-coverage-manifest.md) [tracks]\n\n[tracks]: tracks/\n")
+        self.clean("reviews")
+
     def scan(self, family):
         return metadata.scan_docs(self.root, checks=(family,))
 
@@ -733,6 +760,98 @@ class MetadataTests(unittest.TestCase):
                                 capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode())
 
+    def test_unsafe_explanatory_markers_do_not_activate_history(self):
+        for explanation in ("previous Audit: UNSAFE-2026-0002",
+                            "nested (previous Audit: UNSAFE-2026-0002)",
+                            "previous audited\n// under UNSAFE-2026-0002"):
+            for status in ("Active", "Removed"):
+                with self.subTest(explanation=explanation, status=status):
+                    self.audit_fixture("// Audit: UNSAFE-2026-0001 (" + explanation + ")\n",
+                                       {"UNSAFE-2026-0001": "Active", "UNSAFE-2026-0002": status})
+                    if status == "Removed":
+                        self.clean("unsafe")
+                    else:
+                        report = self.rejects("unsafe", "unsafe-log")
+                        self.assertTrue(any("0002" in x.message for x in report.findings))
+
+    def test_unsafe_explanations_keep_resolution_and_later_real_annotations(self):
+        self.audit_fixture("// Audit: UNSAFE-2026-0001 (previous Audit: UNSAFE-2026-0099)\n")
+        self.rejects("unsafe", "unsafe-ref", "kernel/src/lib.rs")
+        self.audit_fixture("// Audit: UNSAFE-2026-0001 (previous Audit: UNSAFE-2026-0012), UNSAFE-2026-0002.\n"
+                           "// This safe assertion (audited under UNSAFE-2026-0003) is current.\n",
+                           {"UNSAFE-2026-0001": "Active", "UNSAFE-2026-0002": "Active",
+                            "UNSAFE-2026-0003": "Active", "UNSAFE-2026-0012": "Removed"})
+        self.clean("unsafe")
+
+    def test_unsafe_macro_redirections_accept_tokens_and_guard_all_delimiters(self):
+        self.audit_fixture()
+        self.write("kernel/src/extra.rs", "// Audit: UNSAFE-2026-0001\n")
+        for name in ("include", "include_str"):
+            for opening, closing in (("(", ")"), ("[", "]"), ("{", "}")):
+                for gap in (" ", "/* gap */\n"):
+                    with self.subTest(name=name, delimiter=opening, gap=gap):
+                        prefix = name + gap + "!" + gap + opening
+                        self.write("kernel/src/lib.rs", prefix + '"extra.rs"' + closing + ";\n")
+                        self.clean("unsafe")
+                        self.write("kernel/src/lib.rs", prefix + '"../../outside.rs"' + closing + ";\n")
+                        self.rejects("unsafe", "unsafe-scope", "kernel/src/lib.rs")
+                        self.write("kernel/src/lib.rs", prefix + 'concat!("extra", ".rs")' + closing + ";\n")
+                        self.rejects("unsafe", "unsafe-scope", "kernel/src/lib.rs")
+
+    def test_unsafe_conditional_path_attributes_preserve_predicate_context(self):
+        self.audit_fixture()
+        self.write("kernel/src/extra.rs", "// Audit: UNSAFE-2026-0001\n")
+        for form in ('#[path = "%s"]', '#[cfg_attr(feature = "x", path = "%s")]',
+                     '#[cfg_attr(all(unix, feature = "x"), allow(dead_code), cfg_attr(test, path = "%s"))]'):
+            with self.subTest(form=form):
+                self.write("kernel/src/lib.rs", form % "extra.rs" + "\nmod extra;\n")
+                self.clean("unsafe")
+                self.write("kernel/src/lib.rs", form % "../../outside.rs" + "\nmod extra;\n")
+                self.rejects("unsafe", "unsafe-scope", "kernel/src/lib.rs")
+        self.audit_fixture('#[cfg_attr(path = "production", allow(dead_code))]\n'
+                           '// #[cfg_attr(test, path = "../../outside.rs")]\n'
+                           'const TEXT: &str = "include ! {\\\"../../outside.rs\\\"}";\n'
+                           'const BYTES: &[u8] = include_bytes ! {"data.bin"};\n'
+                           '// Audit: UNSAFE-2026-0001\n')
+        self.clean("unsafe")
+
+    def test_unsafe_root_patch_and_replace_paths_are_inventoried_transitively(self):
+        for table in ('[patch.crates-io]\nother', '[patch."https://example.invalid/index"]\nother',
+                      '[replace]\n"other:0.1.0"'):
+            for root_package in (False, True):
+                with self.subTest(table=table, root_package=root_package):
+                    self.audit_fixture()
+                    package = '[package]\nname = "root"\n' if root_package else ""
+                    self.write("Cargo.toml", package + '[workspace]\nmembers = ["kernel"]\ndefault-members = ["kernel"]\n' +
+                               table + ' = { path = "other" }\n')
+                    self.write("other/Cargo.toml", '[package]\nname = "other"\n[dependencies]\nthird = { path = "../third" }\n')
+                    self.write("other/src/lib.rs", "// Ordinary source\n")
+                    self.write("third/Cargo.toml", '[package]\nname = "third"\n')
+                    self.write("third/src/lib.rs", "// Unknown UNSAFE-2026-0099\n")
+                    self.rejects("unsafe", "unsafe-ref", "third/src/lib.rs")
+
+    def test_unsafe_root_override_paths_cannot_escape_guarded_input(self):
+        for value in ('"missing"', '"../outside"', '"docs/analysis/private/hidden"', '4', '"*"'):
+            with self.subTest(value=value):
+                self.audit_fixture()
+                self.write("Cargo.toml", '[workspace]\nmembers = ["kernel"]\n[patch.crates-io]\nother = { path = ' + value + ' }\n')
+                self.rejects("unsafe", "unsafe-scope")
+        self.audit_fixture()
+        self.write("Cargo.toml", '[workspace]\nmembers = ["kernel"]\n[replace]\n"other:0.1.0" = { path = "other" }\n')
+        self.write("outside/Cargo.toml", '[package]\nname = "outside"\n')
+        (self.root / "other").symlink_to(self.root / "outside", target_is_directory=True)
+        self.rejects("unsafe", "input", "other/Cargo.toml")
+
+    def test_unsafe_many_supported_redirections_have_bounded_lookup_work(self):
+        import subprocess
+        self.audit_fixture('// Audit: UNSAFE-2026-0001\n' + ''.join(
+            'const S%d: &str = include_str!("extra.rs");\n' % n for n in range(24000)))
+        self.write("kernel/src/extra.rs", "// Audit: UNSAFE-2026-0001\n")
+        result = subprocess.run([sys.executable, "-B", str(Path(__file__).with_name("check-docs.py")),
+                                 "--root", str(self.root), "--checks", "unsafe", "--json"],
+                                capture_output=True, timeout=10)
+        self.assertEqual(0, result.returncode, result.stderr.decode())
+
     def live(self, active=True):
         for identity, state in (("T-080", "In Progress" if active else "In Review"), ("T-081", "Ready")):
             path = self.task(identity=identity, status=state)
@@ -832,6 +951,39 @@ class MetadataTests(unittest.TestCase):
         source = self.live()
         source.write_text(source.read_text().replace("2 tasks", "9" * 5000 + " tasks"), encoding="utf-8")
         self.rejects("live", "live-state")
+
+    def test_live_delimiters_cannot_gain_authority_from_literal_contexts(self):
+        source = self.live()
+        original = source.read_text()
+        for text in ("```markdown\n" + original + "\n```\n",
+                     "<!-- outer comment\n" + original + "\n-->\n",
+                     original.replace("<!-- current-state:start -->", "```markdown\n<!-- current-state:start -->\n```"),
+                     original.replace("<!-- current-state:end -->", "```markdown\n<!-- current-state:end -->\n```"),
+                     '<a title="\n' + original + '\n">Example</a>\n'):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("live", "live-state", "docs/roadmap/current.md")
+
+    def test_live_keeps_full_document_references_and_inner_example_context(self):
+        source = self.live()
+        original = source.read_text().replace('[X — Fixture](phases/phase-x.md)', '[X — Fixture][phase]')
+        original += "\n[phase]: phases/phase-x.md\n"
+        original = original.replace("<!-- current-state:end -->", "```markdown\n| Task | Status |\n|---|---|\n| bogus | Done |\n```\n<!-- current-state:end -->")
+        for newline in ("\n", "\r\n", "\r"):
+            with self.subTest(newline=newline):
+                source.write_bytes(original.replace("\n", newline).encode("utf-8"))
+                self.clean("live")
+
+    def test_live_raw_html_examples_do_not_authorize_delimiters(self):
+        source = self.live()
+        original = source.read_text()
+        for tag in ("pre", "script", "style", "textarea"):
+            with self.subTest(tag=tag):
+                source.write_text("<" + tag + ">\n" + original + "\n</" + tag + ">\n", encoding="utf-8")
+                self.rejects("live", "live-state")
+                source.write_text("<" + tag + ">\n```markdown\n<!-- current-state:example -->\n</" + tag + ">\n\n" + original,
+                                  encoding="utf-8")
+                self.clean("live")
 
     def cli(self, *args):
         import os

@@ -431,6 +431,7 @@ def blocks(text):
     table = None
     rows = []
     raw_html = []
+    raw_opened = None
     events = []
     paragraph_state = ParagraphState()
     lines = physical_lines(text, keepends=True)
@@ -439,6 +440,23 @@ def blocks(text):
         offset += len(line)
         events.append(BlockLine(begin, offset, begin, tuple(active), True))
         visual = line.expandtabs(4)
+        if raw_opened:
+            name, parts, raw_begin = raw_opened
+            body = continuation(visual, parts)
+            if body is None:
+                raw_html.append((raw_begin, begin))
+                raw_opened = None
+                active = []
+            else:
+                events[-1] = events[-1]._replace(kind="html-literal", parts=tuple(parts))
+                output.append(line)
+                if re.search(r"</" + name + r">", body, re.IGNORECASE):
+                    raw_html.append((raw_begin, offset))
+                    raw_opened = None
+                html.cursor = offset
+                paragraph = indented = False
+                paragraph_state.clear()
+                continue
         if opened:
             char, length, parts = opened
             body = continuation(visual, parts)
@@ -448,6 +466,7 @@ def blocks(text):
                 closing = re.match(r" {0,3}([`~]+)[ \t]*$", body.rstrip("\r\n"))
                 if closing and set(closing[1]) == {char} and len(closing[1]) >= length:
                     opened = None
+                events[-1] = events[-1]._replace(kind="code")
                 output.append(blank(line))
                 paragraph = False
                 paragraph_state.clear()
@@ -511,6 +530,7 @@ def blocks(text):
             body, active = block_body(visual, active, paragraph)
         body = body.rstrip("\r\n")
         if comment or re.match(r" {0,3}<!--", body):
+            events[-1] = events[-1]._replace(kind="comment-continuation" if comment else "comment")
             comment_start = 0 if comment else line.index("<!--")
             closing = line.find("-->", comment_start)
             if closing < 0:
@@ -534,14 +554,29 @@ def blocks(text):
             paragraph_state.clear()
             continue
         spaces = len(body) - len(body.lstrip(" "))
+        raw_start = re.match(r" {0,3}<(pre|script|style|textarea)(?=[ \t>]|$)", body, re.IGNORECASE)
+        if raw_start:
+            name = raw_start[1].lower()
+            events[-1] = events[-1]._replace(kind="html-literal")
+            output.append(line)
+            if re.search(r"</" + name + r">", body, re.IGNORECASE):
+                raw_html.append((begin, offset))
+            else:
+                raw_opened = (name, list(active), begin)
+            html.cursor = offset
+            paragraph = indented = False
+            paragraph_state.clear()
+            continue
         match = opening_fence(body)
         if match:
+            events[-1] = events[-1]._replace(kind="code")
             opened = (match[1][0], len(match[1]), list(active))
             fences.append((line_no, match[2].strip()))
             output.append(blank(line))
             paragraph = indented = False
             paragraph_state.clear()
         elif spaces >= 4 and (indented or not paragraph):
+            events[-1] = events[-1]._replace(kind="code")
             output.append(blank(line))
             indented = True
             paragraph_state.clear()
@@ -558,6 +593,8 @@ def blocks(text):
                                                raw_parts, opened_container, body, line)
             paragraph = paragraph_state.active
             html.scan(begin, offset)
+    if raw_opened:
+        raw_html.append((raw_opened[2], len(text)))
     return "".join(output), fences, html.spans, rows, raw_html, BlockLayout(text, events)
 
 

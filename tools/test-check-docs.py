@@ -1155,6 +1155,18 @@ class LinkTests(unittest.TestCase):
         self.assertEqual(2, result.findings[0].line)
         self.check('<!-- c --> \\<a href="missing.md">real</a>\n', ['path'])
 
+    def test_raw_literal_html_blocks_preserve_html_and_exclude_markdown_examples(self):
+        for tag in ('pre', 'script', 'style', 'textarea'):
+            with self.subTest(tag=tag):
+                source = ('<' + tag + '>\n# Ghost\n[literal](missing.md)\n```\n' +
+                          '</' + tag.upper() + '>\n\n# Real\n\n[real](#real) [ghost](#ghost)\n')
+                self.check(source, ['fragment'])
+                document = docs.Markdown('docs/source.md', source)
+                self.assertEqual([], document.fences)
+                self.assertNotIn('ghost', document.anchors)
+        result = self.check('<pre>\n<a href="missing.md">actual HTML</a>\n</pre>\n', ['path'])
+        self.assertEqual(2, result.findings[0].line)
+
     def test_missing_quote_markers_keep_noninterrupting_ordered_lazy_continuations(self):
         for ending in ('\n', '\r', '\r\n'):
             cases = [('> 1. prose <!--\n2. [literal](missing.md) -->\n', []),

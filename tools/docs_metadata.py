@@ -5,6 +5,7 @@ unsafe soundness. All families share guarded input discovery and reads.
 """
 
 from collections import Counter, defaultdict
+from copy import copy
 from datetime import date
 from pathlib import Path
 import re
@@ -313,7 +314,7 @@ def reachable_reviews(corpus, prefix, seeds, paths):
         if document is None:
             continue
         for link in document.links:
-            if link.image:
+            if link.image or (link.kind == "markdown" and link.label is None):
                 continue
             value = navigation_value(link)
             if not value.partition("#")[0].partition("?")[0]:
@@ -584,8 +585,17 @@ def check_live(corpus):
     if len(start) != 1 or len(end) != 1 or start[0] >= end[0]:
         corpus.issue(path, 1, "live-state", "Expected one complete ordered pair of exact current-state delimiters")
         return
-    # Preserve original physical line numbers for fields, links and table rows.
-    document = Markdown(path, "\n" * (start[0] + 1) + "".join(lines[start[0] + 1:end[0]]))
+    for number in (start[0], end[0]):
+        context = source.layout.lines[number]
+        if context.kind != "comment" or context.parts or context.body_start != context.start:
+            corpus.issue(path, number + 1, "live-state", "Live delimiter must be a standalone top-level comment")
+            return
+    # Retain the original block interpretation and globally visible references.
+    # Reparsing an extracted slice would promote enclosing examples to authority.
+    document = copy(source)
+    document.block_text = "\n" * (start[0] + 1) + "".join(
+        physical_lines(source.block_text, keepends=True)[start[0] + 1:end[0]])
+    document.table_rows = [row for row in source.table_rows if start[0] + 1 < row.line < end[0] + 1]
     headings = []
     fields = {}
     for line, text in enumerate(physical_lines(document.block_text), 1):
