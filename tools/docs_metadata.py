@@ -572,9 +572,139 @@ def check_fences(corpus):
                     corpus.issue(path, line, "standard-fence", "Standard opening fence requires a language tag")
 
 
+def check_live(corpus):
+    """Only the exact unique current-state region; archives are not live claims."""
+    path = "docs/roadmap/current.md"
+    source = corpus.load(path)
+    if source is None:
+        return
+    lines = physical_lines(source.text, keepends=True)
+    start = [n for n, text in enumerate(lines) if text.rstrip("\r\n") == "<!-- current-state:start -->"]
+    end = [n for n, text in enumerate(lines) if text.rstrip("\r\n") == "<!-- current-state:end -->"]
+    if len(start) != 1 or len(end) != 1 or start[0] >= end[0]:
+        corpus.issue(path, 1, "live-state", "Expected one complete ordered pair of exact current-state delimiters")
+        return
+    # Preserve original physical line numbers for fields, links and table rows.
+    document = Markdown(path, "\n" * (start[0] + 1) + "".join(lines[start[0] + 1:end[0]]))
+    headings = []
+    fields = {}
+    for line, text in enumerate(physical_lines(document.block_text), 1):
+        heading = re.fullmatch(r"## Live state — (.+)", text)
+        if heading:
+            headings.append((heading[1], line))
+        field = re.fullmatch(r"- \*\*(Active phase|Selected track|Active task):\*\*[ \t]*(.*)", text)
+        inventory = re.search(r"\*\*Phase inventory:\*\*[ \t]*(.*)", text)
+        if field or inventory:
+            key, value = (field[1], field[2]) if field else ("Phase inventory", inventory[1])
+            if key in fields:
+                corpus.issue(path, line, "live-state", "Duplicate live metadata: " + key)
+            else:
+                fields[key] = (value, line)
+    if len(headings) != 1 or not calendar(headings[0][0]):
+        corpus.issue(path, headings[0][1] if headings else start[0] + 2, "live-state", "Expected one dated ISO calendar Live state heading")
+    for name in ("Active phase", "Selected track", "Active task", "Phase inventory"):
+        if name not in fields:
+            corpus.issue(path, start[0] + 2, "live-state", "Missing live metadata: " + name)
+    if any(name not in fields for name in ("Active phase", "Selected track", "Active task", "Phase inventory")):
+        return
+
+    def field_links(name):
+        value, _ = fields[name]
+        child = Markdown(path, value, inline_only=True, references=document.references)
+        return [link for link in child.links if not link.image and link.label is not None]
+
+    phase_links = field_links("Active phase")
+    try:
+        if not phase_links:
+            raise ValueError("Active phase requires a local phase record link")
+        phase = local_record_target(corpus, document, phase_links[0])
+        if not re.fullmatch(r"docs/roadmap/phases/phase-[a-z][a-z0-9-]*\.md", phase):
+            raise ValueError("Active phase must target a phase roadmap record")
+    except (OSError, ValueError, RuntimeError) as error:
+        corpus.issue(path, fields["Active phase"][1], "live-state", str(error))
+        return
+    track = re.match(r"([A-Z](?:\.[0-9]+)*-[0-9]+)(?=$|[ ,.;])", inline_text(fields["Selected track"][0]))
+    if not track:
+        corpus.issue(path, fields["Selected track"][1], "live-state", "Unsupported selected track identity")
+        return
+    phase_folder = "docs/analysis/tasks/" + Path(phase).stem
+    records = {}
+    selected = set()
+    for task in corpus.paths:
+        if Path(task).parent.as_posix() != phase_folder or not Path(task).name.startswith("T-"):
+            continue
+        record = corpus.load(task)
+        if record is None:
+            continue
+        _, metadata = header(corpus, record, "live-state")
+        match = TASK_NAME.fullmatch(Path(task).name)
+        state = lifecycle(metadata.get("status", ("", 1))[0])
+        if not match or state is None:
+            corpus.issue(task, 1, "live-state", "Live phase inventory requires valid task identity/status")
+            continue
+        records[task] = (match[1], state)
+        milestone = inline_text(metadata.get("milestone", ("", 1))[0])
+        if re.match(r"Track " + re.escape(track[1]) + r"(?=$|[ (;])", milestone):
+            selected.add(task)
+    counts = Counter()
+    for line, cells in inventory_rows(corpus, document, ("Task", "Status"), "live-state"):
+        links = cell_links(document, cells["Task"])
+        try:
+            if len(links) != 1:
+                raise ValueError("Selected task row requires one task link")
+            target = local_record_target(corpus, document, links[0])
+        except (OSError, ValueError, RuntimeError) as error:
+            corpus.issue(path, line, "live-state", str(error))
+            continue
+        counts[target] += 1
+        if target not in selected or counts[target] > 1:
+            corpus.issue(path, line, "live-state", "Extra or duplicate selected task: " + target)
+        if target in records:
+            identity, state = records[target]
+            if inline_text(links[0].label).strip() != identity or lifecycle(cells["Status"].source) != state:
+                corpus.issue(path, line, "live-state", "Selected task identity/status differs from actual metadata: " + identity)
+    for task in sorted(selected - counts.keys()):
+        corpus.issue(path, start[0] + 2, "live-state", "Missing selected task: " + task)
+    actual = Counter(state for _, state in records.values())
+    raw, line = fields["Phase inventory"]
+    census = re.match(r"([0-9]{1,9}) tasks[ \t]+—[ \t]*([^;]+)(?:;|$)", inline_text(raw))
+    claimed = Counter()
+    valid = census is not None
+    if census:
+        for token in census[2].split(","):
+            entry = re.fullmatch(r"[ \t]*([0-9]{1,9}) (.+?)[ \t]*", token)
+            if not entry or entry[2] not in LIFECYCLE or entry[2] in claimed:
+                valid = False
+            else:
+                claimed[entry[2]] = int(entry[1])
+    # Counter equality began treating absent/zero keys alike after Python3.9.
+    # Normalize explicitly so the supported interpreters enforce one contract.
+    if not valid or int(census[1]) != len(records) or +claimed != +actual:
+        corpus.issue(path, line, "live-state", "Phase census differs from actual normalized task inventory")
+    raw, line = fields["Active task"]
+    if re.match(r"None(?=$|[ ;.])", inline_text(raw)):
+        if any(records[task][1] == "In Progress" for task in selected):
+            corpus.issue(path, line, "live-state", "No active pointer conflicts with selected In Progress work")
+        return
+    links = field_links("Active task")
+    try:
+        if not links:
+            raise ValueError("Active task requires one leading task record link or explicit None")
+        target = local_record_target(corpus, document, links[0])
+        if target not in selected or records[target][1] != "In Progress":
+            raise ValueError("Active task must target selected In Progress work")
+        label = inline_text(links[0].label).strip()
+        rendered = inline_text(raw)
+        remaining = rendered[len(label):].lstrip(" ,;—") if rendered.startswith(label) else ""
+        if not re.match(re.escape(records[target][0]) + r"(?=$|[ —])", label) or not re.match(r"In Progress(?=$|[ ,.;(])", remaining):
+            raise ValueError("Active task visible identity/status differs from its record")
+    except (OSError, ValueError, RuntimeError) as error:
+        corpus.issue(path, line, "live-state", str(error))
+
+
 CHECKS = {"links": check_links, "tasks": check_tasks, "adrs": check_adrs,
           "reviews": check_reviews, "planned": check_planned, "fences": check_fences,
-          "unsafe": check_unsafe}
+          "unsafe": check_unsafe, "live": check_live}
 
 
 def scan_docs(root, *, checks):

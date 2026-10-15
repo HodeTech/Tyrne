@@ -733,6 +733,106 @@ class MetadataTests(unittest.TestCase):
                                 capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode())
 
+    def live(self, active=True):
+        for identity, state in (("T-080", "In Progress" if active else "In Review"), ("T-081", "Ready")):
+            path = self.task(identity=identity, status=state)
+            source = self.root / path
+            source.write_text(source.read_text().replace("- **Created:**", "- **Phase:** X\n- **Milestone:** Track X-1\n- **Created:**"), encoding="utf-8")
+        self.write("docs/roadmap/phases/phase-x.md", "# Phase X\n")
+        pointer = "[T-080 — Fixture](../analysis/tasks/phase-x/T-080-work.md), In Progress under this plan." if active else "None; waiting for review."
+        return self.write("docs/roadmap/current.md", "# Current\n\n<!-- current-state:start -->\n## Live state — 2026-10-15\n\n"
+                          "- **Active phase:** [X — Fixture](phases/phase-x.md).\n- **Selected track:** X-1, approved plan.\n"
+                          "- **Active task:** " + pointer + "\n- **Phase inventory:** 2 tasks — 1 " +
+                          ("In Progress" if active else "In Review") + ", 1 Ready; phase inventory.\n\n"
+                          "| Task | Status |\n|---|---|\n| [T-080](../analysis/tasks/phase-x/T-080-work.md) | " +
+                          ("In Progress" if active else "In Review") + " |\n| [T-081](../analysis/tasks/phase-x/T-081-work.md) | Ready |\n"
+                          "\n<!-- current-state:end -->\n\nHistorical T-080 Done, intentionally outside live scope.\n")
+
+    def test_live_selected_membership_active_pointer_and_phase_census(self):
+        self.live()
+        self.clean("live")
+
+    def test_live_no_active_pointer_is_valid_only_without_selected_progress(self):
+        source = self.live(active=False)
+        self.clean("live")
+        path = self.root / "docs/analysis/tasks/phase-x/T-080-work.md"
+        path.write_text(path.read_text().replace("In Review", "In Progress"), encoding="utf-8")
+        self.rejects("live", "live-state", "docs/roadmap/current.md")
+
+    def test_live_delimiters_must_be_unique_complete_and_ordered(self):
+        source = self.live()
+        original = source.read_text()
+        for text in (original.replace("<!-- current-state:start -->", ""),
+                     original.replace("<!-- current-state:end -->", ""),
+                     original + "\n<!-- current-state:start -->\n",
+                     original.replace("current-state:start", "current-state:TMP").replace("current-state:end", "current-state:start").replace("current-state:TMP", "current-state:end")):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("live", "live-state")
+
+    def test_live_stale_status_missing_extra_and_duplicate_selected_rows(self):
+        source = self.live()
+        original = source.read_text()
+        row = "| [T-081](../analysis/tasks/phase-x/T-081-work.md) | Ready |\n"
+        for text in (original.replace(row, row.replace("Ready", "Done")), original.replace(row, ""),
+                     original.replace(row, row + row),
+                     original.replace(row, row + "| [T-082](../analysis/tasks/phase-x/T-081-work.md) | Ready |\n")):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("live", "live-state")
+
+    def test_live_census_counts_normalized_states_and_rejects_duplicate_claims(self):
+        source = self.live()
+        original = source.read_text()
+        for text in (original.replace("2 tasks", "3 tasks"), original.replace("1 Ready;", "2 Ready;"),
+                     original.replace("1 Ready;", "1 Ready, 0 Ready;")):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("live", "live-state")
+
+    def test_live_active_task_cannot_be_ready_or_wrong_visible_identity(self):
+        source = self.live()
+        original = source.read_text()
+        for text in (original.replace("[T-080 — Fixture]", "[T-099 — Fixture]"),
+                     original.replace("), In Progress under", "), Ready under"),
+                     original.replace("T-080-work.md), In Progress under", "T-081-work.md), In Progress under")):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("live", "live-state")
+
+    def test_live_fenced_table_and_history_do_not_supply_current_state(self):
+        source = self.live()
+        source.write_text(source.read_text().replace("| Task | Status |", "```markdown\n| Task | Status |").replace("<!-- current-state:end -->", "```\n<!-- current-state:end -->"), encoding="utf-8")
+        self.rejects("live", "live-state")
+
+    def test_live_heading_calendar_and_duplicate_metadata_fail(self):
+        source = self.live()
+        original = source.read_text()
+        for text in (original.replace("2026-10-15", "2026-02-29"),
+                     original.replace("- **Selected track:** X-1, approved plan.", "- **Selected track:** X-1, approved plan.\n- **Selected track:** X-2, ambiguous.")):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("live", "live-state")
+
+    def test_live_phase_census_includes_tasks_outside_selected_track(self):
+        source = self.live()
+        path = self.task(identity="T-082", status="Draft")
+        task = self.root / path
+        task.write_text(task.read_text().replace("- **Created:**", "- **Phase:** X\n- **Milestone:** Track X-2\n- **Created:**"), encoding="utf-8")
+        self.rejects("live", "live-state")
+        source.write_text(source.read_text().replace("2 tasks", "3 tasks").replace("1 Ready;", "1 Ready, 1 Draft;"), encoding="utf-8")
+        self.clean("live")
+
+    def test_live_zero_count_states_are_portable_across_supported_python(self):
+        source = self.live()
+        source.write_text(source.read_text().replace("1 Ready;", "1 Ready, 0 Done;"), encoding="utf-8")
+        self.clean("live")
+
+    def test_live_overlong_count_is_a_diagnostic_not_an_integer_exception(self):
+        source = self.live()
+        source.write_text(source.read_text().replace("2 tasks", "9" * 5000 + " tasks"), encoding="utf-8")
+        self.rejects("live", "live-state")
+
     def clean(self, family):
         report = self.scan(family)
         self.assertFalse(report.findings, report.as_dict())
