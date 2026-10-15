@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
@@ -96,3 +97,4 @@ The master-plan list is also edited by [T-049](T-049-review-indices-sync.md) (di
 | 2026-10-13 | Codex (AI agent), both fresh rounds complete | [Code rounds](../../reviews/code-reviews/2026-10-13-t045-architecture-entry-points.md) and [distinct security rounds](../../reviews/security-reviews/2026-10-13-t045-architecture-entry-points.md) Approve cumulative `d6cb853..deec107`: three unique R1 findings fixed and independently verified; R2 zero new findings. Status In Review, no date_done. T-046 immediately completes overview/boot/index shared checks; T-049 repairs the pre-existing master-plan path before the final touched-file/full-corpus link criterion is checked. |
 | 2026-10-13 | Codex (AI agent), T-046 shared verification | T-046 completed both fresh code/security rounds at `4b33607`: [canonical review](../../reviews/code-reviews/2026-10-13-t046-subsystem-architecture.md). Expanded boot and all seven chapters agree with overview/loader; all nine index cells and freshness/edit ownership rechecked. The two shared acceptance criteria are now checked. T-045 remains In Review; its separate pre-existing master-plan path criterion stays pending T-049 repair. |
 | 2026-10-13 | Codex (AI agent), T-049 navigation dependency verified | T-049 repaired the existing business master-plan targets and completed [both fresh complementary rounds](../../reviews/code-reviews/2026-10-13-t049-review-corpus-reconciliation.md). Revalidated all T-045 touched-file local links/fragments, including the deferred master-plan; its final link DoD now closes. This necessary cross-task bookkeeping is within the existing T-045/T-049 dependency, with no new architecture/runtime delivery or Done promotion. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |

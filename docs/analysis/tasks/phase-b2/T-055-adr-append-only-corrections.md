@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
@@ -69,5 +70,6 @@ Copy the established banner shapes rather than inventing new ones: ADR-0022 line
 | 2026-10-13 | Codex (AI agent), Step 7 R1 scope clarification before fix | Independent code/security assessments converged on one Low stale timer-helper citation. Separately, root confirmed Low C-ROOT-01: propose-standard-change still permits in-place Accepted ADR amendments contrary to ADR-0025 Rule 2. [Dated extra-file reason](../../reports/2026-10-13-t055-adr-correction-preflight.md#round-1-additional-file-reason--recorded-before-correction) adds this fifth procedure file before mutation under the existing allowance. Correct factual rider/Proposed draft wording while preserving approval for substantive new decisions; no new ADR or policy. Independent initial reports remain intact; fixes and both rounds are still pending. |
 | 2026-10-13 | Codex (AI agent), Step 7 R1 correction | Fixed the one independently corroborated timer rustdoc issue and root-origin C-ROOT-01 after recording the additional-file reason. Existing decision/approval boundaries and executable source unchanged. Post-fix fmt/host-clippy, preservation/index/raw-hash and bounded navigation checks pass; original test capture stays bound to f256a610 and default raw blank-EOF diagnostic is retained. [Separate correction evidence](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t055-verification-evidence "Archived member: docs/analysis/reports/2026-10-13-t055-verification-evidence/r1-correction-verification.json"); bounded R1 verification and fresh R2 pending. |
 | 2026-10-13 | Codex (AI agent), Step 7 canonical boundary | Both fresh code/security rounds Approve corrected cumulative e8104e3..23391c7; two unique Low R1 findings verified fixed, zero new R2 or unresolved findings. [Code](../../reviews/code-reviews/2026-10-13-t055-adr-corrections.md) and [security](../../reviews/security-reviews/2026-10-13-t055-adr-corrections.md) retain all four actual reports, checklist/read provenance and limits. All seven AC/five DoD checked against source/evidence and scoped allowance; original raw captures unchanged, canonical diagnostics separate. In Review without date_done or maintainer approval; Step 8/T-052/T-053 starts next. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |
 
 > **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

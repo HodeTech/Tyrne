@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
 - **Informs:** [T-056](T-056-docs-consistency-automation.md), [T-074](T-074-phase-c-readiness-sweep.md)
@@ -71,5 +72,6 @@ Verify all 32 definitions and their references, the ADR-0040 rider and the numbe
 | 2026-10-13 | Codex (AI agent), implementation author | [Implementation/evidence](../../reports/2026-10-13-t054-planned-adr-identity-migration.md): duplicate/source comparison `32 unique definitions; C5 D5 E6 F5 G5 H3 I3; 71 semantic reference source lines; 74 linked occurrences; 42 filed ADRs and 42 index record rows unchanged; errors 0`. All original purposes/milestones/complete notes preserved; numeric historical snapshots/filed citations remain distinct. In Progress/unchecked until both fresh paired review rounds and canonical publication. |
 | 2026-10-13 | Codex (AI agent), confirmed R1 correction | Primary R1-C01 and security T054-R1-S01 independently identify one unique Low: Phase I's new workflow note referred to nonexistent local acceptance criteria. Full-source validation confirmed it; removed only that fragment and retained no-status/no-authorization wording, with no new milestone criteria. [Separate corrected-source check](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t054-verification-evidence "Archived member: docs/analysis/reports/2026-10-13-t054-verification-evidence/r1-correction-verification.json") preserves original snapshots; 32/71/74/42/42 and zero errors. In Progress; actual peer cross-reading/fix verification and fresh R2 pending. |
 | 2026-10-13 | Codex coordinator; four distinct independent reviewers | [Both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t054-planned-adr-identities.md) Approve cumulative `f8c9b7f..a93926b`. One unique R1 Low (R1-C01 / T054-R1-S01) fixed in a93926b and independently verified; zero new R2 or unresolved findings. Actual immutable peer initials and R1 finals fully cross-read; full final reports retained, source/capture hashes and separate publication checks recorded. All 11 criteria checked; In Review, no date_done or maintainer approval. T-047 starts next. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |
 
 > **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

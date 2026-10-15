@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
@@ -93,3 +94,4 @@ The overview Boot-flow diagram and the README Status cells owned by [T-045](T-04
 | 2026-10-13 | Codex (AI agent), implementation | Whole seven-chapter refresh against source `da18ed5c2a2d8b3d61f82337a9da021d05d73451`; no executable delta from retained runtime `4ad0b3d`. Applied the exact T-045 marker form, chose a PA/VMA table for boot memory layout, preserved incoming memory/boot anchors and scheduler historical revision, rechecked all nine index cells plus overview/boot coherence. Broader source-defined bounds/fault/exit/IRQ/transfer behavior replace stale design claims. [Verification report](../../reports/2026-10-13-t046-subsystem-architecture-verification.md); review rounds pending, status remains In Progress. |
 | 2026-10-13 | Codex (AI agent), R1 corrections | Initial fresh code and distinct subsequent security passes at `5e191ad` requested six unique source-confirmed prose corrections (three Medium, three Low): SP_EL0 frame slot, block-error split, inherited idle mask, free-list capacity check, PanicInfo diagnostic order, and PMM type-versus-free alignment boundary. All occurrences and the verification report corrected; no executable/evidence mutation or new run. First-round correction verification and fresh R2 remain pending; status In Progress. |
 | 2026-10-13 | Codex (AI agent), both fresh rounds complete | [Code rounds](../../reviews/code-reviews/2026-10-13-t046-subsystem-architecture.md) and [distinct security rounds](../../reviews/security-reviews/2026-10-13-t046-subsystem-architecture.md) Approve cumulative `d71aa4a..4b33607`. Six unique R1 findings fixed and independently verified; no new R2 finding. Whole seven chapters, nine index cells and overview/boot/loader coherence checked; T-045 shared criteria close. Status In Review, no date_done. T-048 proceeds; no new runtime run or full-corpus/phase closure claim. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |

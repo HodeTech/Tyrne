@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none (phase-level precondition: [ADR-0040](../../../decisions/0040-phase-b2-consolidation-bridge.md) `Accepted`, see the [task index](README.md))
 - **Informs:** [T-074](T-074-phase-c-readiness-sweep.md), [T-056](T-056-docs-consistency-automation.md)
@@ -69,3 +70,4 @@ Separate live state from the preserved historical tail; update live claims from 
 | 2026-10-13 | Codex implementation coordinator | Step 10 starts after Step 9 canonical both-round commit 20a0d25. [Preflight](../../reports/2026-10-13-t047-roadmap-state-preflight.md) records actual source/merge/audit/history review, complete archive boundary and distinct stack/IRQ flags. No new ADR or maintainer decision; In Progress, all 11 criteria unchecked until implementation and both fresh paired rounds. |
 | 2026-10-13 | Codex implementation author | [Implementation/evidence](../../reports/2026-10-13-t047-roadmap-state-reconciliation.md): 22 original dated groups plus full preamble/live-state/Notes tail preserved; 23 groups including explicit T-029 recovery, reverse chronological with original same-day order. Twelve live task rows/46-task inventory, seven Git integration records, 33 audit entries (32 Active/one Removed), exact three B6 status changes and four distinct C flags verified; errors 0. Original clean archive boundary 20a0d25 is separate from kickoff c989237. In Progress/all 11 criteria unchecked; both fresh paired rounds pending. |
 | 2026-10-13 | Codex implementation coordinator | [Both fresh code/security rounds](../../reviews/code-reviews/2026-10-13-t047-roadmap-state-reconciliation.md) Approve cumulative 20a0d25..8a89fd2 after actual peer-initial and R2 prior-final cross-reading; zero confirmed R1/R2 or unresolved source findings, no corrective commit warranted. Full reports/initial prefixes and original captures retained with hashes. All eleven criteria checked; In Review/no date_done, maintainer approval/merge pending. Archive source boundary remains clean 20a0d25; publication only updates live lifecycle/discovery and evidence. T-056 parser starts next under ADR-0043; no runtime/hosted/Done or phase-opening claim. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |

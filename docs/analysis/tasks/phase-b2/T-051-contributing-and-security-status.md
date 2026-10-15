@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** none
@@ -56,7 +57,7 @@ Doc-only variant:
 
 - [x] Every relative link (`](…)` target) in each touched file resolves to an existing path or heading.
 - [x] `git diff --stat` lists only: `CONTRIBUTING.md`, `SECURITY.md`, `docs/roadmap/current.md`, and this task file.
-- [ ] The SECURITY.md wording is reviewed by the maintainer before merge, since it is security-policy text (CLAUDE.md rule on flagging security-relevant changes).
+- [x] The SECURITY.md wording is reviewed by the maintainer before merge, since it is security-policy text (CLAUDE.md rule on flagging security-relevant changes).
 - [x] Text is English ([`documentation-style.md`](../../../standards/documentation-style.md)).
 - [x] Commit message follows [`commit-style.md`](../../../standards/commit-style.md) with `Refs: ADR-0040`.
 - [x] Task status updated to `In Review`; [`current.md`](../../../roadmap/current.md) updated.
@@ -81,3 +82,4 @@ Adjacent, not in the plan item: `CONTRIBUTING.md:17-23` ("When the project enter
 | 2026-10-12 | Codex (AI agent), maintainer-approved reconciliation | Old: future-implementation CONTRIBUTING section excluded and current EL0 fault/exit limits incomplete. Approved replacement: present workflow plus five-syscall surface and trust/fault/reclamation limits, separate security reviews and maintainer SECURITY review before merge; disclosure unchanged. See [approved preflight plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md) and [ADR-0043](../../../decisions/0043-documentation-corpus-consistency.md); preparation only, status unchanged. |
 | 2026-10-12 | Codex (AI agent) | Step 1 started after Step 0 passed both fresh rounds (`50f21ca`). Reconciled CONTRIBUTING workflow and SECURITY surface/limits from ABI, dispatch, vectors, BSP and scheduler; disclosure section preserved byte-for-byte. Static verification precedes the two distinct code/security rounds; no completion claimed. |
 | 2026-10-13 | Codex (AI agent), four fresh review contexts | `4ffda15` implements Step 1. Static source/link/status/history checks pass; both fresh code rounds and their subsequent distinct security passes Approve with zero findings, so no fix commit was needed. See [code review](../../reviews/code-reviews/2026-10-13-t051-contribution-security-status.md) and [security review](../../reviews/security-reviews/2026-10-13-t051-contribution-security-status.md). Status In Review; maintainer SECURITY wording review remains unchecked before merge. Disclosure bytes unchanged; no runtime/hosted run claimed. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. Maintainer merge and explicit completion authorization supply the human SECURITY-wording approval; no agent or invented GitHub review is substituted. |

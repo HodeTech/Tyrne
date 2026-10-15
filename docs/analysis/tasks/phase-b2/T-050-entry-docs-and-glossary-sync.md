@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** none
@@ -87,3 +88,4 @@ Adjacent, not in the plan item: the same skill (lines 150, 170) quotes a fixed `
 | 2026-10-13 | Codex (AI agent), Step 6 round-1 correction | Confirmed Low C01 from fresh code review, independently corroborated by the distinct security reviewer: first-userspace boot wire-up now distinguishes the address-space handle from the raw capability-table pointer and states the table lifetime/no-live-mutable-borrow-across-switch obligations from add_user_task. No API, runtime or raw capture change. [Verification report](../../reports/2026-10-13-t050-entry-document-verification.md) records provenance; R1 fix verification and fresh R2 pending, status In Progress. |
 | 2026-10-13 | Codex (AI agent), Step 6 round-2 correction | Confirmed Low R2-C01 from the different fresh code reviewer, corroborated by the separate fresh security reviewer: Bridge phase now states ADR-0040’s milestone/implementation gate and explicitly permits Phase C planning/Proposed ADRs/readiness. R1 C01 remains resolved. No new decision, vocabulary/anchor, executable or raw capture change. [Verification report](../../reports/2026-10-13-t050-entry-document-verification.md) retains provenance; bounded R2 verification/canonical closure pending, status In Progress. |
 | 2026-10-13 | Codex (AI agent), Step 6 canonical boundary | Both fresh primary/security rounds Approve corrected cumulative 75de2ba..946f45f; R1 C01 and R2-C01 verified fixed, zero unresolved delta findings. [Code artifact](../../reviews/code-reviews/2026-10-13-t050-entry-document-refresh.md) and [security artifact](../../reviews/security-reviews/2026-10-13-t050-entry-document-refresh.md) retain all four actual reports and limits. Source-bound debug/release evidence unchanged; final publication diagnostics separately checked. Status In Review, no date_done or maintainer approval; T-055 starts next. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |
