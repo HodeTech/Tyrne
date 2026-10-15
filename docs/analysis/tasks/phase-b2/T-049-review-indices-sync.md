@@ -2,7 +2,7 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** In Progress
 - **Created:** 2026-10-11
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
@@ -97,3 +97,4 @@ The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidenc
 | 2026-10-13 | Codex (AI agent), both fresh rounds complete | [Canonical four-context review](../../reviews/code-reviews/2026-10-13-t049-review-corpus-reconciliation.md) retains both primary and complementary rounds, original Request changes and verified Low C01 correction at `aa37e2c`; no unresolved finding. All nine AC and five DoD verified; fresh runtime provenance/limitations retained. Status In Review, no date_done or maintainer merge claim. T-045 deferred master-plan navigation DoD now closes against the repaired targets. |
 | 2026-10-13 | Codex T-056 baseline follow-up, T-049 owner | New bounded-parser scan identifies two original D2b-007 prose quotations carrying undefined explicit reference syntax. Delimit the unchanged quoted bytes as literal code and append a dated navigation note; no finding/severity/remediation/verdict rewrite, broken-link exception or archive exclusion. [Exact preservation evidence](../../reports/2026-10-13-t056-parser-evidence/t049-quoted-evidence-repair.json) binds the source. T-056 Step 11 fresh paired R1/R2 will review this owning follow-up in the cumulative range; current T-049 In Review/no date_done unchanged. |
 | 2026-10-15 | Codex T-056 publication follow-up, T-049 owner | The full historical R2 CODE report contains an intended multiline inline-code quotation crossing real blank blocks, making its quoted fragment active Markdown. Add only two tagged literal delimiters around that paragraph in the publication copy; retain the complete original report as inert evidence. [Exact reverse-preservation proof](../../reports/2026-10-13-t056-parser-evidence/publication-quoted-evidence-repair.json) confirms all original bytes/findings/verdicts/provenance unchanged. Canonical filenames retain their actual first-review2026-10-13 date to resolve the existing citation; final verification/filing2026-10-15 is explicit. No parser/source change, exception or archive exclusion; T-049 stays In Review/no date_done. |
+| 2026-10-16 | Codex, maintainer-approved maintenance | Reopened In Progress for Accepted ADR-0044 archive/migration/prevention followup under the approved cleanup plan. Original delivery evidence remains historical; new criteria unchecked, no date_done or phase expansion. Governance/recovery both fresh rounds complete; archival execution begins. |

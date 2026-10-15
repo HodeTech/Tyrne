@@ -107,3 +107,7 @@ Not applicable — this ADR settles a process/storage policy, not a kernel state
 - [git-filter-repo primary documentation](https://github.com/newren/git-filter-repo/blob/main/Documentation/git-filter-repo.txt)
 - [GitHub immutable releases](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes)
 - [GitHub Actions retention](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository)
+
+## Acceptance record
+
+- **2026-10-16:** Accepted separately at `8dfa7ad0837050b13d944a9503fa92cf75d52763` after the maintainer approved the policy, deliberate reread and [both fresh complementary review rounds](../analysis/reviews/code-reviews/2026-10-16-pr49-evidence-governance.md). References above to the initial Proposed filing and pending Acceptance describe that preserved proposal boundary; the selected policy is now Accepted. Acceptance does not claim its archival, migration, guard or hosted verification is delivered.

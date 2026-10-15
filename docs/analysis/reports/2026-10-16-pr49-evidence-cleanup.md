@@ -98,3 +98,7 @@ Both independent first-round reviewers requested one Medium clarification (GR1-C
 ### Decision Acceptance — 2026-10-16
 
 ADR-0044 is Accepted in a separate commit after the actual reread and both fresh complementary review rounds. The maintainer approved this policy and bounded execution in chat. This records decision authority only; the archive/migration/prevention delivery gates remain pending.
+
+### Archival execution starts — 2026-10-16
+
+T-049/T-056 are In Progress for approved maintenance; the task index, delimited live state and track pointer agree. The narrow release-standard scope pointer follows actual Acceptance and precedes publication. The next frozen pre-rewrite source includes these governance/status changes; no payload removal or remote development replacement has occurred.
