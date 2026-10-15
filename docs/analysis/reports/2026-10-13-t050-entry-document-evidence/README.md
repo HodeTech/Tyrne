@@ -4,24 +4,26 @@ All six commands executed an isolated tracked-source export of clean `developmen
 
 Metadata records exact argv, cwd, UTC intervals, process exits, tool identities, seven relevant unset environment overrides, stream SHA-256/bytes and each profile’s raw-QEMU/ELF/raw-image identities. Raw output is unnormalized; empty stdout captures are intentional. QEMU is timeout-terminated after successful completion because Task A spins. No compiled binary, target directory or source tar is retained here; the source archive digest is metadata.
 
-- [debug-kernel.stderr.log](debug-kernel.stderr.log)
-- [debug-kernel.stdout.log](debug-kernel.stdout.log)
-- [debug-smoke.stderr.log](debug-smoke.stderr.log)
-- [debug-smoke.stdout.log](debug-smoke.stdout.log)
-- [debug-userland.stderr.log](debug-userland.stderr.log)
-- [debug-userland.stdout.log](debug-userland.stdout.log)
-- [debug.qemu.log](debug.qemu.log)
-- [glossary.json](glossary.json)
-- [verification.json](verification.json): coordinator working-tree contract/navigation checks, distinct from executed-source runtime metadata.
-- [metadata.json](metadata.json)
-- [release-kernel.stderr.log](release-kernel.stderr.log)
-- [release-kernel.stdout.log](release-kernel.stdout.log)
-- [release-smoke.stderr.log](release-smoke.stderr.log)
-- [release-smoke.stdout.log](release-smoke.stdout.log)
-- [release-userland.stderr.log](release-userland.stderr.log)
-- [release-userland.stdout.log](release-userland.stdout.log)
-- [release.qemu.log](release.qemu.log)
+- [debug-kernel.stderr.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug-kernel.stderr.log")
+- [debug-kernel.stdout.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug-kernel.stdout.log")
+- [debug-smoke.stderr.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug-smoke.stderr.log")
+- [debug-smoke.stdout.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug-smoke.stdout.log")
+- [debug-userland.stderr.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug-userland.stderr.log")
+- [debug-userland.stdout.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug-userland.stdout.log")
+- [debug.qemu.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug.qemu.log")
+- [glossary.json](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/glossary.json")
+- [verification.json](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/verification.json"): coordinator working-tree contract/navigation checks, distinct from executed-source runtime metadata.
+- [metadata.json](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/metadata.json")
+- [release-kernel.stderr.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release-kernel.stderr.log")
+- [release-kernel.stdout.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release-kernel.stdout.log")
+- [release-smoke.stderr.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release-smoke.stderr.log")
+- [release-smoke.stdout.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release-smoke.stdout.log")
+- [release-userland.stderr.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release-userland.stderr.log")
+- [release-userland.stdout.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release-userland.stdout.log")
+- [release.qemu.log](../2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release.qemu.log")
 
 The glossary ledger separately records 50 → 54 headwords, four additions, all stable IDs, the two pure-ordering moves/grouping exception and 27 source-corrected existing definitions. It is document metadata, not runtime evidence. See the [verification report](../2026-10-13-t050-entry-document-verification.md) and [preflight source map](../2026-10-13-t050-entry-document-preflight.md). Both fresh implementation-review rounds remain pending.
 
 **Later review boundary (2026-10-13):** the pending snapshot above is superseded by both completed fresh rounds; T-050 is In Review. [Canonical code](../../reviews/code-reviews/2026-10-13-t050-entry-document-refresh.md) and [security](../../reviews/security-reviews/2026-10-13-t050-entry-document-refresh.md) preserve actual delivered outcomes. Raw captures/metadata/glossary.json/verification.json remain unchanged; no later runtime execution is implied.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

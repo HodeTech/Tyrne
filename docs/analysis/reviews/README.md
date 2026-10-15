@@ -41,6 +41,10 @@ For the four event-triggered types, use the [`conduct-review`](../../../.agents/
 
 For code and security reviews specifically, the execution skills [`perform-code-review`](../../../.agents/skills/perform-code-review/SKILL.md) and [`perform-security-review`](../../../.agents/skills/perform-security-review/SKILL.md) describe how to *do* the review during development; they produce the artifact in the corresponding folder as their final step.
 
+## Historical evidence recovery
+
+[The evidence catalog](../reports/2026-10-16-pr49-evidence-catalog.md) and [recovery guide](../../guides/review-evidence.md) restore original execution SHA/source and raw payloads from the verified immutable PR49 archive. Canonical reports remain readable in Git; original verdicts and limitations are preserved. Original SHA literals identify historical executions, including when a later bounded storage migration changes commit identities.
+
 ## See also
 
 - [ADR-0013 — Roadmap and planning process](../../decisions/0013-roadmap-and-planning.md).

@@ -102,3 +102,7 @@ ADR-0044 is Accepted in a separate commit after the actual reread and both fresh
 ### Archival execution starts — 2026-10-16
 
 T-049/T-056 are In Progress for approved maintenance; the task index, delimited live state and track pointer agree. The narrow release-standard scope pointer follows actual Acceptance and precedes publication. The next frozen pre-rewrite source includes these governance/status changes; no payload removal or remote development replacement has occurred.
+
+### Durable archive and local migration — 2026-10-16
+
+The [actual migration record](2026-10-16-pr49-evidence-migration.md) binds immutable publication, both downloaded recovery checks,150 mapped-tree comparisons, exact local-only adoption and348/46 reversible citation repair. The original generator failure and complete reproducible correction are explicit. Remote development remains original97; both migration rounds, footprint implementation and final hosted publication remain pending.

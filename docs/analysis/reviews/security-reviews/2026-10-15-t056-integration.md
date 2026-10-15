@@ -5,7 +5,7 @@
 - **Separation from code review:** different dedicated contexts and initially empty checklists. Independent reports froze before peer disclosure; fix reports likewise froze before final peer reconciliation. No invented time-gap claim.
 - **Unsafe audit cross-reference:** no runtime Rust/assembly/unsafe/audit-log change; reference tooling does not certify unsafe soundness.
 - **Code-review cross-reference:** [five-role record and nine-group disposition ledger](../code-reviews/2026-10-15-t056-integration.md).
-- **Evidence:** [all24 full original reports](../../reports/2026-10-15-t056-integration-evidence/complete-review-reports.json), [lossless retained evidence](../../reports/2026-10-15-t056-integration-evidence/README.md), [exact404 hosted checkpoint](../../reports/2026-10-15-t056-integration-evidence/fourth-hosted-checkpoint.json).
+- **Evidence:** [all24 full original reports](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-t056-integration-evidence "Archived member: docs/analysis/reports/2026-10-15-t056-integration-evidence/complete-review-reports.json"), [lossless retained evidence](../../reports/2026-10-15-t056-integration-evidence/README.md), [exact404 hosted checkpoint](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-t056-integration-evidence "Archived member: docs/analysis/reports/2026-10-15-t056-integration-evidence/fourth-hosted-checkpoint.json").
 
 ## 1. Capability correctness
 
@@ -48,3 +48,5 @@ Both final reconciliations separately inspect root-captured exact404 PR/push hos
 **Approve — scoped Step12 integration at4044b79.** All six R1 groups and three further R2 groups are verified closed after actual independent committed-fix checks and authorized reconciliations. No unresolved scoped blocker remains. Full original HOLDs and subsequent closures remain recoverable;24 report checkpoints are two rounds, not24 rounds.
 
 T056 stops In Review with no date_done. Step13, final PR-tip verification, maintainer SECURITY wording review and merge remain. This review is independent of whole-phase closure and grants no universal renderer/CPU/OOM/sandbox/unsafe certification or task Done authority.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

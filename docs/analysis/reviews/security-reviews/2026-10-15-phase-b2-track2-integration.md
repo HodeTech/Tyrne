@@ -6,7 +6,7 @@
 - **Scope:** explicitly requested documentary authority/evidence assurance; no new runtime security-standard trigger or unsafe delta.
 - **Unsafe audit cross-reference:** N/A; no runtime/unsafe/audit-entry modification or new soundness proof.
 - **Code-review cross-reference:** [five-role record](../code-reviews/2026-10-15-phase-b2-track2-integration.md).
-- **Evidence:** [complete original reports](../../reports/2026-10-15-phase-b2-track2-final-evidence/complete-review-reports.json) and [immutable identities/archives](../../reports/2026-10-15-phase-b2-track2-final-evidence/review-publication-manifest.json).
+- **Evidence:** [complete original reports](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-phase-b2-track2-final-evidence "Archived member: docs/analysis/reports/2026-10-15-phase-b2-track2-final-evidence/complete-review-reports.json") and [immutable identities/archives](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-phase-b2-track2-final-evidence "Archived member: docs/analysis/reports/2026-10-15-phase-b2-track2-final-evidence/review-publication-manifest.json").
 
 The following eight axes retain explicit dispositions for all32 literal standard prompts plus the master's additional allocation prompt. Original pre-repair flags and each reviewer's actual commands, readings, helper QA and limits remain in the full originals; current supplemental navigation disposition reflects the verified repair.
 
@@ -82,3 +82,5 @@ Exact7d1eca0 hosted PR/push each pass seven jobs/six required app15368 contexts,
 **Approve — both independent security rounds complete at7d1eca0.** SECURITY-R1-01 is one Low, fixed in7d1eca0 and actually verified by the original finder and different fresh R2. No new R2 or unresolved issue remains. All eight axes, literal32+M33 and P1–P12 are explicitly assessed in the original reports; no runtime security certification follows from documentation review.
 
 T-045–T-056 remain In Review/no date_done. Final filing-tip CI is recorded in PR #49 before handoff; maintainer PR/SECURITY wording review and authorized merge remain. HIGH T-038 and the whole-phase C/D gates retain their own future work.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

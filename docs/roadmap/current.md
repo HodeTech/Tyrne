@@ -57,6 +57,8 @@ The live pointer to selected work, task states and review triggers. Dated banner
 
 ### Notes
 
-The [unsafe log](../audits/unsafe-log.md) has 33 entries: 32 Active, one Removed (0012), recounted 2026-10-13 in the [source inventory](../analysis/reports/2026-10-13-t047-verification-evidence/semantic-baseline.json). This metadata inventory is not a new unsafe audit or runtime security proof. New B.2-2 tasks stop In Review until maintainer approval/merge; historical Done authorizations remain separate.
+The [unsafe log](../audits/unsafe-log.md) has 33 entries: 32 Active, one Removed (0012), recounted 2026-10-13 in the [source inventory](../analysis/reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t047-verification-evidence "Archived member: docs/analysis/reports/2026-10-13-t047-verification-evidence/semantic-baseline.json"). This metadata inventory is not a new unsafe audit or runtime security proof. New B.2-2 tasks stop In Review until maintainer approval/merge; historical Done authorizations remain separate.
 
 <!-- current-state:end -->
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../analysis/reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

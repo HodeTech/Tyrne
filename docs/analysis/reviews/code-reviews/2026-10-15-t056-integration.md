@@ -5,7 +5,7 @@
 - **Risk class:** Security-sensitive host-gate input/verdict integrity; no runtime Rust/unsafe delta.
 - **Security-review cross-reference:** [separate security record](../security-reviews/2026-10-15-t056-integration.md).
 - **Date:** 2026-10-15. Both fresh rounds and their committed-fix reconciliations are complete.
-- **Evidence:** [complete 24 original reports](../../reports/2026-10-15-t056-integration-evidence/complete-review-reports.json), [publication inventory](../../reports/2026-10-15-t056-integration-evidence/review-publication-manifest.json) and [source/evidence chronology](../../reports/2026-10-15-t056-integration-evidence/README.md).
+- **Evidence:** [complete 24 original reports](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-t056-integration-evidence "Archived member: docs/analysis/reports/2026-10-15-t056-integration-evidence/complete-review-reports.json"), [publication inventory](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-t056-integration-evidence "Archived member: docs/analysis/reports/2026-10-15-t056-integration-evidence/review-publication-manifest.json") and [source/evidence chronology](../../reports/2026-10-15-t056-integration-evidence/README.md).
 
 ## Correctness
 
@@ -50,3 +50,5 @@ Default all and explicit distinct subsets run all selected families. Two failing
 ## Verdict
 
 **Approve — scoped Step12 source integration at4044b79.** Both fresh complementary R1 and different fresh R2, including separate security contexts, completed actual committed-fix verification and subsequent authorized peer reconciliation. No verified finding remains open. T056 now stops In Review; Step13, final-tip and maintainer gates remain pending. No universal Markdown/CPU/OOM/sandbox/unsafe-soundness, task Done or main-merge claim follows from these tests.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

@@ -4,7 +4,7 @@ Task-oriented walkthroughs for contributors and users of Tyrne. Guides answer â€
 
 ## Status
 
-Tyrne is pre-alpha. Phase B is complete; Phase B.2 consolidation/hardening is active, and Phase C opens after its exit gate. QEMU boots the cooperative IPC demo and the first EL0 task today. The available-guide inventory below contains all four substantive guide files; this README is their index, not a fifth guide.
+Tyrne is pre-alpha. Phase B is complete; Phase B.2 consolidation/hardening is active, and Phase C opens after its exit gate. QEMU boots the cooperative IPC demo and the first EL0 task today. The available-guide inventory below contains all five substantive guide files; this README is their index, not a sixth guide.
 
 ## Available guides
 
@@ -14,6 +14,7 @@ Tyrne is pre-alpha. Phase B is complete; Phase B.2 consolidation/hardening is ac
 | [ci.md](ci.md) | Understand pipeline jobs and their gates. | Accepted (2026-04-23, R6); Track B.2-1 refresh merged in PR #48. |
 | [two-task-demo.md](two-task-demo.md) | Run and interpret the capability-checked IPC demo with EL0 interleaving. | Available; T-050 refresh In Review, both fresh rounds complete; maintainer review pending. |
 | [first-userspace.md](first-userspace.md) | Build and inspect hello's EL0 entry, console return and exit. | Available; T-050 refresh In Review, both fresh rounds complete; maintainer review pending. |
+| [review-evidence.md](review-evidence.md) | Recover exact archived evidence/original source and verify its integrity. | Available; ADR-0044 maintenance In Progress, both migration rounds pending. |
 
 ## Planned topics
 

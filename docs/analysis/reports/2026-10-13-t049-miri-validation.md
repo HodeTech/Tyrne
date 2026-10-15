@@ -6,7 +6,7 @@
 - **Started / finished UTC:** `2026-10-12T23:29:24.354905+00:00` / `2026-10-12T23:29:49.830726+00:00`.
 - **Host:** Darwin 27.0.0 / arm64, Rust host `aarch64-apple-darwin`; Python 3.9.6 captured the process.
 - **Toolchain:** repository override `nightly-2026-01-15`; rustc `1.94.0-nightly`, commit `86a49fd71fecd25b0fd20247db0ba95eeceaba28` (2026-01-14), rustc LLVM 21.1.8; cargo `1.94.0-nightly (6d1bd93c4 2026-01-10)`.
-- **Raw output:** [miri.log](2026-10-13-t049-review-evidence/miri.log), SHA-256 `1ecc45d89c2cdc6caf8f0dd51af791c8fbd56a6a7fe90fc7c5e99c9f99c77d67`; [process/tool/environment metadata](2026-10-13-t049-review-evidence/miri.json).
+- **Raw output:** [miri.log](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t049-review-evidence "Archived member: docs/analysis/reports/2026-10-13-t049-review-evidence/miri.log"), SHA-256 `1ecc45d89c2cdc6caf8f0dd51af791c8fbd56a6a7fe90fc7c5e99c9f99c77d67`; [process/tool/environment metadata](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t049-review-evidence "Archived member: docs/analysis/reports/2026-10-13-t049-review-evidence/miri.json").
 - **Review state:** [Both fresh primary/complementary rounds](../reviews/code-reviews/2026-10-13-t049-review-corpus-reconciliation.md) complete at `aa37e2c`; C01 corrected and independently verified. T-049 is In Review; no Done, hosted CI or main-merge claim.
 
 ## Invocation
@@ -41,3 +41,5 @@ The two ignored HAL doc-tests are `FmtWriter` (`console.rs:51`) and `IrqGuard` (
 ## Historical reports
 
 [2026-04-23 Miri validation](2026-04-23-miri-validation.md) and the Miri discussion in [2026-04-27 coverage rerun](2026-04-27-coverage-rerun.md) retain their original source, tool and test-count claims. This new artifact records the actual current invocation and results; it does not overwrite those historical observations or independently reproduce their old runs.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

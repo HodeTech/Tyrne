@@ -8,7 +8,7 @@
 
 ## Existing-document review and source reconciliation
 
-The coordinator fully reviewed all C–I phase files and their ledger, milestone, carry-forward and cross-phase references, the phase-B.2 finding/action/acceptance/polish language, ADR-index Numbering gaps/creation reminders, full write-adr procedure and Accepted ADR-0043/ADR-0040 rider. This source-bound step rechecks the unchanged planning surface against the clean baseline; earlier read-only preparation at d553efe is attributed in [semantic-baseline.json](2026-10-13-t054-verification-evidence/semantic-baseline.json), not represented as an implementation or independent review.
+The coordinator fully reviewed all C–I phase files and their ledger, milestone, carry-forward and cross-phase references, the phase-B.2 finding/action/acceptance/polish language, ADR-index Numbering gaps/creation reminders, full write-adr procedure and Accepted ADR-0043/ADR-0040 rider. This source-bound step rechecks the unchanged planning surface against the clean baseline; earlier read-only preparation at d553efe is attributed in [semantic-baseline.json](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t054-verification-evidence "Archived member: docs/analysis/reports/2026-10-13-t054-verification-evidence/semantic-baseline.json"), not represented as an implementation or independent review.
 
 There are exactly 32 numbered definitions: C:5 / D:5 / E:6 / F:5 / G:5 / H:3 / I:3. The old rows use 29 distinct numbers; 0042/0043/0044 each occur in C and D. Actual filed 0040–0043 are separate records. Every original purpose/milestone/note and full row is retained in the baseline. The two F2 definitions are I2C and SPI and require distinct identities. D4 and F4 require no new planned identity; object-lifecycle, G1.5 and Phase J remain explicitly unallocated, and reserved 0034 remains reserved.
 
@@ -30,4 +30,6 @@ Evidence/reconciliation/review/index/task/current/plan files use the approved st
 
 No new maintainer decision is needed for these approved edits. HIGH T-038 and whole-phase C/D gates stay outstanding. PR49 publication barrier remains; all work is local until the predecessor merges or the maintainer explicitly chooses a combined PR.
 
-[Kickoff navigation diagnostic](2026-10-13-t054-verification-evidence/kickoff-navigation.json) records the pre-implementation visible corpus after this preflight was written. It uses the existing third-party diagnostic, not shipped T-056 grammar or runtime verification.
+[Kickoff navigation diagnostic](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t054-verification-evidence "Archived member: docs/analysis/reports/2026-10-13-t054-verification-evidence/kickoff-navigation.json") records the pre-implementation visible corpus after this preflight was written. It uses the existing third-party diagnostic, not shipped T-056 grammar or runtime verification.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

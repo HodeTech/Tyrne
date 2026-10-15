@@ -3,7 +3,7 @@
 - **Task / plan:** [T-050](../tasks/phase-b2/T-050-entry-docs-and-glossary-sync.md), Step 6 of the [approved plan](2026-10-12-phase-b2-track2-preflight-and-plan.md).
 - **Executed source:** clean `development` at `75de2ba90e151bae33e14d2db4a8278837e7775d` after T-049’s canonical boundary `054e13e`. Entry-document edits described below are subsequent working-tree changes, not claimed at that executed source.
 - **State:** T-050 In Review after both fresh code/security rounds and bounded correction verification; canonical boundary below supersedes the implementation-time pending snapshots. No Done, maintainer review, hosted CI or merge claim.
-- **Evidence:** [full preparation/source map](2026-10-13-t050-entry-document-preflight.md), [raw captures/metadata](2026-10-13-t050-entry-document-evidence/README.md), [glossary disposition/ID ledger](2026-10-13-t050-entry-document-evidence/glossary.json).
+- **Evidence:** [full preparation/source map](2026-10-13-t050-entry-document-preflight.md), [raw captures/metadata](2026-10-13-t050-entry-document-evidence/README.md), [glossary disposition/ID ledger](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/glossary.json").
 
 ## Existing-document review and implementation scope
 
@@ -38,7 +38,7 @@ Tools: pinned nightly-2026-01-15, rustc 1.94.0-nightly `86a49fd71fecd25b0fd20247
 
 ### Debug
 
-Raw [QEMU output](2026-10-13-t050-entry-document-evidence/debug.qemu.log): 1139 bytes, SHA-256 `80a53a565fa95fcf4d509d38668ddc9ad3a73b03bff93d74b16a17797a1c0d8c`. Raw hello image: 117 bytes, SHA-256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`; ELF identities are in metadata.
+Raw [QEMU output](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/debug.qemu.log"): 1139 bytes, SHA-256 `80a53a565fa95fcf4d509d38668ddc9ad3a73b03bff93d74b16a17797a1c0d8c`. Raw hello image: 117 bytes, SHA-256 `05816ccb9be5caea862dbe3e0fc45fc2068ff06cd049f2dda3459492d0ef7d88`; ELF identities are in metadata.
 
 ```text
 tyrne: hello from kernel_main
@@ -75,7 +75,7 @@ qemu-system-aarch64: terminating on signal 15 from pid 52249 (<unknown process>)
 
 ### Release
 
-Raw [QEMU output](2026-10-13-t050-entry-document-evidence/release.qemu.log): 1113 bytes, SHA-256 `2a09900e123c78f16118db5999f7f8a1aa358ece6e779cf86788915f61ef499a`. Raw hello image: 69 bytes, SHA-256 `ade8d1695182284e1efba2436c5ead8e4db6dac816f61852d436fc3d300362df`; ELF identities are in metadata.
+Raw [QEMU output](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/release.qemu.log"): 1113 bytes, SHA-256 `2a09900e123c78f16118db5999f7f8a1aa358ece6e779cf86788915f61ef499a`. Raw hello image: 69 bytes, SHA-256 `ade8d1695182284e1efba2436c5ead8e4db6dac816f61852d436fc3d300362df`; ELF identities are in metadata.
 
 ```text
 tyrne: hello from kernel_main
@@ -117,7 +117,7 @@ The successful path does not prove all permission/isolation cases, arbitrary hos
 
 ## Coordinator static verification
 
-Coordinator checks passed: all touched rendered local paths/fragments, both full guide structures and four-file inventory, tagged fences, five ordered serial/exception excerpt blocks against retained debug output, exact 50-to-54 headword inventory/54 IDs and only the approved ordering moves, source-qualified BSP DAIF/scope and phase paths, raw stream hashes/exits/order, exact one-line LICENSE delta and step-only allowlist. The [diagnostic snapshot](2026-10-13-t050-entry-document-evidence/verification.json) labels the checked subsequent implementation working tree separately from the clean executed source. The checker initially caught sorting by parenthetical expansions (MMU, Syscall, Unsafe); before commit, ordering was corrected to primary headwords while retaining complete displayed-headword anchor IDs. No original definition is frozen merely to preserve a move. These checks are one-off diagnostics using an existing Python Markdown tool, not the T-056 shipping parser/grammar/fixture suite. Both fresh implementation-review rounds remain pending.
+Coordinator checks passed: all touched rendered local paths/fragments, both full guide structures and four-file inventory, tagged fences, five ordered serial/exception excerpt blocks against retained debug output, exact 50-to-54 headword inventory/54 IDs and only the approved ordering moves, source-qualified BSP DAIF/scope and phase paths, raw stream hashes/exits/order, exact one-line LICENSE delta and step-only allowlist. The [diagnostic snapshot](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t050-entry-document-evidence "Archived member: docs/analysis/reports/2026-10-13-t050-entry-document-evidence/verification.json") labels the checked subsequent implementation working tree separately from the clean executed source. The checker initially caught sorting by parenthetical expansions (MMU, Syscall, Unsafe); before commit, ordering was corrected to primary headwords while retaining complete displayed-headword anchor IDs. No original definition is frozen merely to preserve a move. These checks are one-off diagnostics using an existing Python Markdown tool, not the T-056 shipping parser/grammar/fixture suite. Both fresh implementation-review rounds remain pending.
 
 ## Round 1 correction — 2026-10-13
 
@@ -136,3 +136,5 @@ Fresh primary R2 code review confirmed Low R2-C01: the new Bridge phase definiti
 T-050 acceptance/DoD now checked against delivered evidence and step-scoped allowances; status In Review without date_done. The later canonical bookkeeping has separate coordinator static verification; retained verification.json remains the original 292-target implementation snapshot. Six runtime commands and all raw evidence still refer to clean executed 75de2ba. No new run, human approval, hosted CI, merge or future-tool certification. T-055 starts next.
 
 Final coordinator publication diagnostic: 39 step paths (the original 32 plus seven canonical/lifecycle surfaces), 20 Markdown files, 664 rendered local targets and 42 fragments, zero errors. Four exact delivered report copies and unique table-index membership verified; all 54 glossary anchors, 27 existing-definition dispositions, five serial excerpts, 14 raw stream hashes, six recorded exits and one-line LICENSE preservation pass. Task-state recount: 8 Done, 24 Ready, 6 In Review, 8 Draft; no new Done. This bounded existing-Markdown-tool diagnostic is not T-056 grammar coverage. An initial coordinator count assertion incorrectly expected 35 original paths; it failed before commit, was corrected to the verified 32, and the complete check was rerun.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

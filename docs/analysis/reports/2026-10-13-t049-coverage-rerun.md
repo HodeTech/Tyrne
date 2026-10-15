@@ -6,7 +6,7 @@
 - **Started / finished UTC:** `2026-10-12T23:29:57.450170+00:00` / `2026-10-12T23:29:59.775303+00:00`.
 - **Host:** Darwin 27.0.0 / arm64, Rust host `aarch64-apple-darwin`; Python 3.9.6 captured the process.
 - **Toolchain:** repository override `nightly-2026-01-15`; rustc `1.94.0-nightly`, commit `86a49fd71fecd25b0fd20247db0ba95eeceaba28` (2026-01-14), rustc LLVM 21.1.8; cargo `1.94.0-nightly (6d1bd93c4 2026-01-10)`.
-- **Raw output:** [coverage.log](2026-10-13-t049-review-evidence/coverage.log), SHA-256 `a22757c1f702bbf7d0b3a376ef1ce7e0785427833c63c2599a9695cb7d657a14`; [process/tool/environment metadata](2026-10-13-t049-review-evidence/coverage.json).
+- **Raw output:** [coverage.log](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t049-review-evidence "Archived member: docs/analysis/reports/2026-10-13-t049-review-evidence/coverage.log"), SHA-256 `a22757c1f702bbf7d0b3a376ef1ce7e0785427833c63c2599a9695cb7d657a14`; [process/tool/environment metadata](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t049-review-evidence "Archived member: docs/analysis/reports/2026-10-13-t049-review-evidence/coverage.json").
 - **Review state:** [Both fresh primary/complementary rounds](../reviews/code-reviews/2026-10-13-t049-review-corpus-reconciliation.md) complete at `aa37e2c`; C01 corrected and independently verified. T-049 is In Review; no Done, hosted CI or main-merge claim.
 
 ## Invocation
@@ -73,3 +73,5 @@ TOTAL                                   14039               518    96.31%       
 This is host instrumentation, including test-side source regions, not bare-metal/QEMU/assembly, userland, branch or security coverage. The command reports `cfg(coverage)` and `cfg(coverage_nightly)` in the raw output. Local source/tool/profile scope controls the denominator; no architectural correctness or no-regression verdict follows from the percentage alone.
 
 The [2026-04-23 baseline](2026-04-23-coverage-baseline.md) and [2026-04-27 rerun](2026-04-27-coverage-rerun.md) preserve their historical methodology and numbers. They covered an earlier source and used a broader workspace exclusion list. Neither a direct percentage trend nor an improvement/regression is inferred across those different denominators and tool versions. Fresh Miri results are recorded independently in [the companion report](2026-10-13-t049-miri-validation.md).
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

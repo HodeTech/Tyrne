@@ -3,7 +3,7 @@
 - **Date:** 2026-10-13, Europe/Istanbul.
 - **Owner:** [T-046](../tasks/phase-b2/T-046-docs-subsystem-chapters-refresh.md), approved Step 3 under [ADR-0043](../../decisions/0043-documentation-corpus-consistency.md).
 - **Source baseline checked:** `da18ed5c2a2d8b3d61f82337a9da021d05d73451` on development, after T-045's canonical review publication.
-- **Exact runtime capture:** `4ad0b3d8a9d43310fcd937013131bffadcc803d7`, [T-045 report](2026-10-13-t045-architecture-verification.md) and [metadata](2026-10-13-t045-architecture-evidence/metadata.json). All executable paths remain identical; this step reuses retained evidence and claims no repeated build, smoke, host test, coverage or Miri run.
+- **Exact runtime capture:** `4ad0b3d8a9d43310fcd937013131bffadcc803d7`, [T-045 report](2026-10-13-t045-architecture-verification.md) and [metadata](2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t045-architecture-evidence "Archived member: docs/analysis/reports/2026-10-13-t045-architecture-evidence/metadata.json"). All executable paths remain identical; this step reuses retained evidence and claims no repeated build, smoke, host test, coverage or Miri run.
 
 ## Whole-chapter reconciliation
 
@@ -55,3 +55,5 @@ No runtime change, new decision or new test execution is involved. Bounded corre
 ## Review completion
 
 Both fresh rounds now approve cumulative `d71aa4a..4b33607`: [code](../reviews/code-reviews/2026-10-13-t046-subsystem-architecture.md), [distinct security](../reviews/security-reviews/2026-10-13-t046-subsystem-architecture.md). All six R1 corrections were independently verified; R2 found no additional issue. The preceding pending statements record implementation/correction time and are superseded by this completion entry. Whole-chapter and shared T-045 overview/boot/index verification are complete; T-046 and T-045 remain In Review. No runtime evidence changed or new execution/full-corpus/Done/phase-closure result is asserted.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.

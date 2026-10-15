@@ -4,7 +4,7 @@
 - **Reviewer:** coordinator consolidation of independent fresh R1 CODE and different fresh R2 CODE, paired with distinct dedicated SECURITY contexts. No maintainer approval attributed.
 - **Risk class:** Security-sensitive documentation/evidence integrity assurance requested by the maintainer; no runtime implementation delta.
 - **Security-review cross-reference:** [separate eight-axis record](../security-reviews/2026-10-15-phase-b2-track2-integration.md).
-- **Evidence:** [complete original reports](../../reports/2026-10-15-phase-b2-track2-final-evidence/complete-review-reports.json), [publication identities](../../reports/2026-10-15-phase-b2-track2-final-evidence/review-publication-manifest.json) and [integrated readiness](../../reports/2026-10-15-phase-b2-track2-completion-readiness.md).
+- **Evidence:** [complete original reports](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-phase-b2-track2-final-evidence "Archived member: docs/analysis/reports/2026-10-15-phase-b2-track2-final-evidence/complete-review-reports.json"), [publication identities](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-phase-b2-track2-final-evidence "Archived member: docs/analysis/reports/2026-10-15-phase-b2-track2-final-evidence/review-publication-manifest.json") and [integrated readiness](../../reports/2026-10-15-phase-b2-track2-completion-readiness.md).
 
 ## Correctness
 
@@ -20,7 +20,7 @@ The documentation/evidence wave is cohesive, English and conventionally committe
 
 Existing eight-family documentation checker and independent source/evidence joins are appropriate for this documentation-only step. Fresh CODE reviewers execute the current checker; dedicated SECURITY reviewers additionally execute both local Python runtimes. All observe397 files/7163 targets/925 fragments/zero findings at the reviewed source. Original blocks, displayed targets, every criterion tuple/hash, phase states, exact marker patches and protected runtime/tooling/CI domains are independently compared, not accepted from author's booleans. No new product test, native build or unchanged parser recertification is invented.
 
-Exact reviewed-source [PR38799120651](https://github.com/HodeTech/Tyrne/actions/runs/38799120651) and [push38799110080](https://github.com/HodeTech/Tyrne/actions/runs/38799110080) each pass seven jobs and all six app15368 required contexts. Actual Linux fixture output is161 navigation/124 metadata methods; corpus397/7163/925/zero. [Complete root-captured proof](../../reports/2026-10-15-phase-b2-track2-final-evidence/reviewed-source-hosted-checkpoint.json) is a source checkpoint, not certification of a later filing tip or the reviewers' own hosted execution. Final PR-tip CI is recorded separately in PR #49.
+Exact reviewed-source [PR38799120651](https://github.com/HodeTech/Tyrne/actions/runs/38799120651) and [push38799110080](https://github.com/HodeTech/Tyrne/actions/runs/38799110080) each pass seven jobs and all six app15368 required contexts. Actual Linux fixture output is161 navigation/124 metadata methods; corpus397/7163/925/zero. [Complete root-captured proof](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-15-phase-b2-track2-final-evidence "Archived member: docs/analysis/reports/2026-10-15-phase-b2-track2-final-evidence/reviewed-source-hosted-checkpoint.json") is a source checkpoint, not certification of a later filing tip or the reviewers' own hosted execution. Final PR-tip CI is recorded separately in PR #49.
 
 ## Documentation
 
@@ -35,3 +35,5 @@ All 58 target links now select the ledger's intended files; existence alone did 
 ## Verdict
 
 **Approve — both fresh independent code rounds and complementary security rounds complete at7d1eca0. One R1 Low fixed and independently verified; zero new R2 or unresolved findings.** Full literal code checklist/P1–P12 dispositions and actual reading/command limits are retained in each original. Final filing-tip checks and maintainer PR/SECURITY wording review remain distinct. All twelve tasks stop In Review until authorized merge.
+
+> **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.
