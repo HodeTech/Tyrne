@@ -422,6 +422,108 @@ class MetadataTests(unittest.TestCase):
     def scan(self, family):
         return metadata.scan_docs(self.root, checks=(family,))
 
+    def planned(self, identity="ADR-C1-secondary-core-start", phase="c", milestone="C1"):
+        path = "docs/roadmap/phases/phase-" + phase + ".md"
+        anchor = identity.lower()
+        self.write(path, '# Phase\n\n## ADR ledger\n\n| Planned identity | Purpose | Milestone | Historical aliases / notes |\n'
+                   '|---|---|---|---|\n| <a id="' + anchor + '"></a>' + identity +
+                   ' | Fixture purpose | ' + milestone + ' | Historical aliases: ADR-0040 |\n')
+        return path
+
+    def test_planned_definition_and_repeated_code_formatted_link_labels(self):
+        path = self.planned()
+        self.write("docs/current.md", "# Current\n\n[ADR-C1-secondary-core-start](roadmap/phases/phase-c.md#adr-c1-secondary-core-start)\n\n"
+                   "[`ADR-C1-secondary-core-start`][decision]\n\n[decision]: roadmap/phases/phase-c.md#adr-c1-secondary-core-start\n")
+        self.clean("planned")
+
+    def test_planned_definition_uniqueness_is_separate_from_references(self):
+        path = self.planned()
+        source = self.root / path
+        source.write_text(source.read_text() + source.read_text().splitlines()[-1] + "\n", encoding="utf-8")
+        self.rejects("planned", "planned", path)
+
+    def test_same_milestone_distinct_purposes_are_valid(self):
+        path = self.planned("ADR-F2-i2c-service", "f", "F2")
+        source = self.root / path
+        source.write_text(source.read_text() + source.read_text().splitlines()[-1].replace("i2c", "spi") + "\n", encoding="utf-8")
+        self.clean("planned")
+
+    def test_planned_identity_requires_matching_milestone_phase_and_anchor(self):
+        path = self.planned()
+        source = self.root / path
+        original = source.read_text()
+        for text in (original.replace("| C1 |", "| C2 |"),
+                     original.replace('id="adr-c1-secondary-core-start"', 'id="wrong"'),
+                     original.replace("ADR-C1-secondary-core-start", "ADR-D1-secondary-core-start")):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("planned", "planned", path)
+
+    def test_unknown_or_misdirected_live_purpose_references_fail(self):
+        self.planned()
+        for label, destination in (("ADR-C1-missing", "roadmap/phases/phase-c.md#adr-c1-missing"),
+                                   ("ADR-C1-secondary-core-start", "wrong.md#adr-c1-secondary-core-start"),
+                                   ("ADR-C1-secondary-core-start", "roadmap/phases/phase-c.md")):
+            with self.subTest(label=label, destination=destination):
+                self.write("docs/wrong.md", "# Wrong\n")
+                self.write("docs/current.md", "# Current\n\n[" + label + "](" + destination + ")\n")
+                self.rejects("planned", "planned", "docs/current.md")
+
+    def test_numeric_live_planned_definitions_fail_even_when_filed(self):
+        self.adr("0040")
+        path = self.planned()
+        source = self.root / path
+        original = source.read_text()
+        for text in (original.replace("ADR-C1-secondary-core-start", "ADR-0040"),
+                     "# Phase C\n\n## ADR ledger\n\n| ADR | Purpose | Expected state |\n|---|---|---|\n| ADR-0040 | Future decision | C1 |\n"):
+            with self.subTest(text=text):
+                source.write_text(text, encoding="utf-8")
+                self.rejects("planned", "planned", path)
+
+    def test_historical_filed_ledgers_and_future_unallocated_rows_are_valid(self):
+        self.write("docs/roadmap/phases/phase-a.md", "# Phase A\n\n| ADR | Purpose | Expected state |\n|---|---|---|\n| ADR-0014 | Historical | Accepted |\n")
+        self.write("docs/roadmap/phases/phase-j.md", "# Phase J\n\n## ADR ledger\n\n| ADR | Purpose | Expected state |\n|---|---|---|\n| _(future)_ | Runtime choice | J1 |\n")
+        path = self.planned()
+        source = self.root / path
+        source.write_text(source.read_text() + "| _(none)_ | Implementation only | C2 | No new ADR |\n", encoding="utf-8")
+        self.clean("planned")
+
+    def test_purpose_examples_in_fences_are_not_definitions_or_references(self):
+        self.planned()
+        self.write("docs/example.md", "# Example\n\n```markdown\n[ADR-Z9-missing](absent.md)\n| Planned identity | Purpose | Milestone |\n|---|---|---|\n| ADR-0001 | Example | Z9 |\n```\n")
+        self.clean("planned")
+
+    def test_unknown_purpose_anchor_cannot_hide_behind_a_human_label(self):
+        self.planned()
+        self.write("docs/current.md", "# Current\n\n[Unknown decision](roadmap/phases/phase-c.md#adr-c9-missing)\n")
+        self.rejects("planned", "planned", "docs/current.md")
+
+    def test_filed_purpose_keeps_one_ledger_definition_and_record_alias(self):
+        path = self.planned()
+        record = self.adr("0044", title="Secondary core start")
+        source = self.root / path
+        original = source.read_text()
+        source.write_text(original.replace("Fixture purpose", "[Filed decision](../../decisions/0044-immutable-slug.md)"), encoding="utf-8")
+        target = self.root / record
+        target.write_text(target.read_text() + "\nHistorical alias: `ADR-C1-secondary-core-start`.\n", encoding="utf-8")
+        self.write("docs/current.md", "# Current\n\n[ADR-C1-secondary-core-start](decisions/0044-immutable-slug.md)\n")
+        self.clean("planned")
+        target.write_text(target.read_text().replace("Historical alias: `ADR-C1-secondary-core-start`.", "Historical alias omitted."), encoding="utf-8")
+        self.rejects("planned", "planned")
+
+    def test_standard_fence_openings_preserve_length_and_container_rules(self):
+        self.write("docs/standards/fixture.md", "# Standard\n\n````markdown\n```\n````\n\n> ~~~rust\n> code\n> ~~~\n\n- List\n\n  ```text\n  sample\n  ```\n")
+        self.clean("fences")
+
+    def test_untagged_standard_opening_reports_original_line_only(self):
+        self.write("docs/standards/fixture.md", "# Standard\n\n> ~~~~\n> code\n> ~~~~\n")
+        report = self.rejects("fences", "standard-fence", "docs/standards/fixture.md")
+        self.assertEqual([(3, "standard-fence")], [(x.line, x.code) for x in report.findings])
+
+    def test_archived_untagged_fences_are_outside_standard_tag_policy(self):
+        self.write("docs/analysis/reports/history.md", "# History\n\n```\nhistorical\n```\n")
+        self.clean("fences")
+
     def clean(self, family):
         report = self.scan(family)
         self.assertFalse(report.findings, report.as_dict())

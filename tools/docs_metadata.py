@@ -306,6 +306,7 @@ def reachable_reviews(corpus, prefix, seeds, paths):
     available = set(paths)
     reached = set(seeds) & available
     pending = sorted(reached, reverse=True)
+    directories = {}
     while pending:
         document = corpus.load(pending.pop())
         if document is None:
@@ -325,7 +326,9 @@ def reachable_reviews(corpus, prefix, seeds, paths):
             if target in available:
                 additions.add(target)
             elif target.startswith(prefix + "/") and (corpus.root / target).is_dir():
-                additions.update(path for path in available if path.startswith(target.rstrip("/") + "/"))
+                if target not in directories:
+                    directories[target] = {path for path in available if path.startswith(target.rstrip("/") + "/")}
+                additions.update(directories[target])
             for path in sorted(additions - reached, reverse=True):
                 reached.add(path)
                 pending.append(path)
@@ -459,7 +462,117 @@ def check_reviews(corpus):
             corpus.issue(paths[0], 1, "review-index", "Unsupported review family: " + family)
 
 
-CHECKS = {"links": check_links, "tasks": check_tasks, "adrs": check_adrs, "reviews": check_reviews}
+PURPOSE_ID = re.compile(r"ADR-([A-Z][0-9]+(?:\.[0-9]+)?)-[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+def check_planned(corpus):
+    """Dynamic ledger definitions and purpose-labelled navigation, not prose counts."""
+    definitions = defaultdict(list)
+    filed = defaultdict(set)
+    phase_paths = [path for path in corpus.paths if re.fullmatch(r"docs/roadmap/phases/phase-[a-z][a-z0-9-]*\.md", path)]
+    for path in phase_paths:
+        document = corpus.load(path)
+        if document is None:
+            continue
+        headers = [row for row in document.table_rows if row.header]
+        has_planned = any("Planned identity" in [inline_text(cell.source).strip() for cell in row.cells] for row in headers)
+        if not has_planned:
+            if Path(path).stem not in ("phase-a", "phase-b", "phase-b2"):
+                for row in headers:
+                    names = [inline_text(cell.source).strip() for cell in row.cells]
+                    if "ADR" not in names or "Purpose" not in names:
+                        continue
+                    for entry in document.table_rows:
+                        if entry.header or entry.table_line != row.table_line:
+                            continue
+                        if len(entry.cells) != len(names):
+                            corpus.issue(path, entry.line, "planned", "Future ledger row width differs from its header")
+                            continue
+                        identity = inline_text(entry.cells[names.index("ADR")].source).strip()
+                        if identity not in ("(future)", "(none)", "(unallocated)"):
+                            corpus.issue(path, entry.line, "planned", "Future ledger requires purpose identity; numeric allocations are retired")
+            continue
+        for line, cells in inventory_rows(corpus, document, ("Planned identity", "Purpose", "Milestone", "Historical aliases / notes"), "planned"):
+            source = cells["Planned identity"].source
+            identity = inline_text(source).strip()
+            milestone = inline_text(cells["Milestone"].source).strip()
+            if not inline_text(cells["Purpose"].source).strip() or not milestone:
+                corpus.issue(path, line, "planned", "Planned ledger purpose and milestone must be present")
+            if identity in ("(future)", "(none)", "(unallocated)"):
+                continue
+            match = PURPOSE_ID.fullmatch(identity)
+            if not match:
+                corpus.issue(path, line, "planned", "Invalid planned purpose identity; numeric allocations are retired: " + identity)
+                continue
+            definitions[identity].append((path, line))
+            if milestone != match[1] or Path(path).stem != "phase-" + milestone[0].lower():
+                corpus.issue(path, line, "planned", "Purpose identity differs from phase/milestone: " + identity)
+            child = Markdown(path, source.replace("\\|", "|"), inline_only=True, references=document.references)
+            if identity.lower() not in child.anchors:
+                corpus.issue(path, line, "planned", "Planned definition requires its exact explicit anchor: " + identity.lower())
+            for cell in cells.values():
+                for link in cell_links(document, cell):
+                    try:
+                        target = local_record_target(corpus, document, link)
+                    except (OSError, ValueError, RuntimeError):
+                        continue
+                    if Path(target).parent.as_posix() == "docs/decisions" and ADR_NAME.fullmatch(Path(target).name):
+                        filed[identity].add(target)
+    for identity, records in sorted(definitions.items()):
+        if len(records) != 1:
+            for path, line in records:
+                corpus.issue(path, line, "planned", "Duplicate live purpose definition: " + identity)
+        for target in sorted(filed[identity]):
+            record = corpus.load(target)
+            if record is not None and not re.search(r"(?<![\w-])" + re.escape(identity) + r"(?![\w-])", inline_text(record.block_text)):
+                corpus.issue(target, 1, "planned", "Filed decision must preserve historical purpose alias: " + identity)
+    by_anchor = {identity.lower(): identity for identity in definitions}
+    for path in corpus.paths:
+        document = corpus.load(path)
+        if document is None:
+            continue
+        for link in document.links:
+            if link.image or link.label is None:
+                continue
+            label = inline_text(link.label).strip()
+            value = navigation_value(link)
+            raw_path, separator, raw_fragment = value.partition("#")
+            try:
+                fragment = unquote(raw_fragment, encoding="utf-8", errors="strict")
+            except UnicodeDecodeError:
+                fragment = ""
+            anchor_match = re.fullmatch(r"adr-([a-z][0-9]+(?:\.[0-9]+)?)-([a-z0-9]+(?:-[a-z0-9]+)*)", fragment)
+            anchor_identity = "ADR-" + anchor_match[1].upper() + "-" + anchor_match[2] if anchor_match else None
+            identity = label if PURPOSE_ID.fullmatch(label) else by_anchor.get(fragment, anchor_identity)
+            if identity is None:
+                continue
+            if identity not in definitions:
+                corpus.issue(path, link.line, "planned", "Unresolved live purpose reference: " + identity)
+                continue
+            try:
+                target = local_record_target(corpus, document, link) if raw_path.partition("?")[0] else path
+            except (OSError, ValueError, RuntimeError) as error:
+                corpus.issue(path, link.line, "planned", str(error))
+                continue
+            ledger = any(target == owner and fragment == identity.lower() for owner, _ in definitions[identity])
+            if not ledger and not (target in filed[identity] and not separator):
+                corpus.issue(path, link.line, "planned", "Purpose reference does not target its ledger definition or filed record: " + identity)
+
+
+def check_fences(corpus):
+    """The shared block parser distinguishes actual openings and closings."""
+    for path in corpus.paths:
+        if not path.startswith("docs/standards/"):
+            continue
+        document = corpus.load(path)
+        if document is not None:
+            for line, info in document.fences:
+                if not info:
+                    corpus.issue(path, line, "standard-fence", "Standard opening fence requires a language tag")
+
+
+CHECKS = {"links": check_links, "tasks": check_tasks, "adrs": check_adrs,
+          "reviews": check_reviews, "planned": check_planned, "fences": check_fences}
 
 
 def scan_docs(root, *, checks):
