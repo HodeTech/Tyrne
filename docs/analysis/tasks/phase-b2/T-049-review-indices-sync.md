@@ -78,6 +78,13 @@ A scratch relative-link scan of `docs/analysis/reviews` (fenced blocks skipped) 
 
 **Sequencing.** The master-plan list is also edited by [T-045](T-045-docs-overview-taskloader-arch-index.md) (a different item); expect a trivial merge.
 
+## Approved evidence-retention maintenance — 2026-10-16
+
+The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidence-cleanup.md) and [ADR-0044](../../../decisions/0044-review-evidence-retention.md). The original checked criteria remain historical delivery evidence; these additional criteria close before this maintenance returns to In Review. No Done promotion or phase inventory expansion is authorized.
+
+- [ ] Preserve all 804 migrated payloads and original source history in a digest-verified durable archive; verify independent downloaded restoration before removal.
+- [ ] Reconcile all affected citations and historical source identities without changing original findings, verdicts, measurements or procedural limits.
+
 ## Review history
 
 | Date | Reviewer | Note |

@@ -63,6 +63,13 @@ Run locally on macOS and verify Linux through exact-source hosted CI after publi
 - A related risk the checks do not cover: a numeric claim in prose ("33 entries", "366 tests") going stale; the phase's Polish list proposes "status as of `<date>`" stamps for that instead.
 - It is polish: if it is not done by the closure, [T-075](T-075-phase-b2-closure.md) records it as a carry-forward.
 
+## Approved evidence-retention maintenance — 2026-10-16
+
+The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidence-cleanup.md) and [ADR-0044](../../../decisions/0044-review-evidence-retention.md). The original checked criteria remain historical delivery evidence; these additional criteria close before this maintenance returns to In Review. No Done promotion or phase inventory expansion is authorized.
+
+- [ ] Implement Accepted ADR-0044 footprint limits as a separate offline command with meaningful fixtures in the existing required lint job.
+- [ ] Complete bounded development-only history migration, original-to-new mapping, source equivalence, clean clone and exact final-source hosted verification under the approved lease/rollback boundary.
+
 ## Review history
 
 | Date | Reviewer | Note |
