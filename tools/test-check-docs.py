@@ -246,6 +246,51 @@ class LinkTests(unittest.TestCase):
                 with self.subTest(ending=repr(ending), title=title):
                     self.check(('# ' + title + '\n\n[x](#' + anchor + ')\n').replace('\n', ending))
 
+    def test_uri_autolinks_exclude_ascii_controls_and_space(self):
+        controls = [chr(value) for value in range(33) if value not in (10, 13)] + ['\x7f']
+        for char in controls:
+            with self.subTest(control=repr(char)):
+                parsed = docs.Markdown('README.md', '# <https://a/' + char + '/_x_>\n')
+                self.assertEqual({'httpsa-x' if char == ' ' else 'httpsax'}, parsed.anchors)
+        for char in ('\x80', '\x85', '\xa0', '\u2028'):
+            with self.subTest(non_ascii=repr(char)):
+                parsed = docs.Markdown('README.md', '# <https://a/' + char + '/_x_>\n')
+                self.assertEqual({'httpsa_x_'}, parsed.anchors)
+        for ending in ('\n', '\r', '\r\n'):
+            for atx in (True, False):
+                with self.subTest(ending=repr(ending), atx=atx):
+                    self.heading_pair('<https://a/\x7f/_x_>', 'httpsax', 'httpsa_x_', ending, atx)
+
+    def test_invalid_del_autolink_keeps_real_file_links_active(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for char in ('\x7f', '%7F', '\x85'):
+                with self.subTest(ending=repr(ending), body=repr(char)):
+                    self.write('docs/source.md', '<https://a/' + char + '/[bad](missing.md)>' + ending)
+                    invalid = char == '\x7f'
+                    expected = {'checks': ['links'], 'ok': not invalid, 'files': 3,
+                                'local_targets': int(invalid), 'fragments': 0,
+                                'findings': ([{'path': 'docs/source.md', 'line': 1, 'code': 'path',
+                                              'message': 'Missing or case-mismatched local target: docs/missing.md'}]
+                                             if invalid else [])}
+                    result = self.cli('--root', str(self.root), '--json')
+                    self.assertEqual(int(invalid), result.returncode, result.stdout + result.stderr)
+                    self.assertEqual('', result.stderr)
+                    self.assertEqual(expected, json.loads(result.stdout))
+
+    def test_failed_emphasis_searches_do_not_rescan_unmatched_prefixes(self):
+        self.assertEqual('_a b* c', docs.inline_text('_a b* *c*'))
+        self.assertEqual('*a b_ c', docs.inline_text('*a b_ _c_'))
+        for opener, closer in (('*', '_'), ('_', '*')):
+            with self.subTest(opener=opener, closer=closer):
+                source = '# ' + (opener + 'a ') * 32000 + ('b' + closer + ' ') * 32000
+                self.write('docs/source.md', source + '\n\n# End\n\n[x](#end)\n')
+                result = self.cli('--root', str(self.root), '--json', timeout=5)
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertEqual('', result.stderr)
+                self.assertEqual({'checks': ['links'], 'ok': True, 'files': 3,
+                                  'local_targets': 1, 'fragments': 1, 'findings': []},
+                                 json.loads(result.stdout))
+
     def test_tabbed_list_setext_uses_visual_container_columns(self):
         for ending in ('\n', '\r', '\r\n'):
             for body in ('-\tAlpha\n\t---\n', '-\tAlpha\n    ---\n',

@@ -563,7 +563,7 @@ HTML_START = re.compile(r"</?[A-Za-z][\w:-]*(?:\s|/?>)")
 HTML_TAG = re.compile(r"<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>")
 # CommonMark URI/email autolinks are literal inline text, including underscores.
 # Their destinations are external; recognizing them grants no fetch authority.
-AUTOLINK = re.compile(r"<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\x00-\x20]*|"
+AUTOLINK = re.compile(r"<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\x00-\x20\x7f]*|"
                       r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
                       r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
                       r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)>")
@@ -919,6 +919,7 @@ def plain_emphasis(characters, literal, source, locations):
     """Resolve competing star/underscore runs against original neighbors."""
     removed = set()
     stack = []
+    bottoms = {}
     cursor = 0
 
     def punctuation(position):
@@ -950,10 +951,14 @@ def plain_emphasis(characters, literal, source, locations):
         can_close = right and (marker == "*" or not left or punctuation(after))
         remaining = end - begin
         if can_close:
+            closer_class = (marker, can_open, (end - begin) % 3)
             while remaining:
                 match = None
+                bottom = bottoms.get(closer_class, -1)
                 for position in range(len(stack) - 1, -1, -1):
                     opener = stack[position]
+                    if opener[0] <= bottom:
+                        break
                     if opener[5] != marker:
                         continue
                     if ((opener[3] or can_open) and (opener[4] + end - begin) % 3 == 0 and
@@ -962,6 +967,9 @@ def plain_emphasis(characters, literal, source, locations):
                     match = position
                     break
                 if match is None:
+                    # This prefix remains ineligible for this closer class.
+                    # Stable positions survive intervening stack removals.
+                    bottoms[closer_class] = max(bottom, stack[-1][0] if stack else -1)
                     break
                 opener = stack[match]
                 count = 2 if opener[2] >= 2 and remaining >= 2 else 1
