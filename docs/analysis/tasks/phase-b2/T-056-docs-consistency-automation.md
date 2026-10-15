@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2 (Polish items; not exit-gating)
-- **Status:** In Progress
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** [T-048](T-048-phase-b-task-corpus-sync.md), [T-049](T-049-review-indices-sync.md), [T-052](T-052-standards-docs-reality-sync.md), [T-053](T-053-standards-docs-mechanical-fixes.md), [T-054](T-054-adr-ledger-renumbering-cascade.md), [T-055](T-055-adr-append-only-corrections.md); [T-047](T-047-roadmap-state-and-phase-index-sync.md) supplies the delimited live-state surface
 - **Informs:** none
@@ -67,9 +68,9 @@ Run locally on macOS and verify Linux through exact-source hosted CI after publi
 
 The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidence-cleanup.md) and [ADR-0044](../../../decisions/0044-review-evidence-retention.md). The original checked criteria remain historical delivery evidence; these additional criteria close before this maintenance returns to In Review. No Done promotion or phase inventory expansion is authorized.
 
-- [ ] After ADR-0044 Acceptance, add minimal retention guidance to existing review skills/documentation standards in the prevention unit (approved plan step6). The evidence-only release-standard scope pointer separately must precede archive publication; it landed at original6c84f0d. This approved maintenance explicitly extends the original skill-edit scope only for this guidance.
-- [ ] Implement Accepted ADR-0044 footprint limits as a separate offline command with meaningful fixtures in the existing required lint job.
-- [ ] Complete bounded development-only history migration, original-to-new mapping, source equivalence, clean clone and exact final-source hosted verification under the approved lease/rollback boundary.
+- [x] After ADR-0044 Acceptance, add minimal retention guidance to existing review skills/documentation standards in the prevention unit (approved plan step6). The evidence-only release-standard scope pointer separately must precede archive publication; it landed at original6c84f0d. This approved maintenance explicitly extends the original skill-edit scope only for this guidance.
+- [x] Implement Accepted ADR-0044 footprint limits as a separate offline command with meaningful fixtures in the existing required lint job.
+- [x] Complete bounded development-only history migration, original-to-new mapping, source equivalence, clean clone and exact final-source hosted verification under the approved lease/rollback boundary.
 
 ## Review history
 
@@ -106,3 +107,4 @@ The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidenc
 | 2026-10-15 | Codex review coordinator | Step12 complete after [both fresh code rounds](../../reviews/code-reviews/2026-10-15-t056-integration.md) and [separate security rounds](../../reviews/security-reviews/2026-10-15-t056-integration.md), actual committed-fix verification and peer reconciliation at4044b79. Six R1 plus three R2 groups closed; full24 original reports/retained evidence preserve HOLDs, severities, source stages and limits. Python3.9/3.13 suites161/124 and exact404 Linux PR/push CI pass; six app15368 contexts preserved. All16 task criteria checked, In Review/no date_done; Step13 and final publication-tip/maintainer review remain. Optional-for-general-exit status retained; implementation delivered, no carry-forward shortcut or Done claim. |
 | 2026-10-16 | Codex, maintainer-approved maintenance | Reopened In Progress for Accepted ADR-0044 archive/migration/prevention followup under the approved cleanup plan. Original delivery evidence remains historical; new criteria unchecked, no date_done or phase expansion. Governance/recovery both fresh rounds complete; archival execution begins. |
 | 2026-10-16 | Codex, prevention preflight | Archive/citation both fresh rounds complete; T-049 returns In Review. Clarify the maintenance criterion’s temporal wording against the already-approved plan: only the release-standard pointer precedes archival publication; general retention guidance and guard are step6. No requirement waived or completion claimed. Implement separate offline footprint CLI over index and complete HEAD history, rejecting shallow/promisor input; existing lint checkout supplies complete history. No runtime/parser/protection change. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. All three ADR-0044 maintenance criteria close after actual F/main hosted checks, verified archive/recovery/mapping and ordinary full remote clone; no carry-forward. |

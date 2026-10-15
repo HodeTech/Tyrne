@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
@@ -69,3 +70,4 @@ Verify each statement against its source of truth first (`.cargo/config.toml`, `
 | 2026-10-13 | Codex (AI agent), implementation author | Step 8 kickoff after T-055's completed two-round boundary at `98378b5`; verified prerequisites and approved choices. See [source-bound preflight](../../reports/2026-10-13-t052-t053-standards-preflight.md), including additional existing-scope tooling-file reasons recorded before edits. Status In Progress; no delivery or review claim. |
 | 2026-10-13 | Codex (AI agent), implementation author | T-053 content: target-wide panic flags, live target-aware CI/smoke, actual lint entries and warning escalation, history-derived valid scopes, printed QEMU log path, all three fence tags and grammar/test-hal fixes. Pre-recorded security-review/P11/infrastructure additions correct adjacent tooling delivery claims while preserving required properties. No source/configuration/CI/lint-level change. Verification and both fresh paired rounds remain pending. |
 | 2026-10-13 | Codex (AI agent), Step 8 canonical boundary | Both fresh code/security rounds Approve cumulative `98378b5..d553efe`; zero confirmed source or peer-seam findings, no correction commit required. [Code](../../reviews/code-reviews/2026-10-13-t052-t053-standards-reconciliation.md) and [security](../../reviews/security-reviews/2026-10-13-t052-t053-standards-reconciliation.md) retain all four required reports plus the disclosed supplementary primary assessment. All 13 AC/DoD boxes checked against source/evidence/scoped allowance; static/navigation snapshot limits preserved. In Review without date_done or maintainer approval; Step 9/T-054 starts next. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |

@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
@@ -101,3 +102,4 @@ The plan counts "nine" frontmatters (T-020..T-028); T-029 is handled separately 
 | 2026-10-13 | Codex (AI agent), implementation | Reconciled ten historically merged tasks from exact `origin/main` first-parent facts; 23 contiguous index members, eight exact H1/milestone rows, optional authorized real-date template/lifecycle and three path repairs. Whole body/history/checkbox preservation verified; bounded 800 paths, 99 headings and two source-line fragments pass. [Source-bound report](../../reports/2026-10-13-t048-phase-b-task-reconciliation.md). No runtime run or new Done promotion; both fresh review rounds pending, status In Progress. |
 | 2026-10-13 | Codex (AI agent), R1 provenance correction | One source-confirmed Low finding: the report's kickoff SHA could be mistaken for the implemented checked tree. Clarified baseline versus working-tree verification and implementation commit `550500f`, preserving every underlying fact/result. No task-body, runtime or evidence change; first-round correction verification and fresh R2 remain pending. |
 | 2026-10-13 | Codex (AI agent), both fresh rounds complete | [Canonical five-role review](../../reviews/code-reviews/2026-10-13-t048-phase-b-task-reconciliation.md) records both fresh rounds Approve cumulative `a214532..a50f94a`; one R1 Low provenance finding fixed and independently verified, no unresolved finding. Historical ten-task merge/date/preservation, 23-row rendered index, template/lifecycle and scoped links verified. Status In Review, no date_done; T-049 follows. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |

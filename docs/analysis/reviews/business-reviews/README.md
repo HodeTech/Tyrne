@@ -24,6 +24,7 @@ A business review may point at outcomes from those other reviews as part of "wha
 
 | Date | Scope | File |
 |------|-------|------|
+| 2026-10-16 | B.2-2 completion after PR49 merge; twelve tasks Done, all161 criteria checked, first-main gates verified;26 tasks remain | [2026-10-16-phase-b2-track2-completion.md](2026-10-16-phase-b2-track2-completion.md) |
 | 2026-04-21 | Milestone A2 — Capability table foundation | [2026-04-21-A2-completion.md](2026-04-21-A2-completion.md) |
 | 2026-04-21 | A6 completion / Phase A retrospective (A3–A6) — predates the five-section template; its headings differ from `master-plan.md` | [2026-04-21-A6-completion.md](2026-04-21-A6-completion.md) |
 | 2026-04-22 | T-006 mini-retro — raw-pointer scheduler API refactor | [2026-04-22-T-006-mini-retro.md](2026-04-22-T-006-mini-retro.md) |

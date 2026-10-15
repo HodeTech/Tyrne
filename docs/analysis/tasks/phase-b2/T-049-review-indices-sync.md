@@ -2,8 +2,9 @@
 
 - **Phase:** B.2
 - **Milestone:** Track B.2-2
-- **Status:** In Review
+- **Status:** Done
 - **Created:** 2026-10-11
+- **date_done:** 2026-10-16
 - **Author:** Claude (AI agent), opened on behalf of @cemililik
 - **Dependencies:** none
 - **Informs:** [T-056](T-056-docs-consistency-automation.md)
@@ -98,6 +99,7 @@ The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidenc
 | 2026-10-13 | Codex T-056 baseline follow-up, T-049 owner | New bounded-parser scan identifies two original D2b-007 prose quotations carrying undefined explicit reference syntax. Delimit the unchanged quoted bytes as literal code and append a dated navigation note; no finding/severity/remediation/verdict rewrite, broken-link exception or archive exclusion. [Exact preservation evidence](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t056-parser-evidence "Archived member: docs/analysis/reports/2026-10-13-t056-parser-evidence/t049-quoted-evidence-repair.json") binds the source. T-056 Step 11 fresh paired R1/R2 will review this owning follow-up in the cumulative range; current T-049 In Review/no date_done unchanged. |
 | 2026-10-15 | Codex T-056 publication follow-up, T-049 owner | The full historical R2 CODE report contains an intended multiline inline-code quotation crossing real blank blocks, making its quoted fragment active Markdown. Add only two tagged literal delimiters around that paragraph in the publication copy; retain the complete original report as inert evidence. [Exact reverse-preservation proof](../../reports/2026-10-16-pr49-evidence-catalog.md#dataset-2026-10-13-t056-parser-evidence "Archived member: docs/analysis/reports/2026-10-13-t056-parser-evidence/publication-quoted-evidence-repair.json") confirms all original bytes/findings/verdicts/provenance unchanged. Canonical filenames retain their actual first-review2026-10-13 date to resolve the existing citation; final verification/filing2026-10-15 is explicit. No parser/source change, exception or archive exclusion; T-049 stays In Review/no date_done. |
 | 2026-10-16 | Codex, maintainer-approved maintenance | Reopened In Progress for Accepted ADR-0044 archive/migration/prevention followup under the approved cleanup plan. Original delivery evidence remains historical; new criteria unchecked, no date_done or phase expansion. Governance/recovery both fresh rounds complete; archival execution begins. |
+| 2026-10-16 | @cemililik (merge/completion authorization); Codex (verification/scribe) | Maintainer merged PR49 at `52fa323` and explicitly authorized Done. First merged-main CI 38820329507 passes all seven jobs and six required app-15368 contexts; [completion retrospective](../../reviews/business-reviews/2026-10-16-phase-b2-track2-completion.md) records source-bound evidence. date_done is the Istanbul completion/authorization date 2026-10-16; actual merge UTC 2026-10-15T22:55:20Z is preserved. |
 
 > **Evidence migration (2026-10-16).** Raw evidence links now open the [immutable archive catalog](../../reports/2026-10-16-pr49-evidence-catalog.md). Each link title retains its exact archived member path. Original verdicts, measurements, limitations and execution SHA identities remain historical; the archive bundle restores their original source.
 | 2026-10-16 | Codex, both maintenance rounds complete | Immutable publication/download recovery, all804 payloads/old source,151-map invariants and348/46 reversible citations verified. [Both fresh complementary rounds](../../reviews/code-reviews/2026-10-16-pr49-evidence-migration.md) close Low MRC1-01 at3a17c3d; zero unresolved findings. Both new maintenance criteria checked; returns In Review, no date_done. T-056 prevention/remote lease/final hosted and maintainer merge remain separate. |
