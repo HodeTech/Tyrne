@@ -1023,6 +1023,35 @@ class MetadataTests(unittest.TestCase):
         source.write_text("<pre>\n```markdown\n</style>\n\n" + original, encoding="utf-8")
         self.clean("live")
 
+    def test_malformed_custom_tags_cannot_hide_real_links(self):
+        for tag in ('<custom a=>', '<custom a=bad`value>', '<custom a="1"b="2">', '<custom a=x=y>'):
+            with self.subTest(tag=tag):
+                self.write("docs/probe.md", tag + "\n[Real](missing.md)\n")
+                report = self.rejects("links", "path", "docs/probe.md")
+                self.assertEqual([2], [x.line for x in report.findings if x.path == "docs/probe.md"])
+
+    def test_malformed_custom_tags_cannot_hide_standard_fences(self):
+        for tag in ('<custom a=>', '<custom a=bad`value>', '<custom a="1"b="2">', '<custom a=x=y>'):
+            with self.subTest(tag=tag):
+                self.write("docs/standards/probe.md", tag + "\n```\nliteral\n```\n")
+                report = self.rejects("fences", "standard-fence", "docs/standards/probe.md")
+                self.assertEqual([2], [x.line for x in report.findings if x.code == "standard-fence"])
+
+    def test_type_seven_complete_tags_keep_strict_and_prefix_rules_distinct(self):
+        source = self.live()
+        original = source.read_text()
+        region = original[original.index("<!-- current-state:start -->"):]
+        for tag in ('<custom a=word>', '<custom a="" b="2">', '<custom disabled>', '<div a=>'):
+            with self.subTest(tag=tag):
+                source.write_text(tag + "\n" + region, encoding="utf-8")
+                self.rejects("live", "live-state")
+                source.write_text(tag + "\n\n" + original, encoding="utf-8")
+                self.clean("live")
+        for tag in ('<custom a=>', '<custom a=bad`value>', '<custom a="1"b="2">', '<custom a=x=y>'):
+            with self.subTest(tag=tag):
+                source.write_text(tag + "\n" + region, encoding="utf-8")
+                self.clean("live")
+
     def test_unsafe_unsupported_redirections_do_not_copy_distant_suffixes(self):
         import subprocess
         self.audit_fixture('// Audit: UNSAFE-2026-0001\nfn f() {\n' +

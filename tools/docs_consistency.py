@@ -373,6 +373,61 @@ HTML_BLOCK_NAMES = frozenset((
 ).split())
 HTML_RAW_BLOCK_NAMES = frozenset(("pre", "script", "style", "textarea"))
 HTML_BLANK_END = re.compile(r"^[ \t]*$")
+HTML_BLOCK_ATTRIBUTE = re.compile(r"[A-Za-z_:][A-Za-z0-9_.:-]*")
+
+
+def complete_block_tag(body):
+    """Strict single-line CommonMark tag predicate, not browser recovery.
+
+    Type 7 requires a complete tag. Keep this separate from the permissive
+    navigation extractor and from type 6's structural-name prefix rule.
+    """
+    text = body.lstrip(" ")
+    if len(body) - len(text) > 3:
+        return False
+    if text.startswith("</"):
+        return bool(re.fullmatch(r"</[A-Za-z][A-Za-z0-9-]*[ \t]*>[ \t]*", text))
+    name = re.match(r"<[A-Za-z][A-Za-z0-9-]*", text)
+    if not name or name[0][1:].lower() in HTML_RAW_BLOCK_NAMES:
+        return False
+    cursor = name.end()
+    while cursor < len(text):
+        begin = cursor
+        while cursor < len(text) and text[cursor] in " \t":
+            cursor += 1
+        if text.startswith(">", cursor) or text.startswith("/>", cursor):
+            cursor += 2 if text.startswith("/>", cursor) else 1
+            return not text[cursor:].strip(" \t")
+        if cursor == begin:
+            return False  # Every attribute requires preceding whitespace.
+        attribute = HTML_BLOCK_ATTRIBUTE.match(text, cursor)
+        if not attribute:
+            return False
+        cursor = attribute.end()
+        # Look ahead without consuming the next attribute's separator.
+        after_name = cursor
+        while cursor < len(text) and text[cursor] in " \t":
+            cursor += 1
+        if cursor >= len(text) or text[cursor] != "=":
+            cursor = after_name
+            continue
+        cursor += 1
+        while cursor < len(text) and text[cursor] in " \t":
+            cursor += 1
+        if cursor >= len(text):
+            return False
+        if text[cursor] in "\"'":
+            closing = text.find(text[cursor], cursor + 1)
+            if closing < 0:
+                return False
+            cursor = closing + 1
+        else:
+            begin = cursor
+            while cursor < len(text) and text[cursor] not in " \t\"'=<>`":
+                cursor += 1
+            if cursor == begin:
+                return False
+    return False
 
 
 def raw_html_closer(body, paragraph=False):
@@ -421,18 +476,7 @@ def table_interrupt(body):
         tail = stripped[tag.end():]
         if tag[1] == "<" and name in HTML_RAW_BLOCK_NAMES and (not tail or tail[0] in " \t>"):
             return True
-    complete = HTML_TAG.match(stripped) if HTML_START.match(stripped) else None
-    if not complete or stripped[complete.end():].strip(" \t"):
-        return False
-    if stripped.startswith("</"):
-        return bool(re.fullmatch(r"</[A-Za-z][A-Za-z0-9-]*[ \t]*>", stripped))
-    if not tag or tag[2].lower() in HTML_RAW_BLOCK_NAMES:
-        return False
-    try:
-        return all(re.fullmatch(r"[A-Za-z_:][A-Za-z0-9_.:-]*", name)
-                   for name, _, _ in html_attributes(complete[0]))
-    except ValueError:
-        return False
+    return complete_block_tag(body)
 
 
 def blocks(text):
