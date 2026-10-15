@@ -67,6 +67,7 @@ Run locally on macOS and verify Linux through exact-source hosted CI after publi
 
 The maintainer approved [the cleanup plan](../../reports/2026-10-16-pr49-evidence-cleanup.md) and [ADR-0044](../../../decisions/0044-review-evidence-retention.md). The original checked criteria remain historical delivery evidence; these additional criteria close before this maintenance returns to In Review. No Done promotion or phase inventory expansion is authorized.
 
+- [ ] After ADR-0044 Acceptance, add minimal retention guidance to existing review skills/documentation standards and the evidence-only release-standard scope pointer before archive publication. This approved maintenance explicitly extends the original skill-edit scope only for this guidance.
 - [ ] Implement Accepted ADR-0044 footprint limits as a separate offline command with meaningful fixtures in the existing required lint job.
 - [ ] Complete bounded development-only history migration, original-to-new mapping, source equivalence, clean clone and exact final-source hosted verification under the approved lease/rollback boundary.
 

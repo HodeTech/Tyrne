@@ -33,6 +33,8 @@ Keep all canonical Markdown reports/reviews, original findings/verdicts/severiti
 
 Create a dedicated GitHub evidence release, draft first, prerelease and not latest, plus a verified independent local copy outside the repository. Suggested tag: evidence-pr-49-2026-10-16, pointing only to already-clean main c16997e. Its automatic source archive is that main anchor; the attached Git bundle is the authoritative old development source. Do not tag the bloated original tip.
 
+The evidence-only release is archival hosting under [ADR-0044](../../decisions/0044-review-evidence-retention.md), with no product version, image, ABI/support claim, first product release or maintainer-key signature assertion. Its contract is immutable bytes, digests, historical provenance and verified restoration. Product release gates/signing remain mandatory; a minimal [release-standard](../../standards/release.md) scope pointer follows Acceptance and precedes publication.
+
 Enable repository release immutability before publication. This applies to future releases; there are currently none. Upload all assets before publication, verify download digests and restoration, publish, then verify immutable status and tag anchor. Any unavailable immutable publication or failed restoration stops removal/ref replacement; do not fall back silently to expiring Actions artifacts.
 
 Proposed in-Git limits:1MiB per tracked blob;512KiB aggregate non-Markdown content under docs/analysis/reports/;128KiB archive catalog. Add a separate footprint command/test in the existing lint job, leaving check-docs.py's offline/no-Git contract and all six required app15368 context identities intact. One-time maintenance tooling outside project dependencies may be needed: git-filter-repo is currently not installed. Pin and verify its primary-source version/digest before isolated use.
@@ -41,7 +43,7 @@ The complete proposed decision is [ADR-0044](../../decisions/0044-review-evidenc
 
 ## Ordered approved execution
 
-1. **Freeze and create tested local recovery.** Recheck clean worktree, exact local/remote tip, main and all advertised refs. Stop on drift. Create a self-contained original development bundle and payload manifests outside the working tree; verify bundle integrity, clone/recover original source and all804 payloads, and hash-check every recovered file. Save PR metadata and original final CI/API/log proof before retention expiry. No new backup branch/tag in the source remote.
+1. **Freeze and create tested local recovery.** Recheck clean worktree, exact local/remote development tip, advertised main and all advertised refs. Record the unchanged pre-existing local main separately; it is not the remote PR base. Stop on drift. Create a self-contained original development bundle and payload manifests outside the working tree; verify bundle integrity, clone/recover original source and all804 payloads, and hash-check every recovered file. Save PR metadata and original final CI/API/log proof before retention expiry. No new backup branch/tag in the source remote.
 
 2. **File and settle the approved decision.** Commit the proposed ADR separately from Acceptance, complete the deliberate reread and required review discipline, then record approved followup criteria forT049/T056 and operative roadmap state. Material proposal changes return for approval. No standard/guard implementation precedes the accepted decision.
 
@@ -84,3 +86,7 @@ At original `97dbcd16f1d9ed1f6e620bc17aa5349fe907c1a4`, the clean development wo
 | Payload archive | 66475418 | `032b586ec81c38d37d45f5076c628707a3b35484da4388499f1d9896c44e3117` |
 
 Local recovery is verified; durable public publication, history migration, footprint guard, hosted final-tip checks and maintainer review remain pending. Implementation review units are governance/recovery (steps 1–2), archive/migration/citations (steps 3–5), and prevention/final validation (steps 6–8). Each unit has its own committed source, two different fresh complementary rounds, validated correction commits and explicit disposition before the next unit. Publication is gated by completed local reviews.
+
+### Governance R1 correction — 2026-10-16
+
+Both independent first-round reviewers requested one Medium clarification (GR1-C01 / INT-R1-01): define evidence hosting relative to the product-release signing/gates standard. The Proposed ADR and plan now define the approved evidence-only profile and ground its post-Acceptance standard pointer in T-056. No signature, product release or broadened remote-ref authorization is claimed. Independent committed-fix verification and a different fresh second round remain required before Acceptance.
