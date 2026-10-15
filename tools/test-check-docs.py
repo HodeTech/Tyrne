@@ -166,6 +166,86 @@ class LinkTests(unittest.TestCase):
                 self.assertEqual([(3, 'Missing Markdown/HTML anchor: ab')],
                                  [(item.line, item.message) for item in result.findings])
 
+    def heading_pair(self, title, real, phantom, ending, atx, local_targets=2):
+        """Check independently specified real/phantom anchors through the CLI."""
+        body = '# ' + title + '\n' if atx else title + '\n---\n'
+        line = len(docs.physical_lines(body)) + 2
+        source = body + '\n[real](#' + real + ') [phantom](#' + phantom + ')\n'
+        self.write('docs/source.md', source.replace('\n', ending))
+        expected = {'checks': ['links'], 'ok': False, 'files': 3,
+                    'local_targets': local_targets, 'fragments': 2,
+                    'findings': [{'path': 'docs/source.md', 'line': line, 'code': 'fragment',
+                                  'message': 'Missing Markdown/HTML anchor: ' + phantom}]}
+        result = self.cli('--root', str(self.root), '--json')
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual('', result.stderr)
+        self.assertEqual(expected, json.loads(result.stdout))
+
+    def test_heading_crossing_emphasis_preserves_unmatched_underscores(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for atx in (True, False):
+                for title, real, phantom in (
+                        ('*foo _bar* baz_', 'foo-_bar-baz_', 'foo-bar-baz'),
+                        ('_foo *bar_ baz*', 'foo-bar-baz', '_foo-bar_-baz'),
+                        ('**foo _bar_ baz**', 'foo-bar-baz', 'foo-_bar_-baz'),
+                        ('*foo `_bar_` baz*', 'foo-_bar_-baz', 'foo-bar-baz'),
+                        (r'*foo \_bar\_ baz*', 'foo-_bar_-baz', 'foo-bar-baz'),
+                        ('*[foo _bar_](target.md) baz*', 'foo-bar-baz', 'foo-_bar_-baz')):
+                    with self.subTest(ending=repr(ending), atx=atx, title=title):
+                        # A real label also contributes its target to the report.
+                        self.heading_pair(title, real, phantom, ending, atx,
+                                          3 if '(target.md)' in title else 2)
+
+    def test_heading_code_spans_keep_original_token_boundaries(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for atx in (True, False):
+                for title, real, phantom in (
+                        ('` a `<!--x-->` b `', 'ab', 'a--b'),
+                        ('` a `<span></span>` b `', 'ab', 'a--b'),
+                        ('`a`<!--x-->` b `', 'ab', 'a-b-'),
+                        ('` a `<!--x-->`` b ``', 'ab', 'a--b'),
+                        ('` a ` ` b `', 'a-b', 'ab'),
+                        ('` a  b `', 'a--b', 'ab')):
+                    with self.subTest(ending=repr(ending), atx=atx, title=title):
+                        self.heading_pair(title, real, phantom, ending, atx)
+
+    def test_heading_projection_cannot_create_new_inline_syntax(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for atx in (True, False):
+                for title, real, phantom in (
+                        ('Alpha &<!--x-->amp; Beta', 'alpha-amp-beta', 'alpha--beta'),
+                        ('Alpha [a]<!--x-->(target.md)', 'alpha-atargetmd', 'alpha-a'),
+                        ('Alpha [a]<!--x-->[b]', 'alpha-ab', 'alpha-a'),
+                        ('Alpha<sp<!--x-->an>Beta', 'alphaspanbeta', 'alphabeta')):
+                    with self.subTest(ending=repr(ending), atx=atx, title=title):
+                        self.heading_pair(title, real, phantom, ending, atx)
+
+    def test_comment_mask_cannot_manufacture_html_navigation(self):
+        for ending in ('\n', '\r', '\r\n'):
+            with self.subTest(ending=repr(ending)):
+                result = self.check(('<sp<!--x-->an id="ghost">\n\n'
+                                     '[phantom](#ghost)\n<span id="real"></span>\n'
+                                     '[real](#real)\n').replace('\n', ending), ['fragment'])
+                self.assertEqual([(3, 'Missing Markdown/HTML anchor: ghost')],
+                                 [(item.line, item.message) for item in result.findings])
+
+    def test_heading_autolink_text_is_literal_to_emphasis(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for atx in (True, False):
+                with self.subTest(ending=repr(ending), atx=atx):
+                    self.heading_pair('__a<https://foo.bar/?q=__>', '__ahttpsfoobarq__',
+                                      'ahttpsfoobarq', ending, atx)
+
+    def test_heading_autolink_labels_keep_brackets_literal(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for title, anchor in (
+                    ('<first_last@example.test>', 'first_lastexampletest'),
+                    ('<https://example.test/?q=_x_>', 'httpsexampletestq_x_'),
+                    ('<https://example.test/?q=&amp;>', 'httpsexampletestqamp'),
+                    ('[<https://example.test/a]>](target.md)', 'httpsexampletesta')):
+                with self.subTest(ending=repr(ending), title=title):
+                    self.check(('# ' + title + '\n\n[x](#' + anchor + ')\n').replace('\n', ending))
+
     def test_tabbed_list_setext_uses_visual_container_columns(self):
         for ending in ('\n', '\r', '\r\n'):
             for body in ('-\tAlpha\n\t---\n', '-\tAlpha\n    ---\n',

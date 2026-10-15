@@ -61,6 +61,12 @@ class Link(NamedTuple):
     kind: str = "markdown"
 
 
+class InlineTokens(NamedTuple):
+    code: dict
+    links: dict
+    autolinks: dict
+
+
 class TableCell(NamedTuple):
     start: int
     end: int
@@ -555,6 +561,12 @@ BLANK_LINE = re.compile(r"\n[ \t]*\r?\n")
 SPACES = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?")
 HTML_START = re.compile(r"</?[A-Za-z][\w:-]*(?:\s|/?>)")
 HTML_TAG = re.compile(r"<(?:[^>\"']|\"[^\"]*\"|'[^']*')*>")
+# CommonMark URI/email autolinks are literal inline text, including underscores.
+# Their destinations are external; recognizing them grants no fetch authority.
+AUTOLINK = re.compile(r"<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\x00-\x20]*|"
+                      r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+                      r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+                      r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)>")
 
 
 class CodeSpans:
@@ -629,6 +641,9 @@ def close_label(text, start, index=None):
                 cursor = end
                 continue
             cursor = BACKTICKS.match(text, cursor).end()
+            continue
+        if char == "<" and AUTOLINK.match(text, cursor):
+            cursor = AUTOLINK.match(text, cursor).end()
             continue
         if char == "<" and HTML_START.match(text, cursor):
             tag = HTML_TAG.match(text, cursor)
@@ -795,6 +810,9 @@ def comments(text, layout=None, ignored=None):
                 continue
             cursor = BACKTICKS.match(text, cursor).end()
             continue
+        if text[cursor] == "<" and AUTOLINK.match(text, cursor):
+            cursor = AUTOLINK.match(text, cursor).end()
+            continue
         if text[cursor] == "<" and HTML_START.match(text, cursor):
             tag = HTML_TAG.match(text, cursor)
             if tag:
@@ -867,6 +885,9 @@ class HTMLContexts:
                     closing = closing + 3 if closing >= 0 else len(text)
                 cursor = closing if closing is not None else cursor + 4
                 continue
+            if not raw and text[cursor] == "<" and AUTOLINK.match(text, cursor):
+                cursor = AUTOLINK.match(text, cursor).end()
+                continue
             if text[cursor] == "<" and HTML_START.match(text, cursor):
                 tag = HTML_TAG.match(text, cursor)
                 if tag:
@@ -895,7 +916,7 @@ class HTMLContexts:
 
 
 def plain_emphasis(characters, literal, source, locations):
-    """Resolve underscore runs against source neighbors, then emit their text."""
+    """Resolve competing star/underscore runs against original neighbors."""
     removed = set()
     stack = []
     cursor = 0
@@ -910,11 +931,12 @@ def plain_emphasis(characters, literal, source, locations):
                 source[position] in "\t\n\f\r" or unicodedata.category(source[position]) == "Zs")
 
     while cursor < len(characters):
-        if characters[cursor] != "_" or literal[cursor]:
+        if characters[cursor] not in "_*" or literal[cursor]:
             cursor += 1
             continue
         begin = cursor
-        while (cursor < len(characters) and characters[cursor] == "_" and not literal[cursor] and
+        marker = characters[begin]
+        while (cursor < len(characters) and characters[cursor] == marker and not literal[cursor] and
                (cursor == begin or locations[cursor] == locations[cursor - 1] + 1)):
             cursor += 1
         end = cursor
@@ -924,14 +946,16 @@ def plain_emphasis(characters, literal, source, locations):
         following_space = whitespace(after)
         left = not following_space and (not punctuation(after) or previous_space or punctuation(before))
         right = not previous_space and (not punctuation(before) or following_space or punctuation(after))
-        can_open = left and (not right or punctuation(before))
-        can_close = right and (not left or punctuation(after))
+        can_open = left and (marker == "*" or not right or punctuation(before))
+        can_close = right and (marker == "*" or not left or punctuation(after))
         remaining = end - begin
         if can_close:
             while remaining:
                 match = None
                 for position in range(len(stack) - 1, -1, -1):
                     opener = stack[position]
+                    if opener[5] != marker:
+                        continue
                     if ((opener[3] or can_open) and (opener[4] + end - begin) % 3 == 0 and
                             (opener[4] % 3 or (end - begin) % 3)):
                         continue
@@ -949,19 +973,19 @@ def plain_emphasis(characters, literal, source, locations):
                 if not opener[2]:
                     stack.pop()
         if can_open and remaining:
-            stack.append([end - remaining, end, remaining, can_close, end - begin])
+            stack.append([end - remaining, end, remaining, can_close, end - begin, marker])
     return "".join(char for position, char in enumerate(characters) if position not in removed)
 
 
-def inline_text(text, *, source=None, offsets=None):
-    """Extract inline text without losing original emphasis-token context.
+def inline_text(text, *, source=None, offsets=None, tokens=None):
+    """Extract text while retaining actual source-token boundaries.
 
     Heading projection supplies offsets into its original document. Other
     callers use the input itself; code, escapes and entities stay literal.
     """
     source = text if source is None else source
     offsets = range(len(text)) if offsets is None else offsets
-    index = CodeSpans(text)
+    index = CodeSpans(text) if tokens is None else None
     result = []
     literal = []
     locations = []
@@ -972,36 +996,72 @@ def inline_text(text, *, source=None, offsets=None):
         literal.extend([protected] * len(value))
         locations.extend([offsets[cursor]] * len(value))
 
+    def contiguous(end):
+        return (end <= len(offsets) and
+                all(offsets[position] == offsets[cursor] + position - cursor
+                    for position in range(cursor, end)))
+
+    def projected_end(position):
+        return bisect_right(offsets, position - 1)
+
     while cursor < len(text):
         char = text[cursor]
-        if char == "\\" and cursor + 1 < len(text) and text[cursor + 1] in string.punctuation:
+        if (char == "\\" and cursor + 1 < len(text) and
+                text[cursor + 1] in string.punctuation and contiguous(cursor + 2)):
             emit(text[cursor + 1], True)
             cursor += 2
             continue
         if char == "`":
-            end = index.end(cursor)
+            actual = tokens.code.get(offsets[cursor]) if tokens is not None else None
+            end = projected_end(actual) if actual is not None else index.end(cursor) if index else None
             if end:
-                length = BACKTICKS.match(text, cursor).end() - cursor
+                length = (BACKTICKS.match(source, offsets[cursor]).end() - offsets[cursor]
+                          if tokens is not None else BACKTICKS.match(text, cursor).end() - cursor)
                 value = text[cursor + length:end - length].replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
                 if value.startswith(" ") and value.endswith(" ") and value.strip(" "):
                     value = value[1:-1]
                 emit(value, True)
                 cursor = end
                 continue
-            cursor = BACKTICKS.match(text, cursor).end()
+            cursor += 1
+            while (cursor < len(text) and text[cursor] == "`" and
+                   offsets[cursor] == offsets[cursor - 1] + 1):
+                cursor += 1
             continue
-        if char == "<" and HTML_START.match(text, cursor):
+        if tokens is not None and offsets[cursor] in tokens.autolinks:
+            end = projected_end(tokens.autolinks[offsets[cursor]])
+            emit(text[cursor + 1:end - 1], True)
+            cursor = end
+            continue
+        if tokens is None and char == "<" and AUTOLINK.match(text, cursor):
+            end = AUTOLINK.match(text, cursor).end()
+            emit(text[cursor + 1:end - 1], True)
+            cursor = end
+            continue
+        if tokens is None and char == "<" and HTML_START.match(text, cursor):
             tag = HTML_TAG.match(text, cursor)
             if tag:
                 cursor = tag.end()
                 continue
         if char == "&":
             entity = ENTITY.match(text, cursor)
-            if entity:
+            if entity and contiguous(entity.end()):
                 emit(markdown_entity(entity[0]), True)
                 cursor = entity.end()
                 continue
         if char == "[":
+            if tokens is not None:
+                link = tokens.links.get(offsets[cursor])
+                if link is not None:
+                    closing, finish = link
+                    end = projected_end(closing)
+                    emit(inline_text(text[cursor + 1:end], source=source,
+                                     offsets=offsets[cursor + 1:end], tokens=tokens), True)
+                    cursor = projected_end(finish)
+                    continue
+                emit(char)
+                cursor += 1
+                continue
             try:
                 end = close_label(text, cursor, index)
             except ValueError:
@@ -1030,8 +1090,8 @@ def inline_text(text, *, source=None, offsets=None):
     return plain_emphasis(result, literal, source, locations)
 
 
-def slug(text, *, source=None, offsets=None):
-    text = inline_text(text, source=source, offsets=offsets).lower()
+def slug(text, *, source=None, offsets=None, tokens=None):
+    text = inline_text(text, source=source, offsets=offsets, tokens=tokens).lower()
     text = "".join(c for c in text if c in "_- " or unicodedata.category(c)[0] in "LNM")
     return text.replace(" ", "-")
 
@@ -1146,6 +1206,8 @@ class Markdown:
         self.anchors = set()
         self.findings = []
         self.heading_code = []
+        self.heading_links = {}
+        self.heading_autolinks = {}
         if inline_only:
             self.block_text, self.fences, self.html_spans, self.table_rows, raw_spans = text, [], [], [], []
             self.layout = BlockLayout(text)
@@ -1287,6 +1349,7 @@ class Markdown:
                 self.issue(start, "link-syntax", "Nested links are unsupported; images in link labels are supported")
             self.links.append(Link(self.line(start), value))
             labels.append((start, closing, image))
+            self.heading_links[start] = (closing, end)
             if end > after:
                 destinations[after] = end
                 self.erase(visible, after, end, text)
@@ -1323,14 +1386,24 @@ class Markdown:
                     self.erase(visible, cursor, cursor + 1, text)
                 cursor = end if end is not None else cursor + 4
                 continue
-            if char == "<" and HTML_START.match(text, cursor):
-                tag = HTML_TAG.match(text, cursor)
+            if char == "<" and AUTOLINK.match(self.text, cursor):
+                end = AUTOLINK.match(self.text, cursor).end()
+                self.heading_autolinks[cursor] = end
+                self.erase(visible, cursor, end, text)
+                cursor = end
+                continue
+            if char == "<" and HTML_START.match(self.text, cursor):
+                tag = HTML_TAG.match(self.text, cursor)
                 if tag:
                     heading_text[cursor:tag.end()] = [None] * (tag.end() - cursor)
                     cursor = tag.end()
                     continue
                 if HTML_LINK_START.match(text, cursor):
                     self.issue(cursor, "link-syntax", "Unclosed relevant HTML link/image tag")
+            if char == "<":
+                # HTMLParser must not reinterpret comment blanks as tag syntax.
+                # Heading text still retains this literal source character.
+                self.erase(visible, cursor, cursor + 1, text)
             if char != "[":
                 cursor += 1
                 continue
@@ -1382,6 +1455,7 @@ class Markdown:
         pieces = []
         positions = []
         code_starts = [begin for begin, _ in self.heading_code]
+        tokens = InlineTokens(dict(self.heading_code), self.heading_links, self.heading_autolinks)
 
         def in_code(position):
             span = bisect_right(code_starts, position) - 1
@@ -1436,7 +1510,8 @@ class Markdown:
             positions = []
             begin = len(title) - len(title.lstrip(" \t\r\n"))
             end = len(title.rstrip(" \t\r\n"))
-            base = slug(title[begin:end], source=self.text, offsets=title_positions[begin:end])
+            base = slug(title[begin:end], source=self.text,
+                        offsets=title_positions[begin:end], tokens=tokens)
             anchor = base
             number = 0
             while anchor in used:
