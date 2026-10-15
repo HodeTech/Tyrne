@@ -1422,5 +1422,151 @@ class LinkTests(unittest.TestCase):
                 ast.parse(path.read_text(encoding="utf-8"), feature_version=(3, 9))
 
 
+class CorpusTests(unittest.TestCase):
+    """Shared-reader contracts independent of the selected metadata family."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="tyrne corpus ")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.write("README.md", "# Public\n")
+
+    def write(self, path, text):
+        target = self.root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        return target
+
+    def test_shared_reader_caches_text_without_selecting_link_findings(self):
+        self.write("docs/source.md", "[visible][missing]\n")
+        corpus = docs.Corpus(self.root, checks=["tasks"])
+        self.assertEqual(["tasks"], corpus.report.as_dict()["checks"])
+        view = corpus.report.as_dict()
+        view["checks"].append("unselected")
+        self.assertEqual(["tasks"], corpus.report.checks)
+        self.assertFalse(corpus.report.findings)
+        self.assertTrue(corpus.load("docs/source.md").findings)
+        with patch.object(docs, "read_utf8", side_effect=AssertionError("cached source reread")):
+            self.assertEqual("[visible][missing]\n", corpus.read("docs/source.md"))
+            self.assertIs(corpus.load("docs/source.md"), corpus.documents["docs/source.md"])
+
+    def test_direct_metadata_read_rejects_private_and_aliases_before_read(self):
+        self.write("outside/canary.rs", "UNSAFE-2099-9999\n")
+        self.write("docs/analysis/private/canary.rs", "private fixture\n")
+        (self.root / "leaf.rs").symlink_to("outside/canary.rs")
+        (self.root / "ancestor").symlink_to("outside", target_is_directory=True)
+        (self.root / "dangling.rs").symlink_to("absent")
+        (self.root / "loop.rs").symlink_to("loop.rs")
+        corpus = docs.Corpus(self.root, checks=["audit"])
+        with patch.object(docs, "read_utf8", side_effect=AssertionError("forbidden source opened")):
+            for path in ("leaf.rs", "ancestor/canary.rs", "dangling.rs", "loop.rs",
+                         "docs/analysis/private/canary.rs", "../outside.rs"):
+                with self.subTest(path=path):
+                    self.assertIsNone(corpus.read(path))
+        self.assertEqual(6, len(corpus.report.findings))
+
+    def test_direct_metadata_read_reports_utf8_size_and_regular_file_errors(self):
+        corpus = docs.Corpus(self.root, checks=["audit"])
+        (self.root / "invalid.rs").write_bytes(b"one\r\ntwo\r\xff")
+        self.write("large.rs", "x" * (docs.MAX_DOCUMENT_BYTES + 1))
+        self.assertIsNone(corpus.read("invalid.rs"))
+        self.assertIsNone(corpus.read("large.rs"))
+        self.assertIsNone(corpus.read("."))
+        self.assertEqual([("invalid.rs", 3, "read"), ("large.rs", 1, "read"), (".", 1, "read")],
+                         [(x.path, x.line, x.code) for x in corpus.report.findings])
+
+    def test_source_walk_is_sorted_and_rejects_aliases_without_opening(self):
+        self.write("crate/src/z.rs", "// source\n")
+        self.write("crate/src/a.s", "/* source */\n")
+        self.write("crate/target/generated.rs", "// generated fixture\n")
+        self.write("outside/canary.rs", "// outside fixture\n")
+        (self.root / "crate/alias").symlink_to(self.root / "outside", target_is_directory=True)
+        corpus = docs.Corpus(self.root, checks=["audit"])
+        with patch.object(docs, "read_utf8", side_effect=AssertionError("walk opened content")):
+            paths = corpus.walk("crate", suffixes=(".rs", ".s"), exclude=("target",))
+        self.assertEqual(["crate/src/a.s", "crate/src/z.rs"], paths)
+        self.assertEqual([("crate/alias", "input")], [(x.path, x.code) for x in corpus.report.findings])
+
+    def test_source_walk_checks_prefix_and_nonregular_ancestors(self):
+        self.write("outside/canary.rs", "// outside fixture\n")
+        (self.root / "alias").symlink_to("outside", target_is_directory=True)
+        self.write("not-directory", "fixture\n")
+        corpus = docs.Corpus(self.root, checks=["audit"])
+        self.assertEqual([], corpus.walk("alias", suffixes=(".rs",)))
+        self.assertEqual([], corpus.walk("not-directory", suffixes=(".rs",)))
+        self.assertEqual([], corpus.walk("docs/analysis/private", suffixes=(".rs",)))
+        self.assertEqual(3, len(corpus.report.findings))
+
+    def test_explicit_root_alias_is_canonicalized_and_invalid_root_fails(self):
+        alias = self.root / "caller-root"
+        target = self.root / "selected"
+        target.mkdir()
+        (target / "README.md").write_text("# Selected\n", encoding="utf-8")
+        alias.symlink_to(target, target_is_directory=True)
+        corpus = docs.Corpus(alias, checks=["tasks"])
+        self.assertEqual(target.resolve(), corpus.root)
+        self.assertFalse(corpus.report.findings)
+        bad = docs.Corpus(self.root / "absent", checks=["tasks"])
+        self.assertTrue(bad.report.findings)
+        self.assertEqual([], bad.paths)
+
+    def test_link_labels_preserve_visible_usage_and_image_identity(self):
+        text = ("[`ADR-C1-topic`](target.md) [visible][key] [collapsed][] [shortcut]\n"
+                "![image][key] <img src='picture.png'>\n\n"
+                "[key]: target.md\n[collapsed]: target.md\n[shortcut]: target.md\n\n"
+                "| Name |\n|---|\n| [table][key] |\n")
+        document = docs.Markdown("docs/source.md", text)
+        labels = [(x.label, x.image) for x in document.links if x.label is not None]
+        self.assertEqual([("`ADR-C1-topic`", False), ("visible", False), ("collapsed", False),
+                          ("shortcut", False), ("image", True), ("table", False)], labels)
+        definitions = [x for x in document.links if x.label is None and x.kind == "markdown"]
+        self.assertEqual(3, len(definitions))
+        self.assertTrue(next(x for x in document.links if x.kind == "html").image)
+
+    def test_shared_links_pass_preserves_report_and_is_not_double_counted(self):
+        self.write("docs/source.md", "# Heading\n[x](#heading) [bad][missing]\n")
+        corpus = docs.Corpus(self.root)
+        result = docs.check_links(corpus)
+        self.assertIs(result, corpus.report)
+        self.assertEqual(1, result.local_targets)
+        self.assertEqual(1, result.fragments)
+        self.assertEqual(["reference"], [x.code for x in result.findings])
+        before = result.as_dict()
+        self.assertEqual(before, docs.check_links(corpus).as_dict())
+
+    def test_metadata_source_alias_created_after_enumeration_is_not_opened(self):
+        source = self.write("crate/src/lib.rs", "// original fixture\n")
+        self.write("outside/canary.rs", "// canary fixture\n")
+        corpus = docs.Corpus(self.root, checks=["audit"])
+        self.assertEqual(["crate/src/lib.rs"], corpus.walk("crate", suffixes=(".rs",)))
+        source.unlink()
+        source.symlink_to(self.root / "outside/canary.rs")
+        with patch.object(docs, "read_utf8", side_effect=AssertionError("replacement alias opened")):
+            self.assertIsNone(corpus.read("crate/src/lib.rs"))
+        self.assertTrue(corpus.report.findings)
+
+    def test_directory_errors_without_filename_are_structured(self):
+        self.write("docs/source.md", "# Source\n")
+        self.write("crate/src/lib.rs", "// source\n")
+
+        def denied(_start, **options):
+            options["onerror"](PermissionError("fixture directory denial"))
+            return iter(())
+
+        with patch.object(docs.os, "walk", side_effect=denied):
+            corpus = docs.Corpus(self.root, checks=["audit"])
+            self.assertEqual([], corpus.walk("crate", suffixes=(".rs",)))
+        self.assertEqual([("docs", "input"), ("crate", "input")],
+                         [(x.path, x.code) for x in corpus.report.findings])
+
+    def test_generated_exclusion_is_relative_to_member_root(self):
+        self.write("crate/target/generated.rs", "// generated fixture\n")
+        self.write("crate/src/target/real.rs", "// real source fixture\n")
+        corpus = docs.Corpus(self.root, checks=["audit"])
+        self.assertEqual(["crate/src/target/real.rs"],
+                         corpus.walk("crate", suffixes=(".rs",), exclude=("target",)))
+        self.assertFalse(corpus.report.findings)
+
+
 if __name__ == "__main__":
     unittest.main()

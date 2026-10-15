@@ -56,9 +56,13 @@ class Finding(NamedTuple):
 
 
 class Link(NamedTuple):
+    """Navigation and original visible label; definitions have no usage label."""
+
     line: int
     destination: str
     kind: str = "markdown"
+    label: Optional[str] = None
+    image: bool = False
 
 
 class InlineTokens(NamedTuple):
@@ -102,9 +106,10 @@ class Report:
     files: int = 0
     local_targets: int = 0
     fragments: int = 0
+    checks: list = field(default_factory=lambda: ["links"])
 
     def as_dict(self):
-        return {"checks": ["links"], "ok": not self.findings, "files": self.files,
+        return {"checks": list(self.checks), "ok": not self.findings, "files": self.files,
                 "local_targets": self.local_targets, "fragments": self.fragments,
                 "findings": [x._asdict() for x in sorted(set(self.findings))]}
 
@@ -1196,7 +1201,7 @@ class Anchors(HTMLParser):
             if name == "id" or (tag == "a" and name == "name"):
                 self.document.anchors.add(value)
             if (tag == "a" and name == "href") or (tag == "img" and name == "src"):
-                self.document.links.append(Link(line, value, "html"))
+                self.document.links.append(Link(line, value, "html", image=tag == "img"))
 
 
 class Markdown:
@@ -1355,7 +1360,7 @@ class Markdown:
             image = start > 0 and text[start - 1] == "!" and backslashes % 2 == 0
             if not image and any(begin < start < limit and not outer_image for begin, limit, outer_image in labels):
                 self.issue(start, "link-syntax", "Nested links are unsupported; images in link labels are supported")
-            self.links.append(Link(self.line(start), value))
+            self.links.append(Link(self.line(start), value, "markdown", text[start + 1:closing], image))
             labels.append((start, closing, image))
             self.heading_links[start] = (closing, end)
             if end > after:
@@ -1582,7 +1587,10 @@ def source_files(root, report):
             continue
 
         def walk_error(error):
-            path = Path(error.filename).relative_to(root).as_posix()
+            try:
+                path = Path(error.filename).relative_to(root).as_posix() if error.filename else prefix
+            except ValueError:
+                path = prefix
             report.findings.append(Finding(path, 1, "input", str(error)))
 
         for directory, dirs, files in os.walk(start, followlinks=False, onerror=walk_error):
@@ -1632,55 +1640,141 @@ def resolve_path(root, source, destination_path):
     return relative
 
 
-def scan_links(root):
-    """Read-only public-corpus check; temporary fixture roots need no Git."""
-    report = Report()
-    try:
-        root = Path(root).resolve()
-    except (OSError, RuntimeError) as error:
-        report.findings.append(Finding(".", 1, "input", str(error)))
-        return report
-    if not root.is_dir():
-        report.findings.append(Finding(".", 1, "input", "Root is not an existing directory"))
-        return report
-    documents = {}
+class Corpus:
+    """Shared guarded text/Markdown reads; parser findings are selected separately.
 
-    def load(path):
-        key = Path(path).as_posix()
-        if key in documents:
-            return documents[key]
+    Explicit caller roots are canonicalized. Sources inside that root must not
+    use aliases, private prefixes or special files. Static guards do not claim
+    atomic filesystem-race containment or a process sandbox.
+    """
+
+    def __init__(self, root, *, checks=None):
+        self.report = Report(checks=list(checks) if checks is not None else ["links"])
+        self.root = None
+        self.paths = []
+        self.texts = {}
+        self.documents = {}
+        self.reported_parser = set()
+        self.links_checked = False
         try:
-            alias = input_symlink(root, key)
+            root = Path(root).resolve()
+            if not root.is_dir():
+                self.issue(".", 1, "input", "Root is not an existing directory")
+                return
+            self.root = root
+            self.paths = source_files(root, self.report)
+        except (OSError, ValueError, RuntimeError) as error:
+            self.issue(".", 1, "input", str(error))
+            return
+        self.report.files = len(self.paths)
+        if not self.paths:
+            self.issue(".", 1, "input", "No public Markdown input found")
+        for path in self.paths:
+            self.load(path)
+
+    def issue(self, path, line, code, message):
+        self.report.findings.append(Finding(Path(path).as_posix(), line, code, message))
+
+    def read(self, path):
+        """Read a regular public source once, checking aliases before opening."""
+        key = Path(path).as_posix()
+        if key in self.texts:
+            return self.texts[key]
+        self.texts[key] = None
+        if self.root is None:
+            return None
+        try:
+            if local_only(key):
+                raise ValueError("Local-only analysis is unavailable in a clean checkout")
+            alias = input_symlink(self.root, key)
             if alias:
-                report.findings.append(Finding(key, 1, "input", "Symlinked Markdown input is unsupported: " + alias))
-                documents[key] = None
+                kind = "Markdown" if key.endswith(".md") else "source"
+                self.issue(key, 1, "input", "Symlinked " + kind + " input is unsupported: " + alias)
                 return None
-            text = read_utf8(root, key)
-            document = Markdown(key, text)
-            documents[key] = document
-            report.findings.extend(document.findings)
-            return document
+            self.texts[key] = read_utf8(self.root, key)
         except UnicodeDecodeError as error:
             data = error.object
             line = len(re.findall(br"\r\n?|\n", data[:error.start])) + 1
-            report.findings.append(Finding(key, line, "read", "Invalid UTF-8 source"))
+            self.issue(key, line, "read", "Invalid UTF-8 source")
         except (OSError, ValueError, RuntimeError) as error:
-            report.findings.append(Finding(key, 1, "read", str(error)))
-        documents[key] = None
-        return None
+            self.issue(key, 1, "read", str(error))
+        return self.texts[key]
 
-    try:
-        paths = source_files(root, report)
-    except (OSError, ValueError, RuntimeError) as error:
-        report.findings.append(Finding(".", 1, "input", str(error)))
-        paths = []
-    report.files = len(paths)
-    if not paths:
-        report.findings.append(Finding(".", 1, "input", "No public Markdown input found"))
-    for path in paths:
-        load(path)
-    for path in paths:
-        document = documents[path]
+    def load(self, path, *, report_parser=False):
+        """Parse cached Markdown; selecting links opts into grammar findings."""
+        key = Path(path).as_posix()
+        if key not in self.documents:
+            text = self.read(key)
+            self.documents[key] = Markdown(key, text) if text is not None else None
+        document = self.documents[key]
+        if document is not None and report_parser and key not in self.reported_parser:
+            self.report.findings.extend(document.findings)
+            self.reported_parser.add(key)
+        return document
+
+    def walk(self, prefix, *, suffixes, exclude=()):
+        """Sorted source inventory; exclusions are exact paths below prefix.
+
+        This enumerates metadata, not content. Each consumer must still use
+        read() for guarded opening; aliases are rejected again at that point.
+        """
+        if self.root is None:
+            return []
+        prefix = Path(prefix)
+        result = []
+        try:
+            if local_only(prefix.as_posix()):
+                raise ValueError("Local-only analysis is unavailable in a clean checkout")
+            alias = input_symlink(self.root, prefix)
+            if alias:
+                raise ValueError("Symlinked source directory is unsupported: " + alias)
+            start = self.root / prefix
+            if not start.exists():
+                return []
+            if not start.is_dir():
+                raise ValueError("Source prefix is not a directory")
+
+            def walk_error(error):
+                try:
+                    name = Path(error.filename).relative_to(self.root).as_posix() if error.filename else prefix.as_posix()
+                except ValueError:
+                    name = prefix.as_posix()
+                self.issue(name, 1, "input", str(error))
+
+            for directory, dirs, files in os.walk(start, followlinks=False, onerror=walk_error):
+                relative = Path(directory).relative_to(self.root)
+                kept = []
+                for name in sorted(dirs):
+                    path = relative / name
+                    if local_only(path.as_posix()) or path.relative_to(prefix).as_posix() in exclude:
+                        continue
+                    if (self.root / path).is_symlink():
+                        self.issue(path, 1, "input", "Symlinked source directory is unsupported")
+                    else:
+                        kept.append(name)
+                dirs[:] = kept
+                for name in sorted(files):
+                    path = relative / name
+                    if path.suffix not in suffixes:
+                        continue
+                    if (self.root / path).is_symlink():
+                        self.issue(path, 1, "input", "Symlinked source input is unsupported")
+                    else:
+                        result.append(path.as_posix())
+        except (OSError, ValueError, RuntimeError) as error:
+            self.issue(prefix, 1, "input", str(error))
+        return sorted(result)
+
+
+def check_links(corpus):
+    """Run navigation once against a shared corpus, retaining its report API."""
+    report = corpus.report
+    if corpus.links_checked:
+        return report
+    corpus.links_checked = True
+    root = corpus.root
+    for path in corpus.paths:
+        document = corpus.load(path, report_parser=True)
         if document is None:
             continue
         for link in document.links:
@@ -1719,7 +1813,7 @@ def scan_links(root):
                     if not 1 <= begin <= end <= size:
                         raise ValueError("Source-line fragment outside file bounds: " + fragment)
                 elif actual.suffix.lower() == ".md":
-                    target_document = load(target)
+                    target_document = corpus.load(target, report_parser=True)
                     if target_document is None or fragment not in target_document.anchors:
                         raise ValueError("Missing Markdown/HTML anchor: " + fragment)
                 else:
@@ -1728,3 +1822,8 @@ def scan_links(root):
                 report.findings.append(Finding(path, link.line, "fragment", str(error)))
     report.findings = sorted(set(report.findings))
     return report
+
+
+def scan_links(root):
+    """Read-only links-only API; temporary fixture roots need no Git."""
+    return check_links(Corpus(root))
