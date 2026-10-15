@@ -3,11 +3,11 @@
 The live pointer to selected work, task states and review triggers. Dated banners and earlier live-state/Notes snapshots are preserved in [current-archive.md](current-archive.md); the full plan is in [phases/](phases/).
 
 <!-- current-state:start -->
-## Live state — 2026-10-13
+## Live state — 2026-10-15
 
 - **Active phase:** [B.2 — Consolidation & Hardening](phases/phase-b2.md), mandatory whole-phase gate before C/D under [ADR-0040](../decisions/0040-phase-b2-consolidation-bridge.md). Phase C and D remain gated.
-- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps 0–10 completed their required review boundaries; Step 11/T-056 parser is active.
-- **Active task:** [T-056 — docs consistency automation](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md), In Progress under the [parser preflight](../analysis/reports/2026-10-13-t056-parser-preflight.md). Step 11 parser/fixtures then Step 12 remaining checks/required CI; both fresh paired rounds per step and actual hosted evidence remain delivery gates.
+- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps0–11 completed their required review boundaries; Step12/T-056 metadata and required-CI integration is active.
+- **Active task:** [T-056 — docs consistency automation](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md), In Progress under the [parser preflight](../analysis/reports/2026-10-13-t056-parser-preflight.md). [Step11 parser review](../analysis/reviews/code-reviews/2026-10-13-t056-parser.md) is complete at830de9d; Step12 remaining checks/required CI is active, with both fresh paired rounds and actual hosted evidence still required.
 - **Working branch:** development, as requested by the maintainer.
 - **Last completed work:** Track B.2-1 plus prerequisite T-037 (T-030–T-037 overall), Done after [PR #48](https://github.com/HodeTech/Tyrne/pull/48) merged 2026-10-12 at `c16997e`; the [completion retrospective](../analysis/reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) retains merged-main evidence.
 - **Historical completion:** [T-029](../analysis/tasks/phase-b/T-029-perf-microbench.md), Phase 1 [PR #44](https://github.com/HodeTech/Tyrne/pull/44) and Phase 2 [PR #45](https://github.com/HodeTech/Tyrne/pull/45), both merged 2026-06-01. Its recovered dated banner is in the archive.
@@ -33,8 +33,8 @@ The live pointer to selected work, task states and review triggers. Dated banner
 
 ### Next work and review triggers
 
-- **Next work:** complete T-056 parser/fixtures, then remaining checks and required CI integration; T-047's actual both-round prerequisite passes. It is fully selected here while remaining optional for the general B.2 exit.
-- **Next review trigger:** T-056 parser/fixtures receive fresh code/security R1, confirmed fixes, then different fresh R2; repeat for integration and the final plan step. Final integrated documentation/verification precedes the maintainer PR. T-051's SECURITY wording still requires maintainer review before merge.
+- **Next work:** implement T-056 task/review/ADR/planned/fence/audit/live consistency checks, isolated fixtures and existing-job required CI integration; T-047's actual both-round prerequisite passes. It is fully selected here while remaining optional for the general B.2 exit.
+- **Next review trigger:** Step12 integration receives fresh code/security R1, confirmed fixes, then different fresh R2; repeat for the final integrated plan step. Final integrated documentation/verification precedes the maintainer PR. T-051's SECURITY wording still requires maintainer review before merge.
 - **Following correctness work:** [T-038 — console_write x2 clobber](../analysis/tasks/phase-b2/T-038-console-write-x2-clobber.md) is Ready/HIGH and has not started. T-037 is Done; the documentation track does not clear this checkpoint. Eventual whole-phase closure reviews belong to [T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md); all B.2 exit gates still apply to C/D.
 
 ### Active decisions
@@ -42,6 +42,8 @@ The live pointer to selected work, task states and review triggers. Dated banner
 [ADR-0030](../decisions/0030-syscall-abi.md), [ADR-0031](../decisions/0031-initial-syscall-set.md), [ADR-0033](../decisions/0033-kernel-high-half-migration.md), [ADR-0037](../decisions/0037-el0-entry-context.md), [ADR-0038](../decisions/0038-mmu-translate-and-user-access.md), [ADR-0039](../decisions/0039-userland-build-pipeline.md), [ADR-0040](../decisions/0040-phase-b2-consolidation-bridge.md), [ADR-0042](../decisions/0042-descriptive-test-names.md), [ADR-0043](../decisions/0043-documentation-corpus-consistency.md) are Accepted. [ADR-0041](../decisions/0041-test-name-prefix-policy-recovery.md) is Superseded by ADR-0042. The [complete ADR index](../decisions/README.md) includes all filed statuses and reserved 0034. T-016 is completed history, not a draft task.
 
 ### Last reviews
+
+- **2026-10-15:** [T-056 Step11 both code rounds](../analysis/reviews/code-reviews/2026-10-13-t056-parser.md) and [separate security rounds](../analysis/reviews/security-reviews/2026-10-13-t056-parser.md), with explicitly attributed replacement R2 committed-fix verification at830de9d; all verified findings closed. Full task/remaining CI/hosted delivery is pending.
 
 - **2026-10-13:** latest completed step, [T-047 both fresh code/security rounds](../analysis/reviews/code-reviews/2026-10-13-t047-roadmap-state-reconciliation.md); zero confirmed or unresolved source findings. Earlier B.2-2 steps are linked by the [code](../analysis/reviews/code-reviews/README.md) and [security](../analysis/reviews/security-reviews/README.md) indexes.
 - **2026-10-12:** [Track B.2-1 completion retrospective](../analysis/reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md), after PR48 merge and verified merged-main gates.
