@@ -38,9 +38,9 @@ The [original opening observations](../../roadmap/phases/phase-b2.md#opening-bas
 | 24 | T-049 | [2026-10-13-t049-coverage-rerun.md](../../analysis/reports/2026-10-13-t049-coverage-rerun.md) | Fresh actual source-bound coverage/Miri records added; historical reports retained. |
 | 25 | T-049 | [README.md](../../analysis/reviews/README.md) | Retired skill navigation repaired with verified immutable historical permalinks; quoted old-path evidence preserved. |
 | 26 | T-048 | [T-029-perf-microbench.md](../../analysis/tasks/phase-b/T-029-perf-microbench.md) | B6 Milestone metadata added without reauthoring task implementation history. |
-| 27 | T-050 | [README.md](../../README.md) | Current boot excerpt matches retained real trace; removed image-loaded banner absent. |
+| 27 | T-050 | [README.md](../../../README.md) | Current boot excerpt matches retained real trace; removed image-loaded banner absent. |
 | 28 | T-047 | [current.md](../../roadmap/current.md) | Historical T-029 completion and both merged PRs recorded; task metadata handled by T-048. |
-| 29 | T-050 | [README.md](../../README.md) | Unsafe summary includes guarded copy-from/to-user operation and links the audit log without a soundness guarantee. |
+| 29 | T-050 | [README.md](../../../README.md) | Unsafe summary includes guarded copy-from/to-user operation and links the audit log without a soundness guarantee. |
 | 30 | T-047 | [current.md](../../roadmap/current.md) | PR43 recorded as merged closure; old dated snapshots moved intact to archive. |
 | 31 | T-051 | [SECURITY.md](../../../SECURITY.md) | Current five-syscall/EL0 boundary and explicit limits documented; CONTRIBUTING reflects live workflow. Maintainer SECURITY wording review remains pending before merge. |
 | 32 | T-052 | [testing.md](../../standards/testing.md) | Descriptive implemented test naming adopted under Accepted ADR-0042; ADR-0041 recovered/superseded atomically and References updated. |
