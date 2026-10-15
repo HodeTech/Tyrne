@@ -56,6 +56,14 @@ def calendar(value):
         return False
 
 
+def metadata_text(document):
+    """Original block context with actual inline HTML tags masked."""
+    output = list(document.block_text)
+    for begin, end in document.html_spans:
+        Markdown.erase(output, begin, end, document.block_text)
+    return "".join(output)
+
+
 def header(corpus, document, code):
     """First H1 and leading Markdown metadata, excluding body examples."""
     lines = physical_lines(document.text)
@@ -65,6 +73,7 @@ def header(corpus, document, code):
         return "", {}
     title = re.sub(r" {0,3}#[ \t]+", "", lines[first], count=1).strip()
     title = re.sub(r"[ \t]+#+[ \t]*$", "", title)
+    eligible = physical_lines(metadata_text(document))
     fields = {}
     for n in range(first + 1, len(lines)):
         line = lines[n]
@@ -72,6 +81,11 @@ def header(corpus, document, code):
             continue
         match = re.fullmatch(r"- \*\*([^*]+):\*\*[ \t]*(.*)", line)
         if match:
+            # Preserve the raw leading-header boundary, but never promote
+            # fields hidden in a fence, comment, raw block or HTML attribute.
+            match = re.fullmatch(r"- \*\*([^*]+):\*\*[ \t]*(.*)", eligible[n])
+            if match is None:
+                continue
             key = match[1].casefold()
             if key in fields:
                 corpus.issue(document.path, n + 1, code, "Duplicate metadata field: " + match[1])
@@ -341,7 +355,7 @@ def companion_reviews(corpus, document, top):
     """Explicit bullet pairs under Companion plans: plan, owned by canonical."""
     companions = {}
     active = False
-    for line, text in enumerate(physical_lines(document.block_text), 1):
+    for line, text in enumerate(physical_lines(metadata_text(document)), 1):
         heading = re.match(r" {0,3}(#{1,6})[ \t]+(.+)", text)
         if heading:
             active = heading[1] == "##" and heading[2].strip() == "Companion plans"
@@ -594,7 +608,7 @@ def check_live(corpus):
     # Reparsing an extracted slice would promote enclosing examples to authority.
     document = copy(source)
     document.block_text = "\n" * (start[0] + 1) + "".join(
-        physical_lines(source.block_text, keepends=True)[start[0] + 1:end[0]])
+        physical_lines(metadata_text(source), keepends=True)[start[0] + 1:end[0]])
     document.table_rows = [row for row in source.table_rows if start[0] + 1 < row.line < end[0] + 1]
     headings = []
     fields = {}

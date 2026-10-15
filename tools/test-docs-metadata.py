@@ -1146,6 +1146,99 @@ class MetadataTests(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertTrue(any(x["path"] == "Cargo.toml" and x["code"] == "unsafe-scope" for x in report["findings"]))
 
+    def test_record_header_literal_fields_do_not_supply_task_or_adr_metadata(self):
+        for family, create, code, boundary in (("tasks", self.task, "task", "\n\n---"),
+                                                ("adrs", self.adr, "adr", "\n\n## Context")):
+            path = create()
+            source = self.root / path
+            original = source.read_text()
+            begin = original.index("- **Status:")
+            end = original.index(boundary)
+            fields = original[begin:end]
+            for opening, closing in ((" ```markdown\n", "\n ```"),
+                                     ("   ~~~markdown\n", "\n   ~~~"),
+                                     (' <div title="\n', '\n">Example</div>'),
+                                     ('- **Note:** <a title="\n', '\n">Example</a>')):
+                with self.subTest(family=family, opening=opening):
+                    source.write_text(original[:begin] + opening + fields + closing + original[end:], encoding="utf-8")
+                    report = self.rejects(family, code, path)
+                    self.assertTrue(any("Missing metadata field: status" in finding.message for finding in report.findings))
+            source.write_text(original, encoding="utf-8")
+
+    def test_record_header_literal_duplicates_do_not_override_visible_fields(self):
+        for family, create, boundary in (("tasks", self.task, "\n\n---"),
+                                         ("adrs", self.adr, "\n\n## Context")):
+            path = create()
+            source = self.root / path
+            original = source.read_text()
+            for opening, closing in (("\n ```markdown\n", "\n ```"),
+                                     ('\n- **Note:** <a title="\n', '\n">Example</a>')):
+                with self.subTest(family=family, opening=opening):
+                    duplicate = opening + "- **Status:** Invalid hidden state" + closing
+                    source.write_text(original.replace(boundary, duplicate + boundary, 1), encoding="utf-8")
+                    self.clean(family)
+            source.write_text(original, encoding="utf-8")
+
+    def test_live_html_attributes_do_not_supply_heading_or_metadata(self):
+        source = self.live()
+        original = source.read_text()
+        heading = "## Live state — 2026-10-15"
+        begin = original.index("- **Active phase:")
+        end = original.index("\n\n| Task |")
+        fields = original[begin:end]
+        for tag in ("a", "span"):
+            opening, closing = '<' + tag + ' title="\n', '\n">Example</' + tag + '>'
+            variants = (original.replace(heading, opening + heading + closing),
+                        original[:begin] + opening + fields + closing + original[end:])
+            for text in variants:
+                for newline in ("\n", "\r\n", "\r"):
+                    with self.subTest(tag=tag, text=text, newline=newline):
+                        source.write_bytes(text.replace("\n", newline).encode("utf-8"))
+                        self.rejects("live", "live-state", "docs/roadmap/current.md")
+
+    def test_live_html_attribute_duplicates_do_not_conflict_with_real_fields(self):
+        source = self.live()
+        original = source.read_text()
+        for tag in ("a", "span"):
+            hidden = '<' + tag + ' title="\n- **Selected track:** X-2, hidden.\n">Example</' + tag + '>\n\n'
+            text = original.replace("## Live state", hidden + "## Live state", 1)
+            for newline in ("\n", "\r\n", "\r"):
+                with self.subTest(tag=tag, newline=newline):
+                    source.write_bytes(text.replace("\n", newline).encode("utf-8"))
+                    self.clean("live")
+
+    def test_companion_html_attributes_cannot_exempt_unindexed_reports(self):
+        path = self.review()
+        folder = Path(path).parent
+        plan = "2026-10-15-plan.md"
+        self.write((folder / plan).as_posix(), "# Plan\n")
+        index = self.root / folder / "README.md"
+        original = index.read_text()
+        heading = "## Companion plans"
+        declaration = "- [Plan](" + plan + "), owned by the [review](" + Path(path).name + ")."
+        for tag in ("a", "span"):
+            opening, closing = '<' + tag + ' title="\n', '\n">Example</' + tag + '>'
+            for text in (opening + heading + "\n\n" + declaration + closing,
+                         opening + heading + closing + "\n\n" + declaration,
+                         heading + "\n\n" + opening + declaration + closing):
+                with self.subTest(tag=tag, text=text):
+                    index.write_text(original + "\n" + text + "\n", encoding="utf-8")
+                    self.rejects("reviews", "review-index")
+
+    def test_companion_hidden_heading_does_not_disable_real_owner_declaration(self):
+        path = self.review()
+        folder = Path(path).parent
+        plan = "2026-10-15-plan.md"
+        self.write((folder / plan).as_posix(), "# Plan\n")
+        index = self.root / folder / "README.md"
+        original = index.read_text()
+        for tag in ("a", "span"):
+            text = ('\n## Companion plans\n\n<' + tag + ' title="\n## Hidden unrelated section\n">Example</' + tag + '>\n\n'
+                    '- [Plan](' + plan + '), owned by the [review](' + Path(path).name + ').\n')
+            with self.subTest(tag=tag):
+                index.write_text(original + text, encoding="utf-8")
+                self.clean("reviews")
+
     def clean(self, family):
         report = self.scan(family)
         self.assertFalse(report.findings, report.as_dict())
