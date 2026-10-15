@@ -106,3 +106,9 @@ T-049/T-056 are In Progress for approved maintenance; the task index, delimited 
 ### Durable archive and local migration — 2026-10-16
 
 The [actual migration record](2026-10-16-pr49-evidence-migration.md) binds immutable publication, both downloaded recovery checks,150 mapped-tree comparisons, exact local-only adoption and348/46 reversible citation repair. The original generator failure and complete reproducible correction are explicit. Remote development remains original97; both migration rounds, footprint implementation and final hosted publication remain pending.
+
+### Migration R1 correction — 2026-10-16
+
+Fresh CODE R1 reported Low MRC1-01: current/phase pointers still described actual completed archival/local migration as pending. Complementary integrity R1 independently approved archive/map/citation integrity. Live pointers now separate completed immutable publication/local migration from review/prevention/remote lease/hosted gates; guide status avoids a stale per-round claim. The initial byte-reversal proof remains bound to migration commit86484e6; this later status-only correction is explicit. Original reports/verdicts remain unchanged.
+
+An ordinary full Git-transport clone of86484e6 with local object-store copying disabled has no candidate paths in any fetched ref, passes full Git integrity, and uses a5.93MiB pack (original measured pack63.50MiB). Full docs output is identical on Python3.9/3.13:405 files/7285 targets/1273 fragments/zero findings. This is a local source-clone result; final ordinary remote clone and hosted source remain pending.
