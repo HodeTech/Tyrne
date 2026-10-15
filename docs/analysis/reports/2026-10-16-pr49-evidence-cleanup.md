@@ -116,3 +116,9 @@ An ordinary full Git-transport clone of86484e6 with local object-store copying d
 ### Archive/citation unit closes — 2026-10-16
 
 [All six complete reports](../reviews/code-reviews/2026-10-16-pr49-evidence-migration.md) preserve both fresh complementary rounds and Low MRC1-01 fix verification at3a17c3d. No unresolved finding. T-049 maintenance criteria are checked and it returns In Review; T-056 remains In Progress. The separate footprint guard/CI/review/final lease/hosted/remote-clone gates are next. No extra rewrite or merge is performed by this closure.
+
+### Prevention/final-validation preflight — 2026-10-16
+
+The approved limits will cover indexed blobs and every complete HEAD-history snapshot, so adding an oversized artifact and deleting it in a later commit cannot evade delivery checks. Report aggregate is512KiB per snapshot; each Markdown/JSON evidence-catalog pair totals at most128KiB; each tracked blob at most1MiB. Gitlinks store only an external commit identity and are not parent-repository blobs. The separate Git/stdlib command reads objects, ignores untracked/worktree-only content and refuses shallow/promisor inputs instead of silently reducing history or lazily fetching. The existing lint checkout gains full history; no required context/app identity, runtime dependency, admin credential or check-docs contract changes.
+
+Meaningful temporary Git fixtures will cover inclusive boundaries, aggregate/pair limits, commit-then-delete history, staging versus worktree, symlinks/Gitlinks, invalid roots/unmerged index and incomplete history, deterministic JSON/default root behavior and offline failure. No alternate project branch or committed negative probe. Documentation/standards/common review skill receive minimal Accepted ADR-0044 guidance. Both fresh prevention review rounds, final exact-lease publication, all hosted gates and ordinary remote clone remain required.
