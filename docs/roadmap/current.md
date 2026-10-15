@@ -33,7 +33,7 @@ The live pointer to selected work, task states and review triggers. Dated banner
 
 ### Next work and review triggers
 
-- **Next work:** implement T-056 task/review/ADR/planned/fence/audit/live consistency checks, isolated fixtures and existing-job required CI integration; T-047's actual both-round prerequisite passes. It is fully selected here while remaining optional for the general B.2 exit.
+- **Next work:** review the committed full T-056 integration (all eight families, isolated fixtures and existing-job required CI), fix confirmed findings, then verify exact-source hosted Linux; T-047's actual both-round prerequisite passes. It is fully selected here while remaining optional for the general B.2 exit.
 - **Next review trigger:** Step12 integration receives fresh code/security R1, confirmed fixes, then different fresh R2; repeat for the final integrated plan step. Final integrated documentation/verification precedes the maintainer PR. T-051's SECURITY wording still requires maintainer review before merge.
 - **Following correctness work:** [T-038 — console_write x2 clobber](../analysis/tasks/phase-b2/T-038-console-write-x2-clobber.md) is Ready/HIGH and has not started. T-037 is Done; the documentation track does not clear this checkpoint. Eventual whole-phase closure reviews belong to [T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md); all B.2 exit gates still apply to C/D.
 

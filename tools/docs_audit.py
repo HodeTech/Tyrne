@@ -70,9 +70,14 @@ class Manifest:
                 if quote == "'":
                     return raw[1:-1]
                 try:
-                    return json.loads(raw)
+                    value = json.loads(raw)
                 except ValueError:
                     self.fail("Unsupported manifest string escape/control")
+                try:
+                    value.encode("utf-8", errors="strict")
+                except UnicodeError:
+                    self.fail("Manifest string requires valid Unicode scalar values")
+                return value
             if char == "\\" and quote == '"':
                 self.cursor += 1
         self.fail("Unterminated manifest string")

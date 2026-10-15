@@ -1,7 +1,7 @@
 """Bounded offline inventory joins under Accepted ADR-0043 (Python 3.9+).
 
 This implements mechanical metadata agreement, not architecture/governance or
-unsafe soundness. The CLI remains links-only until Step12 integration completes.
+unsafe soundness. All families share guarded input discovery and reads.
 """
 
 from collections import Counter, defaultdict
@@ -707,9 +707,9 @@ CHECKS = {"links": check_links, "tasks": check_tasks, "adrs": check_adrs,
           "unsafe": check_unsafe, "live": check_live}
 
 
-def scan_docs(root, *, checks):
-    """Run explicitly selected implemented families during Step12 development."""
-    selected = list(checks)
+def scan_docs(root, *, checks=None):
+    """Run all families by default, or one explicit distinct family sequence."""
+    selected = list(CHECKS if checks is None else checks)
     if not selected or len(set(selected)) != len(selected) or any(name not in CHECKS for name in selected):
         raise ValueError("Select distinct implemented check families: " + ", ".join(CHECKS))
     corpus = Corpus(root, checks=selected)

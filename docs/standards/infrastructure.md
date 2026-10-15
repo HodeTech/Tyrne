@@ -69,6 +69,7 @@ CI was set up in Phase 4 (completed 2026-04-23); the gates below define the bar.
 These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml):
 
 - `cargo fmt --all -- --check` (`lint-and-host-test`).
+- Offline documentation consistency and both isolated Python3.9+ stdlib fixture suites (`python3 tools/check-docs.py`, `python3 tools/test-check-docs.py`, `python3 tools/test-docs-metadata.py`) are failing steps in the same `lint-and-host-test` job under Accepted ADR-0043. This adds no required status context or app-binding change; see [supported checks and limits](../guides/ci.md#documentation-consistency).
 - Clippy with `-D warnings`: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates; `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP; and `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` for the bare-metal userland, after its image build in `kernel-build`. These are distinct target-aware commands; the BSP has no host test target.
 - `shellcheck tools/*.sh` at default severity (`lint-and-host-test`), with `shellcheck --version` printed in the log. Suppress only demonstrated false positives with a scoped directive and a reason.
 - Isolated expected-failure lint probes (`tools/test-ci-gates.sh --shell` / `--userland`) assert that the corresponding real commands reject a deliberate regression with the expected diagnostic. Their success confirms rejection, not a failure of the production gate.
@@ -98,7 +99,7 @@ These appear in the release/standards prose but have **no CI job yet**; do not a
 
 ### Miri as a blocking gate
 
-The `miri` job runs the host-test suite under Stacked Borrows on the pinned nightly and does **not** set `continue-on-error` — a Miri regression is a hard stop. It is intended as a blocking gate, with particular weight on changes under `kernel/src/sched/**` and `kernel/src/ipc/**`, where aliasing and `unsafe` invariants are densest (see ADR-0021 / UNSAFE-2026-0014). Ideally a lightweight `unsafe`-audit-log reconciliation (every `unsafe` block has a current `SAFETY:` comment, no undocumented `unsafe`) runs alongside it; that reconciliation is not yet a CI job and is performed at review time per [unsafe-policy.md](unsafe-policy.md).
+The `miri` job runs the host-test suite under Stacked Borrows on the pinned nightly and does **not** set `continue-on-error` — a Miri regression is a hard stop. It is intended as a blocking gate, with particular weight on changes under `kernel/src/sched/**` and `kernel/src/ipc/**`, where aliasing and `unsafe` invariants are densest (see ADR-0021 / UNSAFE-2026-0014). The documentation checker in `lint-and-host-test` reconciles source audit-tag references with Active/Removed log metadata under ADR-0043. It does not prove every unsafe block has a current `SAFETY:` comment or is sound; complete coverage and invariant review still follow [unsafe-policy.md](unsafe-policy.md).
 
 **Required-status enforcement lives in GitHub classic branch protection.** Its complete supported definition is versioned in [main.json](../../.github/branch-protection/main.json); read-only export/check and explicit local additive-check apply use [branch-protection.py](../../tools/branch-protection.py). REST policy plus GraphQL-only deployment/review/actor flags and the no-rulesets baseline are captured. Unknown/unrepresentable policy or unexpected drift stops apply, and all app bindings/settings are preserved. CI receives no administrative credentials; offline fixtures validate safety boundaries. The [guide](../guides/ci.md#versioned-classic-branch-protection) documents commands, representability limits and the non-atomic external-administrator race.
 
@@ -241,6 +242,7 @@ The `supply-chain/` directory does not exist at HEAD — see [add-dependency](..
 ## References
 
 - [ADR-0040: Phase B.2 consolidation and Track B.2-1 execution policy](../decisions/0040-phase-b2-consolidation-bridge.md).
+- [ADR-0043: Documentation corpus consistency and planned ADR identities](../decisions/0043-documentation-corpus-consistency.md).
 - `cargo-vet`: https://mozilla.github.io/cargo-vet/
 - RustSec Advisory Database: https://rustsec.org/
 - Reproducible Builds project: https://reproducible-builds.org/

@@ -453,7 +453,7 @@ class LinkTests(unittest.TestCase):
     def test_many_consecutive_setext_headings_keep_bounded_scan(self):
         text = ''.join('Heading ' + str(index) + '\n---\n' for index in range(5000))
         self.write('README.md', text + '\n[last](#heading-4999)\n')
-        result = subprocess.run([sys.executable, '-B', str(SCRIPT), '--root', str(self.root), '--json'],
+        result = subprocess.run([sys.executable, '-B', str(SCRIPT), '--checks', 'links', '--root', str(self.root), '--json'],
                                 capture_output=True, text=True, timeout=5)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual([], json.loads(result.stdout)['findings'])
@@ -1363,7 +1363,7 @@ class LinkTests(unittest.TestCase):
         self.assertEqual(before, after)
 
     def cli(self, *args, cwd=None, timeout=20):
-        return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd,
+        return subprocess.run([sys.executable, str(SCRIPT), "--checks", "links", *args], cwd=cwd,
                               capture_output=True, text=True, timeout=timeout,
                               env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PATH=""))
 

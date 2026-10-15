@@ -706,7 +706,7 @@ class MetadataTests(unittest.TestCase):
                    'text = \'let value = r#"// Audit: UNSAFE-2026-0099"#; // ordinary comment\\n\' * 30000; '
                    'regions, strings = comments_in_source(text); '
                    'assert len(regions) == 30000 and len(strings) == 30000')
-        result = subprocess.run([sys.executable, "-c", command], cwd=Path(__file__).resolve().parents[1],
+        result = subprocess.run([sys.executable, "-B", "-c", command], cwd=Path(__file__).resolve().parents[1],
                                 capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode())
 
@@ -729,7 +729,7 @@ class MetadataTests(unittest.TestCase):
                    'text = "Audit: UNSAFE-2026-0001 (" * 15000 + ")" * 15000; '
                    'references, active = comment_tags(text); '
                    'assert len(references) == 15000 and active == {"UNSAFE-2026-0001"}')
-        result = subprocess.run([sys.executable, "-c", command], cwd=Path(__file__).resolve().parents[1],
+        result = subprocess.run([sys.executable, "-B", "-c", command], cwd=Path(__file__).resolve().parents[1],
                                 capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode())
 
@@ -832,6 +832,85 @@ class MetadataTests(unittest.TestCase):
         source = self.live()
         source.write_text(source.read_text().replace("2 tasks", "9" * 5000 + " tasks"), encoding="utf-8")
         self.rejects("live", "live-state")
+
+    def cli(self, *args):
+        import os
+        import subprocess
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name("check-docs.py")),
+                                 "--root", str(self.root), *args], cwd=self.root.parent,
+                                env={**os.environ, "PATH": "", "PYTHONDONTWRITEBYTECODE": "1"},
+                                capture_output=True, text=True, timeout=20)
+        return result
+
+    def test_cli_default_all_and_explicit_all_share_the_complete_contract(self):
+        import json
+        self.live()
+        self.audit_fixture()
+        expected = ["links", "tasks", "adrs", "reviews", "planned", "fences", "unsafe", "live"]
+        first = self.cli("--json")
+        second = self.cli("--checks", "all", "--json")
+        self.assertEqual(0, first.returncode, first.stderr + first.stdout)
+        self.assertEqual(0, second.returncode, second.stderr + second.stdout)
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertEqual(expected, json.loads(first.stdout)["checks"])
+        self.assertEqual(expected, metadata.scan_docs(self.root).as_dict()["checks"])
+
+    def test_cli_default_cannot_succeed_by_silently_deselecting_metadata(self):
+        import json
+        self.live()
+        self.audit_fixture()
+        source = self.root / "docs/analysis/tasks/phase-x/T-081-work.md"
+        source.write_text(source.read_text().replace("- **Status:** Ready", "- **Status:** In Review"), encoding="utf-8")
+        self.assertEqual(0, self.cli("--checks", "links").returncode)
+        result = self.cli("--json")
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertTrue(any(x["code"] == "task-index" for x in json.loads(result.stdout)["findings"]))
+
+    def test_cli_comma_subsets_enforce_only_selected_families(self):
+        import json
+        self.task()
+        for selection, expected in (("tasks,links", ["tasks", "links"]), ("links, tasks", ["links", "tasks"])):
+            with self.subTest(selection=selection):
+                result = self.cli("--checks", selection, "--json")
+                self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+                self.assertEqual(expected, json.loads(result.stdout)["checks"])
+
+    def test_cli_empty_duplicate_unknown_and_mixed_all_are_argument_errors(self):
+        for selection in ("", ",", "links,,tasks", "links,links", "all,links", "ALL", "unknown", "links,"):
+            with self.subTest(selection=selection):
+                result = self.cli("--checks", selection, "--json")
+                self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+                self.assertFalse(result.stdout)
+
+    def test_cli_all_is_deterministic_and_does_not_write_fixture_files(self):
+        import hashlib
+        self.live()
+        self.audit_fixture()
+        before = {str(path.relative_to(self.root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in self.root.rglob("*") if path.is_file()}
+        first = self.cli("--json")
+        second = self.cli("--json")
+        self.assertEqual(0, first.returncode, first.stderr + first.stdout)
+        self.assertEqual(first.stdout, second.stdout)
+        after = {str(path.relative_to(self.root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                 for path in self.root.rglob("*") if path.is_file()}
+        self.assertEqual(before, after)
+        self.assertFalse(list(self.root.rglob("__pycache__")))
+
+    def test_api_rejects_empty_duplicate_unknown_explicit_selections(self):
+        for selection in ((), ("links", "links"), ("unknown",)):
+            with self.subTest(selection=selection), self.assertRaises(ValueError):
+                metadata.scan_docs(self.root, checks=selection)
+
+    def test_cli_invalid_manifest_unicode_scalar_retains_structured_diagnostics(self):
+        import json
+        self.audit_fixture()
+        self.write("Cargo.toml", '[workspace]\nmembers = ["\\ud800"]\n')
+        result = self.cli("--checks", "unsafe", "--json")
+        self.assertEqual(1, result.returncode)
+        self.assertFalse(result.stderr)
+        report = json.loads(result.stdout)
+        self.assertTrue(any(x["path"] == "Cargo.toml" and x["code"] == "unsafe-scope" for x in report["findings"]))
 
     def clean(self, family):
         report = self.scan(family)
