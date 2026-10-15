@@ -260,6 +260,17 @@ class FootprintTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2, result.stdout)
                 self.assertEqual(codes(report), {"input"})
 
+    def test_symlink_loop_root_returns_structured_input_error(self):
+        with tempfile.TemporaryDirectory(prefix="tyrne-footprint-loop-") as directory:
+            root = Path(directory) / "loop"
+            root.symlink_to("loop")
+            result = subprocess.run(
+                [sys.executable, str(TOOL), "--root", str(root), "--json"], capture_output=True,
+            )
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(codes(json.loads(result.stdout)), {"input"})
+            self.assertNotIn(b"Traceback", result.stderr)
+
     def test_script_relative_default_is_independent_of_cwd(self):
         with repository() as root, tempfile.TemporaryDirectory() as elsewhere:
             tools = root / "tools"

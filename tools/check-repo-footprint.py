@@ -70,7 +70,11 @@ def catalog_stem(path):
 
 
 def scan(root):
-    root = root.resolve()
+    try:
+        root = root.resolve()
+    except RuntimeError as error:
+        # Python 3.9 reports symlink loops as RuntimeError, not OSError.
+        raise InputError("Root cannot be resolved") from error
     if not root.is_dir():
         raise InputError("Root is not an existing directory")
     top = git(root, "rev-parse", "--show-toplevel").decode("utf-8").strip()
