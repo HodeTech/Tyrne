@@ -101,6 +101,71 @@ class LinkTests(unittest.TestCase):
     def test_heading_markup_and_inline_code_keep_underscores(self):
         self.check("## A `write_bytes` and **bold** [label](target.md)\n[x](#a-write_bytes-and-bold-label)\n")
 
+    def test_heading_emphasis_keeps_original_markup_neighbors(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for markup in ('<span></span>', '<!--x-->'):
+                for marker in ('_', '__'):
+                    for atx in (True, False):
+                        with self.subTest(ending=repr(ending), markup=markup, marker=marker, atx=atx):
+                            title = marker + 'a' + marker + markup + marker + 'b' + marker
+                            body = '# ' + title + '\n' if atx else title + '\n---\n'
+                            phantom = 'a' + marker * 2 + 'b'
+                            line = len(docs.physical_lines(body * 2)) + 2
+                            result = self.check((body * 2 + '\n[real](#ab) [duplicate](#ab-1) [phantom](#' + phantom + ')\n').replace('\n', ending), ['fragment'])
+                            self.assertEqual([(line, 'Missing Markdown/HTML anchor: ' + phantom)],
+                                             [(item.line, item.message) for item in result.findings])
+
+    def test_heading_emphasis_after_markup_keeps_source_punctuation(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for markup in ('<!--x-->', '<span></span>', '<!--\nx\n-->'):
+                for atx in (True, False):
+                    if atx and '\n' in markup:
+                        continue
+                    with self.subTest(ending=repr(ending), markup=markup, atx=atx):
+                        title = 'Alpha' + markup + '_Beta_'
+                        body = '# ' + title + '\n' if atx else title + '\n---\n'
+                        line = len(docs.physical_lines(body)) + 2
+                        result = self.check((body + '\n[real](#alphabeta) [phantom](#alpha_beta_)\n').replace('\n', ending), ['fragment'])
+                        self.assertEqual([(line, 'Missing Markdown/HTML anchor: alpha_beta_')],
+                                         [(item.line, item.message) for item in result.findings])
+
+    def test_heading_multiline_code_keeps_literal_edge_spaces(self):
+        cases = (('Alpha `a  \nb`\n---\n', 'alpha-a---b'),
+                 ('Alpha `a\n  b`\n---\n', 'alpha-a-b'),
+                 ('Alpha `a  \n  b`\n---\n', 'alpha-a---b'),
+                 ('Alpha `` a  \nb ``\n---\n', 'alpha-a---b'),
+                 ('> Alpha `a  \n> b`\n> ---\n', 'alpha-a---b'),
+                 ('- Alpha `a  \n  b`\n  ---\n', 'alpha-a---b'),
+                 ('-\tAlpha `a  \n\tb`\n\t---\n', 'alpha-a---b'))
+        for ending in ('\n', '\r', '\r\n'):
+            for body, real in cases:
+                with self.subTest(ending=repr(ending), body=body):
+                    line = len(docs.physical_lines(body)) + 2
+                    phantom = 'alpha-a-b' if real != 'alpha-a-b' else 'alpha-a---b'
+                    result = self.check((body + '\n[real](#' + real + ') [phantom](#' + phantom + ')\n').replace('\n', ending), ['fragment'])
+                    self.assertEqual([(line, 'Missing Markdown/HTML anchor: ' + phantom)],
+                                     [(item.line, item.message) for item in result.findings])
+
+    def test_heading_source_context_preserves_literal_tokens(self):
+        for ending in ('\n', '\r', '\r\n'):
+            for body, anchor in (('# Alpha_Beta_\n', 'alpha_beta_'),
+                                  ('# Alpha\\_Beta\\_\n', 'alpha_beta_'),
+                                  ('# `_a_`<span></span>`_b_`\n', '_a__b_'),
+                                  ('# _a_ _b_\n', 'a-b'),
+                                  ('# _&#65;_\n', 'a'),
+                                  ('# _a_\\<span>_b_\n', 'aspanb'),
+                                  ('Alpha `a\nb`\n---\n', 'alpha-a-b'),
+                                  ('# Alpha `a   b`\n', 'alpha-a---b')):
+                with self.subTest(ending=repr(ending), body=body):
+                    self.check((body + '\n[real](#' + anchor + ')\n').replace('\n', ending))
+
+    def test_heading_emphasis_uses_markdown_whitespace_classes(self):
+        for char in ('\v', '\x1c', '\x1d', '\x1e', '\x1f', '\x85', '\u2028', '\u2029'):
+            with self.subTest(char=repr(char)):
+                result = self.check('# _a_' + char + '_b_\n\n[real](#a__b) [phantom](#ab)\n', ['fragment'])
+                self.assertEqual([(3, 'Missing Markdown/HTML anchor: ab')],
+                                 [(item.line, item.message) for item in result.findings])
+
     def test_tabbed_list_setext_uses_visual_container_columns(self):
         for ending in ('\n', '\r', '\r\n'):
             for body in ('-\tAlpha\n\t---\n', '-\tAlpha\n    ---\n',

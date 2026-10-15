@@ -894,31 +894,38 @@ class HTMLContexts:
         self.cursor = cursor
 
 
-def plain_emphasis(characters, literal):
-    """Remove matched underscore emphasis without altering literal tokens."""
+def plain_emphasis(characters, literal, source, locations):
+    """Resolve underscore runs against source neighbors, then emit their text."""
     removed = set()
     stack = []
     cursor = 0
 
     def punctuation(position):
-        return (0 <= position < len(characters) and
-                (literal[position] or characters[position] in string.punctuation or
-                 unicodedata.category(characters[position])[0] in "PS"))
+        return (0 <= position < len(source) and
+                (source[position] in string.punctuation or
+                 unicodedata.category(source[position])[0] in "PS"))
+
+    def whitespace(position):
+        return (position < 0 or position == len(source) or
+                source[position] in "\t\n\f\r" or unicodedata.category(source[position]) == "Zs")
 
     while cursor < len(characters):
         if characters[cursor] != "_" or literal[cursor]:
             cursor += 1
             continue
         begin = cursor
-        while cursor < len(characters) and characters[cursor] == "_" and not literal[cursor]:
+        while (cursor < len(characters) and characters[cursor] == "_" and not literal[cursor] and
+               (cursor == begin or locations[cursor] == locations[cursor - 1] + 1)):
             cursor += 1
         end = cursor
-        previous_space = begin == 0 or characters[begin - 1].isspace()
-        following_space = end == len(characters) or characters[end].isspace()
-        left = not following_space and (not punctuation(end) or previous_space or punctuation(begin - 1))
-        right = not previous_space and (not punctuation(begin - 1) or following_space or punctuation(end))
-        can_open = left and (not right or punctuation(begin - 1))
-        can_close = right and (not left or punctuation(end))
+        before = locations[begin] - 1
+        after = locations[end - 1] + 1
+        previous_space = whitespace(before)
+        following_space = whitespace(after)
+        left = not following_space and (not punctuation(after) or previous_space or punctuation(before))
+        right = not previous_space and (not punctuation(before) or following_space or punctuation(after))
+        can_open = left and (not right or punctuation(before))
+        can_close = right and (not left or punctuation(after))
         remaining = end - begin
         if can_close:
             while remaining:
@@ -946,16 +953,24 @@ def plain_emphasis(characters, literal):
     return "".join(char for position, char in enumerate(characters) if position not in removed)
 
 
-def inline_text(text):
-    """Extract heading text while preserving code, escapes and entity literals."""
+def inline_text(text, *, source=None, offsets=None):
+    """Extract inline text without losing original emphasis-token context.
+
+    Heading projection supplies offsets into its original document. Other
+    callers use the input itself; code, escapes and entities stay literal.
+    """
+    source = text if source is None else source
+    offsets = range(len(text)) if offsets is None else offsets
     index = CodeSpans(text)
     result = []
     literal = []
+    locations = []
     cursor = 0
 
     def emit(value, protected=False):
         result.extend(value)
         literal.extend([protected] * len(value))
+        locations.extend([offsets[cursor]] * len(value))
 
     while cursor < len(text):
         char = text[cursor]
@@ -1006,16 +1021,17 @@ def inline_text(text):
                     except ValueError:
                         pass
                 if following is not None:
-                    emit(inline_text(text[cursor + 1:end]), True)
+                    emit(inline_text(text[cursor + 1:end], source=source,
+                                     offsets=offsets[cursor + 1:end]), True)
                     cursor = following
                     continue
         emit(char)
         cursor += 1
-    return plain_emphasis(result, literal)
+    return plain_emphasis(result, literal, source, locations)
 
 
-def slug(text):
-    text = inline_text(text).lower()
+def slug(text, *, source=None, offsets=None):
+    text = inline_text(text, source=source, offsets=offsets).lower()
     text = "".join(c for c in text if c in "_- " or unicodedata.category(c)[0] in "LNM")
     return text.replace(" ", "-")
 
@@ -1129,6 +1145,7 @@ class Markdown:
         self.links = []
         self.anchors = set()
         self.findings = []
+        self.heading_code = []
         if inline_only:
             self.block_text, self.fences, self.html_spans, self.table_rows, raw_spans = text, [], [], [], []
             self.layout = BlockLayout(text)
@@ -1289,6 +1306,7 @@ class Markdown:
             if char == "`":
                 end = code_end(text, cursor, index)
                 if end:
+                    self.heading_code.append((cursor, end))
                     self.erase(visible, cursor, end, text)
                     cursor = end
                     continue
@@ -1362,24 +1380,40 @@ class Markdown:
         used = set()
         paragraph = None
         pieces = []
+        positions = []
+        code_starts = [begin for begin, _ in self.heading_code]
+
+        def in_code(position):
+            span = bisect_right(code_starts, position) - 1
+            return span >= 0 and position < self.heading_code[span][1]
+
+        def project(begin, end):
+            offsets = [position for position in range(begin, end) if text[position] is not None]
+            return "".join(text[position] for position in offsets), offsets
+
         for line in self.layout.lines:
             start = line.body_start
             end = line.end
             while end > start and self.text[end - 1] in "\r\n":
                 end -= 1
             content_end = end
-            while end > start and self.text[end - 1] in " \t":
+            while end > start and self.text[end - 1] in " \t" and not in_code(end - 1):
                 end -= 1
+            # Paragraph indentation is removed before inline parsing; only
+            # trailing spaces inside actual code retain their literal width.
             while start < end and self.text[start] in " \t":
                 start += 1
-            body = "".join(char for char in text[start:end] if char is not None)
+            body, body_positions = project(start, end)
             if line.kind == "paragraph":
                 if line.paragraph != paragraph:
                     pieces = []
+                    positions = []
                 paragraph = line.paragraph
                 pieces.append(body)
+                positions.extend(body_positions)
                 if any(char in ("\r", "\n") for char in text[content_end:line.end]):
                     pieces.append(" ")  # Only a visible soft break separates text.
+                    positions.append(content_end)
                 continue
             raw = self.text[start:end]
             match = re.match(r"#{1,6}(?:[ \t]+|$)(.*)$", raw) if line.kind == "atx" else None
@@ -1388,16 +1422,21 @@ class Markdown:
                 # removing an inline tag/comment around literal heading text.
                 closing = re.search(r"[ \t]+#+[ \t]*$", match[1])
                 title_end = start + match.start(1) + (closing.start() if closing else len(match[1]))
-                title = "".join(char for char in text[start + match.start(1):title_end] if char is not None)
+                title, title_positions = project(start + match.start(1), title_end)
             elif line.kind == "setext" and line.paragraph == paragraph and pieces:
                 title = "".join(pieces)
+                title_positions = positions
             else:
                 paragraph = None
                 pieces = []
+                positions = []
                 continue
             paragraph = None
             pieces = []
-            base = slug(title.strip(" \t\r\n"))
+            positions = []
+            begin = len(title) - len(title.lstrip(" \t\r\n"))
+            end = len(title.rstrip(" \t\r\n"))
+            base = slug(title[begin:end], source=self.text, offsets=title_positions[begin:end])
             anchor = base
             number = 0
             while anchor in used:
