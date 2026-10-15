@@ -31,6 +31,7 @@ A security review is a **separate pass** from the code review — it is performe
 
 | Date | Scope | Verdict | File |
 |------|-------|---------|------|
+| 2026-10-15 | T056 integration91a64b5..4044b79, both fresh rounds and committed-fix reconciliations; nine groups closed, Step13/final-tip/maintainer gates pending | Approve | [2026-10-15-t056-integration.md](2026-10-15-t056-integration.md) |
 | 2026-04-21 | Tyrne project → Phase A exit (Phase 1–4c bootstrap + A1–A6 kernel core) | Changes requested (3 Phase-B blockers; no Phase-A exit blocker) | [2026-04-21-tyrne-to-phase-a.md](2026-04-21-tyrne-to-phase-a.md) |
 | 2026-04-27 | B0 closure consolidated pass (T-006/T-007/T-008/T-009/T-011/T-013 + ADR-0021/0022/0024/0025 + UNSAFE-2026-0013..0018) | Clean — no High findings; pre-existing items (cross-table revocation, generation overflow) tracked at original severity | [2026-04-27-B0-closure.md](2026-04-27-B0-closure.md) |
 | 2026-04-28 | B1 closure consolidated pass (T-012 — GIC v2 + EL1 vector table + IRQ-handler dispatch + idle WFI; ADR-0021 2026-04-28 Amendment; UNSAFE-2026-0019/0020/0021 + UNSAFE-2026-0014 commit-`28c5ce9` Amendment) | Approve — no high-severity findings; two forward-flagged non-blocking items (`arm_deadline` CVAL+CTL race + `cancel_deadline` CTL+GIC race), both only relevant when a future caller exists; pre-closure work-items (QEMU smoke + Miri) maintainer-side | [2026-04-28-B1-closure.md](2026-04-28-B1-closure.md) |

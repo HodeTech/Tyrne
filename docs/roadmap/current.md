@@ -6,13 +6,13 @@ The live pointer to selected work, task states and review triggers. Dated banner
 ## Live state — 2026-10-15
 
 - **Active phase:** [B.2 — Consolidation & Hardening](phases/phase-b2.md), mandatory whole-phase gate before C/D under [ADR-0040](../decisions/0040-phase-b2-consolidation-bridge.md). Phase C and D remain gated.
-- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps0–11 completed their required review boundaries; Step12/T-056 metadata and required-CI integration is active.
-- **Active task:** [T-056 — docs consistency automation](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md), In Progress. Step11 parser review is complete at830de9d. [Step12 R1](../analysis/reports/2026-10-15-t056-integration-evidence/README.md#completed-r1-boundary-and-current-hosted-checkpoint) is complete at770d86b with all six reported groups scoped closed; different fresh paired R2 is active. Exact-source local/Linux checks pass; canonical both-round filing, Step13 and final PR-tip verification remain.
+- **Selected track:** B.2-2, under the maintainer-approved [13-step plan](../analysis/reports/2026-10-12-phase-b2-track2-preflight-and-plan.md). Steps0–12 completed their required review boundaries; Step13 integrated verification and documentation is active.
+- **Active task:** None. All twelve selected tasks are In Review; Step13 is an integrated plan step, not a new task. [Step12 code](../analysis/reviews/code-reviews/2026-10-15-t056-integration.md) and [separate security](../analysis/reviews/security-reviews/2026-10-15-t056-integration.md) close all nine reported groups at4044b79. Final integrated reviews and PR-tip verification remain.
 - **Working branch:** development, as requested by the maintainer.
 - **Last completed work:** Track B.2-1 plus prerequisite T-037 (T-030–T-037 overall), Done after [PR #48](https://github.com/HodeTech/Tyrne/pull/48) merged 2026-10-12 at `c16997e`; the [completion retrospective](../analysis/reviews/business-reviews/2026-10-12-phase-b2-track1-completion.md) retains merged-main evidence.
 - **Historical completion:** [T-029](../analysis/tasks/phase-b/T-029-perf-microbench.md), Phase 1 [PR #44](https://github.com/HodeTech/Tyrne/pull/44) and Phase 2 [PR #45](https://github.com/HodeTech/Tyrne/pull/45), both merged 2026-06-01. Its recovered dated banner is in the archive.
 - **Last completed milestone:** B6 / Phase B, closed by [PR #43](https://github.com/HodeTech/Tyrne/pull/43) on 2026-06-01 at `ca932ac`; b6-closure is merged and retired. No Phase B closure review remains pending.
-- **In review:** 11 selected B.2-2 tasks below, pending maintainer PR approval/merge. **In progress:** T-056. **Phase inventory:** 46 tasks — 8 Done, 19 Ready, 11 In Review, 1 In Progress, 7 Draft; see the [task index](../analysis/tasks/phase-b2/README.md).
+- **In review:** 12 selected B.2-2 tasks below, pending maintainer PR approval/merge. **In progress:** none. **Phase inventory:** 46 tasks — 8 Done, 19 Ready, 12 In Review, 0 In Progress, 7 Draft; see the [task index](../analysis/tasks/phase-b2/README.md).
 
 ### Selected task states
 
@@ -29,12 +29,12 @@ The live pointer to selected work, task states and review triggers. Dated banner
 | [T-053](../analysis/tasks/phase-b2/T-053-standards-docs-mechanical-fixes.md) | In Review |
 | [T-054](../analysis/tasks/phase-b2/T-054-adr-ledger-renumbering-cascade.md) | In Review |
 | [T-055](../analysis/tasks/phase-b2/T-055-adr-append-only-corrections.md) | In Review |
-| [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) | In Progress |
+| [T-056](../analysis/tasks/phase-b2/T-056-docs-consistency-automation.md) | In Review |
 
 ### Next work and review triggers
 
-- **Next work:** complete the active different fresh R2 over full T-056 integration, fix any confirmed findings, then finish canonical review filing and Step13. T-056 is fully selected here while remaining optional for the general B.2 exit. The maintainer authorized combining this work into existing [PR #49](https://github.com/HodeTech/Tyrne/pull/49); publication is in progress from development.
-- **Next review trigger:** complete Step12 fresh code/security R2, then both fresh paired rounds for the final integrated plan step. Final PR-tip hosted verification precedes maintainer review. T-051's SECURITY wording still requires maintainer review before merge.
+- **Next work:** Step13 integrated verification: all58 opening dispositions, twelve task criteria, architecture freshness and six entry documents. T-056 is fully implemented here while remaining optional for general B.2 exit. The maintainer authorized combined publication in existing [PR49](https://github.com/HodeTech/Tyrne/pull/49) from development.
+- **Next review trigger:** both fresh complementary rounds for Step13, then final PR-tip hosted verification and maintainer review. T-051's SECURITY wording remains for maintainer review before merge.
 - **Following correctness work:** [T-038 — console_write x2 clobber](../analysis/tasks/phase-b2/T-038-console-write-x2-clobber.md) is Ready/HIGH and has not started. T-037 is Done; the documentation track does not clear this checkpoint. Eventual whole-phase closure reviews belong to [T-075](../analysis/tasks/phase-b2/T-075-phase-b2-closure.md); all B.2 exit gates still apply to C/D.
 
 ### Active decisions
@@ -42,6 +42,8 @@ The live pointer to selected work, task states and review triggers. Dated banner
 [ADR-0030](../decisions/0030-syscall-abi.md), [ADR-0031](../decisions/0031-initial-syscall-set.md), [ADR-0033](../decisions/0033-kernel-high-half-migration.md), [ADR-0037](../decisions/0037-el0-entry-context.md), [ADR-0038](../decisions/0038-mmu-translate-and-user-access.md), [ADR-0039](../decisions/0039-userland-build-pipeline.md), [ADR-0040](../decisions/0040-phase-b2-consolidation-bridge.md), [ADR-0042](../decisions/0042-descriptive-test-names.md), [ADR-0043](../decisions/0043-documentation-corpus-consistency.md) are Accepted. [ADR-0041](../decisions/0041-test-name-prefix-policy-recovery.md) is Superseded by ADR-0042. The [complete ADR index](../decisions/README.md) includes all filed statuses and reserved 0034. T-016 is completed history, not a draft task.
 
 ### Last reviews
+
+- **2026-10-15:** [T-056 Step12 code](../analysis/reviews/code-reviews/2026-10-15-t056-integration.md) and [separate security](../analysis/reviews/security-reviews/2026-10-15-t056-integration.md), both rounds complete at4044b79; all nine groups closed. Exact-source hosted evidence passes; later final-tip/Step13 gates remain.
 
 - **2026-10-15:** [T-056 Step11 both code rounds](../analysis/reviews/code-reviews/2026-10-13-t056-parser.md) and [separate security rounds](../analysis/reviews/security-reviews/2026-10-13-t056-parser.md), with explicitly attributed replacement R2 committed-fix verification at830de9d; all verified findings closed. Full task/remaining CI/hosted delivery is pending.
 
