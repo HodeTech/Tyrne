@@ -1,6 +1,6 @@
 # 0044 — Review evidence retention and delivery
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-16
 - **Deciders:** @cemililik
 

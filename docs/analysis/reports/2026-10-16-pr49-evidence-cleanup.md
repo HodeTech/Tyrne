@@ -94,3 +94,7 @@ Both independent first-round reviewers requested one Medium clarification (GR1-C
 ### Governance/recovery review boundary — 2026-10-16
 
 [Both fresh complementary rounds](../reviews/code-reviews/2026-10-16-pr49-evidence-governance.md) close the single Medium release-scope group at94fd86c; all six complete initial/fix reports and digests are preserved. Deliberate end-to-end reread confirms actual task dependencies, costs and ADR-0043 compatibility. Separate Acceptance and dependent implementation follow; no public archive, migration or new hosted result is yet claimed.
+
+### Decision Acceptance — 2026-10-16
+
+ADR-0044 is Accepted in a separate commit after the actual reread and both fresh complementary review rounds. The maintainer approved this policy and bounded execution in chat. This records decision authority only; the archive/migration/prevention delivery gates remain pending.
