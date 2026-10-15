@@ -284,7 +284,182 @@ def check_adrs(corpus):
         corpus.issue(index, 1, "adr-index", "Missing ADR index record: " + path)
 
 
-CHECKS = {"links": check_links, "tasks": check_tasks, "adrs": check_adrs}
+EVENT_REVIEW_FAMILIES = ("business-reviews", "code-reviews", "security-reviews",
+                         "performance-optimization-reviews")
+REVIEW_ROOT = "docs/analysis/reviews/"
+
+
+def review_target(corpus, document, link, line):
+    try:
+        return local_record_target(corpus, document, link)
+    except (OSError, ValueError, RuntimeError) as error:
+        corpus.issue(document.path, line, "review-index", str(error))
+        return None
+
+
+def reachable_reviews(corpus, prefix, seeds, paths):
+    """Actual local navigation; only strict descendant directories grant scope.
+
+    A family-root/backlink is not blanket ownership of its entire archive.
+    This proves discoverability, not the truth or independence of a review.
+    """
+    available = set(paths)
+    reached = set(seeds) & available
+    pending = sorted(reached, reverse=True)
+    while pending:
+        document = corpus.load(pending.pop())
+        if document is None:
+            continue
+        for link in document.links:
+            if link.image:
+                continue
+            value = navigation_value(link)
+            if not value.partition("#")[0].partition("?")[0]:
+                continue
+            try:
+                target = local_record_target(corpus, document, link)
+            except (OSError, ValueError, RuntimeError):
+                # Navigation diagnostics belong to links; this edge grants no scope.
+                continue
+            additions = set()
+            if target in available:
+                additions.add(target)
+            elif target.startswith(prefix + "/") and (corpus.root / target).is_dir():
+                additions.update(path for path in available if path.startswith(target.rstrip("/") + "/"))
+            for path in sorted(additions - reached, reverse=True):
+                reached.add(path)
+                pending.append(path)
+    return reached
+
+
+def companion_reviews(corpus, document, top):
+    """Explicit bullet pairs under Companion plans: plan, owned by canonical."""
+    companions = {}
+    active = False
+    for line, text in enumerate(physical_lines(document.block_text), 1):
+        heading = re.match(r" {0,3}(#{1,6})[ \t]+(.+)", text)
+        if heading:
+            active = heading[1] == "##" and heading[2].strip() == "Companion plans"
+            continue
+        if not active or not re.match(r" {0,3}[-+*][ \t]+", text):
+            continue
+        child = Markdown(document.path, text, inline_only=True, references=document.references)
+        links = [link for link in child.links if not link.image and link.label is not None]
+        if len(links) != 2 or not re.search(r"\bowned by\b", inline_text(text)):
+            corpus.issue(document.path, line, "review-index", "Companion plan requires one explicit canonical owner")
+            continue
+        plan, owner = [review_target(corpus, document, link, line) for link in links]
+        if plan not in top or owner not in top or plan == owner or plan in companions:
+            corpus.issue(document.path, line, "review-index", "Invalid, duplicate or missing companion/owner record")
+            continue
+        companions[plan] = (owner, line)
+    for plan, (owner, line) in companions.items():
+        if owner in companions:
+            corpus.issue(document.path, line, "review-index", "Companion owner must be a canonical report")
+    return set(companions)
+
+
+def event_reviews(corpus, prefix, paths):
+    index = prefix + "/README.md"
+    top = {path for path in paths if Path(path).parent.as_posix() == prefix
+           and Path(path).name not in ("README.md", "master-plan.md")}
+    if index not in paths:
+        corpus.issue(index, 1, "review-index", "Missing review family index")
+        return
+    document = corpus.load(index)
+    if document is None:
+        return
+    companions = companion_reviews(corpus, document, top)
+    canonical = top - companions
+    counts = Counter()
+    for line, cells in inventory_rows(corpus, document, ("Date", "Scope", "File"), "review-index"):
+        links = cell_links(document, cells["File"])
+        targets = [review_target(corpus, document, link, line) for link in links]
+        # The first File link is the report; later links can expose evidence.
+        target = targets[0] if targets else None
+        if target not in canonical:
+            corpus.issue(index, line, "review-index", "Missing or extra canonical review record: " + str(target))
+            continue
+        if any(value in top for value in targets[1:]):
+            corpus.issue(index, line, "review-index", "File cell contains multiple top-level review records")
+        counts[target] += 1
+        if counts[target] > 1:
+            corpus.issue(index, line, "review-index", "Duplicate canonical review record: " + target)
+        day = inline_text(cells["Date"].source).strip()
+        if not calendar(day) or not Path(target).name.startswith(day + "-"):
+            corpus.issue(index, line, "review-index", "Review Date differs from dated canonical filename")
+    for path in sorted(canonical - counts.keys()):
+        corpus.issue(index, 1, "review-index", "Missing canonical review record: " + path)
+    seeds = top | {index, prefix + "/master-plan.md"}
+    reached = reachable_reviews(corpus, prefix, seeds, paths)
+    for path in sorted(set(paths) - reached):
+        corpus.issue(path, 1, "review-index", "Nested review is not discoverable from its family")
+
+
+def master_reviews(corpus, prefix, paths):
+    index = prefix + "/README.md"
+    runs = {Path(path).relative_to(prefix).parts[0] for path in paths if path != index}
+    valid = set()
+    for run in sorted(runs):
+        match = re.fullmatch(r"([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})", run)
+        if not match or not calendar(match[1]) or not (int(match[2]) < 24 and int(match[3]) < 60 and int(match[4]) < 60):
+            corpus.issue(prefix + "/" + run, 1, "review-index", "Invalid master-review run identity")
+            continue
+        valid.add(run)
+        folder = prefix + "/" + run
+        required = {folder + "/consolidated.md", folder + "/00-coverage-manifest.md"}
+        for path in sorted(required - set(paths)):
+            corpus.issue(path, 1, "review-index", "Missing required master-review artifact")
+        if not any(path.startswith(folder + "/tracks/") for path in paths):
+            corpus.issue(folder, 1, "review-index", "Master review requires track artifacts")
+        run_paths = {path for path in paths if path.startswith(folder + "/")}
+        reached = reachable_reviews(corpus, folder, {folder + "/consolidated.md"}, run_paths)
+        for path in sorted(run_paths - reached):
+            corpus.issue(path, 1, "review-index", "Master-review artifact is not discoverable from consolidated report")
+    if index not in paths:
+        corpus.issue(index, 1, "review-index", "Missing master-review index")
+        return
+    document = corpus.load(index)
+    if document is None:
+        return
+    counts = Counter()
+    for line, cells in inventory_rows(corpus, document, ("Run", "Commit", "Verdict"), "review-index"):
+        links = cell_links(document, cells["Run"])
+        if len(links) != 1:
+            corpus.issue(index, line, "review-index", "Run cell requires one consolidated report link")
+            continue
+        run = inline_text(links[0].label).strip()
+        target = review_target(corpus, document, links[0], line)
+        if run not in valid or target != prefix + "/" + run + "/consolidated.md":
+            corpus.issue(index, line, "review-index", "Extra or misdirected master-review run")
+            continue
+        counts[run] += 1
+        if counts[run] > 1:
+            corpus.issue(index, line, "review-index", "Duplicate master-review run: " + run)
+    for run in sorted(valid - counts.keys()):
+        corpus.issue(index, 1, "review-index", "Missing master-review run: " + run)
+
+
+def check_reviews(corpus):
+    paths = [path for path in corpus.paths if path.startswith(REVIEW_ROOT) and path != REVIEW_ROOT + "README.md"]
+    families = defaultdict(list)
+    for path in paths:
+        relative = Path(path).relative_to(REVIEW_ROOT)
+        if len(relative.parts) < 2:
+            corpus.issue(path, 1, "review-index", "Unexpected review-root document")
+        else:
+            families[relative.parts[0]].append(path)
+    for family, paths in sorted(families.items()):
+        prefix = REVIEW_ROOT + family
+        if family in EVENT_REVIEW_FAMILIES:
+            event_reviews(corpus, prefix, paths)
+        elif family == "master-review":
+            master_reviews(corpus, prefix, paths)
+        else:
+            corpus.issue(paths[0], 1, "review-index", "Unsupported review family: " + family)
+
+
+CHECKS = {"links": check_links, "tasks": check_tasks, "adrs": check_adrs, "reviews": check_reviews}
 
 
 def scan_docs(root, *, checks):

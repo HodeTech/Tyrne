@@ -18,6 +18,7 @@ class MetadataTests(unittest.TestCase):
         self.write("README.md", "# Fixture\n")
         self.tasks = {}
         self.adrs = {}
+        self.reviews = {}
 
     def write(self, path, text):
         target = self.root / path
@@ -239,6 +240,184 @@ class MetadataTests(unittest.TestCase):
         index = self.root / "docs/decisions/README.md"
         index.write_text(index.read_text().replace(r"[Literal `\#` heading]", "[Literal `#` heading]"), encoding="utf-8")
         self.rejects("adrs", "adr-index")
+
+    def review(self, name="2026-10-15-scope.md", family="code-reviews", body="Fixture.\n", evidence=""):
+        folder = "docs/analysis/reviews/" + family
+        path = folder + "/" + name
+        self.write(path, "# Review\n\n" + body)
+        self.reviews[path] = (name[:10], evidence)
+        rows = ["| Date | Scope | File |", "|---|---|---|"]
+        for target, (day, extra) in sorted(self.reviews.items()):
+            if Path(target).parent.as_posix() == folder:
+                rows.append("| " + day + " | Fixture | [Report](" + Path(target).name + ")" + extra + " |")
+        self.write(folder + "/README.md", "# Reviews\n\n" + "\n".join(rows) + "\n")
+        self.write(folder + "/master-plan.md", "# Procedure\n")
+        return path
+
+    def master_run(self, identity="2026-10-15-120000"):
+        folder = "docs/analysis/reviews/master-review"
+        self.write(folder + "/" + identity + "/consolidated.md",
+                   "# Consolidated\n\n[Coverage](00-coverage-manifest.md) [Tracks](tracks/)\n")
+        self.write(folder + "/" + identity + "/00-coverage-manifest.md", "# Coverage\n")
+        self.write(folder + "/" + identity + "/tracks/c1.md", "# Track\n")
+        self.write(folder + "/README.md", "# Runs\n\n| Run | Commit | Verdict |\n|---|---|---|\n| [" +
+                   identity + "](" + identity + "/consolidated.md) | `fixture` | Fixture |\n")
+        return folder + "/" + identity
+
+    def test_all_event_review_families_reconcile_canonical_files(self):
+        for family in ("business-reviews", "code-reviews", "security-reviews", "performance-optimization-reviews"):
+            self.review(family=family)
+        self.clean("reviews")
+
+    def test_review_missing_duplicate_and_extra_index_rows_fail(self):
+        path = self.review()
+        index = self.root / Path(path).with_name("README.md")
+        original = index.read_text()
+        row = original.splitlines()[-1]
+        for text in (original.replace(row, ""), original + row + "\n",
+                     original + "| 2026-10-15 | Extra | [Missing](2026-10-15-missing.md) |\n"):
+            with self.subTest(index=text):
+                index.write_text(text, encoding="utf-8")
+                self.rejects("reviews", "review-index")
+
+    def test_nondated_unindexed_top_level_report_is_not_ignored(self):
+        self.review()
+        self.write("docs/analysis/reviews/code-reviews/unindexed.md", "# Undiscovered\n")
+        self.rejects("reviews", "review-index")
+
+    def test_companion_plan_requires_explicit_existing_canonical_owner(self):
+        path = self.review()
+        folder = Path(path).parent
+        plan = "2026-10-15-scope-review-plan.md"
+        self.write((folder / plan).as_posix(), "# Plan\n")
+        self.rejects("reviews", "review-index")
+        index = self.root / folder / "README.md"
+        index.write_text(index.read_text() + "\n## Companion plans\n\n- [Plan](" + plan +
+                         "), owned by the [canonical review](" + Path(path).name + ").\n", encoding="utf-8")
+        self.clean("reviews")
+        index.write_text(index.read_text().replace("owned by the [canonical review](" + Path(path).name,
+                                                  "owned by the [canonical review](2026-10-15-absent.md"), encoding="utf-8")
+        self.rejects("reviews", "review-index")
+
+    def test_file_cell_supporting_links_are_not_extra_canonical_entries(self):
+        self.write("docs/analysis/reviews/code-reviews/nested/c1.md", "# Track\n")
+        self.review(evidence=" (with [tracks](nested/))")
+        self.clean("reviews")
+
+    def test_nested_reports_must_be_discoverable_from_the_family(self):
+        self.review(body="[Preflight](nested/preflight.md)\n")
+        self.write("docs/analysis/reviews/code-reviews/nested/preflight.md", "# Preparation\n\n[Track](c1.md)\n")
+        self.write("docs/analysis/reviews/code-reviews/nested/c1.md", "# Track\n")
+        self.clean("reviews")
+        self.write("docs/analysis/reviews/code-reviews/nested/orphan.md", "# Undiscovered\n")
+        self.rejects("reviews", "review-index")
+
+    def test_root_directory_link_does_not_blanket_own_nested_reports(self):
+        self.review(body="[Family](./)\n")
+        self.write("docs/analysis/reviews/code-reviews/nested/orphan.md", "# Undiscovered\n")
+        self.rejects("reviews", "review-index")
+
+    def test_review_index_date_and_source_width_are_checked(self):
+        path = self.review()
+        index = self.root / Path(path).with_name("README.md")
+        original = index.read_text()
+        for text in (original.replace("| 2026-10-15 |", "| 2026-10-14 |"),
+                     original.replace("[Report](2026-10-15-scope.md) |", "[Report](2026-10-15-scope.md) | extra |")):
+            with self.subTest(index=text):
+                index.write_text(text, encoding="utf-8")
+                self.rejects("reviews", "review-index")
+
+    def test_master_run_has_exact_index_and_required_supporting_files(self):
+        folder = self.master_run()
+        self.clean("reviews")
+        (self.root / folder / "00-coverage-manifest.md").unlink()
+        self.rejects("reviews", "review-index")
+
+    def test_master_index_duplicate_missing_and_wrong_target_fail(self):
+        self.master_run()
+        index = self.root / "docs/analysis/reviews/master-review/README.md"
+        original = index.read_text()
+        row = original.splitlines()[-1]
+        for text in (original.replace(row, ""), original + row + "\n",
+                     original.replace("/consolidated.md", "/00-coverage-manifest.md")):
+            with self.subTest(index=text):
+                index.write_text(text, encoding="utf-8")
+                self.rejects("reviews", "review-index")
+
+    def test_master_run_folder_and_visible_identity_must_agree(self):
+        self.master_run()
+        index = self.root / "docs/analysis/reviews/master-review/README.md"
+        index.write_text(index.read_text().replace("[2026-10-15-120000]", "[2026-10-15-130000]"), encoding="utf-8")
+        self.rejects("reviews", "review-index")
+
+    def test_unknown_review_family_is_not_silently_skipped(self):
+        self.write("docs/analysis/reviews/unknown-reviews/2026-10-15-scope.md", "# Unknown family\n")
+        self.rejects("reviews", "review-index")
+
+    def test_review_file_reference_label_and_scope_citations_are_distinct(self):
+        path = self.review()
+        index = self.root / Path(path).with_name("README.md")
+        text = index.read_text().replace("| Fixture |", "| [Previous](2026-10-15-scope.md) |")
+        text = text.replace("[Report](2026-10-15-scope.md)", "[Report][canonical]")
+        index.write_text(text + "\n[canonical]: 2026-10-15-scope.md\n", encoding="utf-8")
+        self.clean("reviews")
+
+    def test_two_canonical_reports_in_one_file_cell_fail(self):
+        first = self.review()
+        second = self.review(name="2026-10-15-other.md")
+        index = self.root / Path(first).with_name("README.md")
+        text = index.read_text().replace("[Report](2026-10-15-scope.md)",
+                                        "[Report](2026-10-15-scope.md) [Other](" + Path(second).name + ")")
+        index.write_text(text, encoding="utf-8")
+        self.rejects("reviews", "review-index")
+
+    def test_companion_literal_examples_do_not_exempt_real_reports(self):
+        path = self.review()
+        folder = Path(path).parent
+        plan = "2026-10-15-plan.md"
+        self.write((folder / plan).as_posix(), "# Plan\n")
+        index = self.root / folder / "README.md"
+        index.write_text(index.read_text() + "\n## Companion plans\n\n```markdown\n- [Plan](" + plan +
+                         "), owned by the [canonical review](" + Path(path).name + ").\n```\n", encoding="utf-8")
+        self.rejects("reviews", "review-index")
+
+    def test_companion_cycle_and_duplicate_declarations_fail(self):
+        path = self.review()
+        folder = Path(path).parent
+        plan = "2026-10-15-plan.md"
+        self.write((folder / plan).as_posix(), "# Plan\n")
+        index = self.root / folder / "README.md"
+        original = index.read_text()
+        declaration = "- [Plan](" + plan + "), owned by the [review](" + Path(path).name + ").\n"
+        for extra in (declaration, "- [Review](" + Path(path).name + "), owned by the [plan](" + plan + ").\n"):
+            with self.subTest(extra=extra):
+                index.write_text(original + "\n## Companion plans\n\n" + declaration + extra, encoding="utf-8")
+                self.rejects("reviews", "review-index")
+
+    def test_master_run_calendar_time_and_missing_tracks_fail(self):
+        for identity in ("2026-02-29-120000", "2026-10-15-240000", "2026-10-15-126000", "not-a-run"):
+            with self.subTest(identity=identity):
+                self.master_run(identity)
+                self.rejects("reviews", "review-index")
+        import shutil
+        shutil.rmtree(self.root / "docs/analysis/reviews/master-review")
+        folder = self.master_run()
+        (self.root / folder / "tracks/c1.md").unlink()
+        self.rejects("reviews", "review-index")
+
+    def test_master_track_orphan_is_not_owned_by_presence_alone(self):
+        folder = self.master_run()
+        source = self.root / folder / "consolidated.md"
+        source.write_text(source.read_text().replace(" [Tracks](tracks/)", ""), encoding="utf-8")
+        self.rejects("reviews", "review-index", folder + "/tracks/c1.md")
+
+    def test_review_alias_rejected_without_selecting_links(self):
+        path = self.review()
+        target = self.root / path
+        target.unlink()
+        other = self.write("outside/report.md", "# Canary\n")
+        target.symlink_to(other)
+        self.rejects("reviews", "input", path)
 
     def scan(self, family):
         return metadata.scan_docs(self.root, checks=(family,))
