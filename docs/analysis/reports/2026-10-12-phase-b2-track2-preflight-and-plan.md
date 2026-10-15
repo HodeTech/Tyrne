@@ -1,9 +1,9 @@
 # Track B.2-2 — Preflight review and implementation plan
 
 This document records the source-backed documentation review, maintainer-approved decisions, reconciled task contracts and the reviewed-step execution plan for Track B.2-2.
-It is the implementation brief for a documentation and tooling wave; it does not report implementation as complete.
+It preserves the preparation brief and dated execution boundaries; the current delivery state is recorded in the [integrated readiness record](2026-10-15-phase-b2-track2-completion-readiness.md).
 
-- **Status:** Maintainer-approved2026-10-12. Steps0–12 completed their required two fresh review rounds and verified corrections; all twelve selected tasks are In Review. Step13 integrated verification/documentation/reviews is active. Detailed dated records below preserve every prior boundary; final PR-tip and maintainer gates remain.
+- **Status:** Maintainer-approved2026-10-12. Steps0–13 completed both fresh review rounds and verified corrections. All twelve selected tasks are implemented/In Review; the one human SECURITY wording criterion and maintainer PR review/merge remain. PR #49 records final publication-tip CI before handoff. Detailed dated records preserve prior boundaries.
 - **Date:** 2026-10-12
 - **Author:** Codex (AI agent), on behalf of @cemililik
 - **Source baseline:** clean `development` at `7d48f50603fa0d30464ea7b032f4f0fb82c3964c`; `origin/main` at `c16997e003fbd1726d1205734380394781c52002`.
@@ -133,7 +133,7 @@ The same root author implements changes; reviewers do not mutate the shared work
 | 10 | T-047 | Concise accurate live focus plus preserved archive, B6 status tags and Phase-C seam carry-forwards. Verify live status claims against task files and source merge records. |
 | 11 | T-056, parser portion | Implement deterministic offline link/fragment parser and meaningful positive/negative fixtures. Run against stabilized full corpus; discovered actual baseline defects return to their named owner rather than being suppressed. |
 | 12 | T-056, integration portion | Add task/review/ADR/ledger/fence/audit checks, optional live-state check if reliable, usage documentation and existing-job CI wiring. Verify all isolated rejection/false-positive fixtures, macOS/local and Linux/hosted execution. |
-| 13 | Integrated track record | Reverify architecture freshness, all 58 item dispositions and twelve task AC/DoDs; update six entry documents and publish final review/evidence. Leave delivered tasks In Review and create the separate PR after the predecessor publication barrier clears. |
+| 13 | Integrated track record | Reverify architecture freshness, all 58 item dispositions and twelve task AC/DoDs; update six entry documents and publish final review/evidence. Leave delivered tasks In Review and publish combined existing PR #49 under the maintainer’s explicit2026-10-15 publication choice below. |
 
 ### The review loop for every implementation step
 
@@ -248,3 +248,9 @@ Both independent R1 contexts completed actual committed verification and authori
 ### Step12 completed boundary — 2026-10-15
 
 [Canonical code](../reviews/code-reviews/2026-10-15-t056-integration.md) and [separate security](../reviews/security-reviews/2026-10-15-t056-integration.md) consolidate both fresh rounds, actual committed-fix verification and final peer reconciliation at4044b79. All six R1 and three R2 groups are scoped closed;24 complete original reports and lossless reviewer archives preserve severity/HOLD/source/QA/read limitations.161/124 suites pass both local runtimes; exact404 PR/push Linux CI passes seven jobs and all six app15368 contexts. T056 all16 criteria checked/In Review/no date_done; twelve selected tasks now In Review, phase census8Done/19Ready/12InReview/0InProgress/7Draft. Step13 begins automatically for58 dispositions, all task criteria/freshness and six entry documents; final-tip and maintainer gates remain. Combined PR49 publication is explicitly authorized; earlier barriers remain historical.
+
+### Step13 completed boundary — 2026-10-15
+
+[Both fresh code rounds](../reviews/code-reviews/2026-10-15-phase-b2-track2-integration.md) and [separate security rounds](../reviews/security-reviews/2026-10-15-phase-b2-track2-integration.md) Approve cumulative ab847ee..7d1eca0. R1 SECURITY-R1-01 is one Low: two resolvable README links selected the docs index instead of the root README. Root validated all58 destinations, fixed both in7d1eca0 and obtained actual committed-fix verification; different fresh R2 verifies the full cumulative scope with zero new findings. Complete original reports preserve both initial prerequisite-order limitations; R2 completed every mandatory read before scope inspection under separately recorded preflight ledgers. No earlier procedure is backdated or extra review round invented.
+
+All58 original observations, all156 literal criteria (155 checked/one human wording pending), nine architecture source markers and six entry documents reconcile. Twelve tasks stop In Review/no date_done;26 further tasks remain unimplemented and HIGH T-038 is next/unstarted. Exact reviewed-source PR/push CI passes seven jobs each and six app15368 required contexts,161/124 fixture methods and397/7163/925/zero. Later canonical/publication census and final PR-tip checks are separate checkpoints; PR #49 records the final tip before handoff. Whole B.2 C/D gates remain. No known scoped implementation finding is deferred.

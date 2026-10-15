@@ -1,6 +1,6 @@
 # Track B. 2-2 — integrated verification and maintainer readiness
 
-- **Status:** Step 13 implemented; both fresh independent review rounds and final PR-tip hosted verification pending.
+- **Status:** Implementation and both fresh review rounds complete; maintainer PR/SECURITY wording review and merge remain. PR #49 records final publication-tip CI before handoff.
 - **Date:** 2026-10-15.
 - **Implementation baseline:** `ab847eee5e736566dd0db8d62caa9a3c9f768843` plus the six entry-document updates in this step.
 - **Authority:** [approved 13-step plan](2026-10-12-phase-b2-track2-preflight-and-plan.md), Accepted ADR-0040/0042/0043, explicit maintainer choice to combine into [PR49](https://github.com/HodeTech/Tyrne/pull/49) on development.
@@ -104,4 +104,12 @@ T-056 source 4044b79 passes 161 navigation/124 metadata methods on local Python 
 
 The phase inventory is 46: 8 Done, 12 In Review, 19 Ready and7 Draft. Twelve implemented documentation tasks await maintainer review/merge; 26 others remain unimplemented, so38 are not Done. Next implementation is HIGH T-038 (Ready/unstarted), followed by its own mandatory verification/security/audit work. T-039/T-040 and other Draft decision-bearing tasks keep their ADR preconditions; T-074 readiness and T-075 whole-phase closure remain. C/D stay gated.
 
-For this track, remaining work is the two fresh Step 13 rounds/fixes, final-tip hosted checks and maintainer PR/SECURITY wording review/merge. No known implementation finding is deferred. Automatic Done promotion, merge or policy mutation is not authorized by this record.
+For this track, implementation and both fresh Step 13 rounds are complete. Maintainer PR/SECURITY wording review and merge remain; PR #49 records the final published tip’s hosted checks before handoff. No known implementation finding is deferred. Automatic Done promotion, merge or policy mutation is not authorized by this record.
+
+## Integrated review and publication
+
+[Both fresh code rounds](../reviews/code-reviews/2026-10-15-phase-b2-track2-integration.md) and [separate security rounds](../reviews/security-reviews/2026-10-15-phase-b2-track2-integration.md) Approve cumulative ab847ee..7d1eca0. One R1 Low, SECURITY-R1-01, affected two README links that resolved to the documentation index. Root independently compared all 58 displayed targets, fixed both in7d1eca0 and obtained actual committed-fix verification; different fresh R2 verifies the full scope with zero new findings. No unresolved implementation finding remains.
+
+[Five complete original report checkpoints](2026-10-15-phase-b2-track2-final-evidence/complete-review-reports.json) and [lossless bounded review evidence](2026-10-15-phase-b2-track2-final-evidence/review-publication-manifest.json) preserve actual procedure/reading/helper limits. R1’s late prerequisite recovery is disclosed; R2 completes every mandatory prerequisite before scope. These are two fresh rounds with one committed-fix followup, not five independent rounds.
+
+[Reviewed-source hosted proof](2026-10-15-phase-b2-track2-final-evidence/reviewed-source-hosted-checkpoint.json) binds7d1eca0 to PR38799120651/push38799110080: seven successful jobs each, all six app15368 required contexts, Linux161/124 fixture methods and397/7163/925/zero. Later canonical filing changes the document census; [publication verification](2026-10-15-phase-b2-track2-final-evidence/publication-verification.json) separately binds final local target/criterion/status checks. PR #49 records exact final-tip CI after the filing commit; no source checkpoint is relabeled as a later tip or first-main run.

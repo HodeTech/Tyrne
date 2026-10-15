@@ -24,6 +24,7 @@ The ADR-0040 approval follow-up in this index is explicitly an independent appro
 
 | Date | Scope | File |
 |------|-------|------|
+| 2026-10-15 | B.2-2 integrated Step13 ab847ee..7d1eca0; both fresh rounds, one Low fixed/verified, zero new R2 or unresolved findings; final-tip/human gates separate | [2026-10-15-phase-b2-track2-integration.md](2026-10-15-phase-b2-track2-integration.md) |
 | 2026-10-15 | T056 integration91a64b5..4044b79, both fresh rounds and committed-fix reconciliations; nine groups closed, Step13/final-tip/maintainer gates pending | [2026-10-15-t056-integration.md](2026-10-15-t056-integration.md) |
 | 2026-04-21 | Tyrne project → Phase A exit (Phase 1–4c bootstrap + A1–A6 kernel core) | [2026-04-21-tyrne-to-phase-a.md](2026-04-21-tyrne-to-phase-a.md) |
 | 2026-05-06 | Full-tree comprehensive (Phase A + B0 + B1, multi-agent) at `214052d` — Verdict: Request changes (7 blocker-class doc drift items; all other tracks Approve/Comment/Iterate) | [2026-05-06-full-tree-comprehensive.md](2026-05-06-full-tree-comprehensive.md) (with sub-artefacts under [`2026-05-06-full-tree/`](2026-05-06-full-tree/)) |

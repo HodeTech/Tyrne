@@ -31,6 +31,7 @@ A security review is a **separate pass** from the code review — it is performe
 
 | Date | Scope | Verdict | File |
 |------|-------|---------|------|
+| 2026-10-15 | B.2-2 integrated Step13 ab847ee..7d1eca0; both fresh rounds, one Low fixed/verified, zero new R2 or unresolved findings; final-tip/human gates separate | Approve | [2026-10-15-phase-b2-track2-integration.md](2026-10-15-phase-b2-track2-integration.md) |
 | 2026-10-15 | T056 integration91a64b5..4044b79, both fresh rounds and committed-fix reconciliations; nine groups closed, Step13/final-tip/maintainer gates pending | Approve | [2026-10-15-t056-integration.md](2026-10-15-t056-integration.md) |
 | 2026-04-21 | Tyrne project → Phase A exit (Phase 1–4c bootstrap + A1–A6 kernel core) | Changes requested (3 Phase-B blockers; no Phase-A exit blocker) | [2026-04-21-tyrne-to-phase-a.md](2026-04-21-tyrne-to-phase-a.md) |
 | 2026-04-27 | B0 closure consolidated pass (T-006/T-007/T-008/T-009/T-011/T-013 + ADR-0021/0022/0024/0025 + UNSAFE-2026-0013..0018) | Clean — no High findings; pre-existing items (cross-table revocation, generation overflow) tracked at original severity | [2026-04-27-B0-closure.md](2026-04-27-B0-closure.md) |

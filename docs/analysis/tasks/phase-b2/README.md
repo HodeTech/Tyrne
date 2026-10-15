@@ -41,7 +41,7 @@ The [supplied PR #48 review reconciliation](../../reports/2026-10-12-pr-48-suppl
 
 The maintainer approved the [preflight and 13-step plan](../../reports/2026-10-12-phase-b2-track2-preflight-and-plan.md), ADR-0042/0043 and all twelve literal task-contract reconciliations.
 Step 0 completed the separate Acceptance transitions and contract edits without task delivery, then passed [both fresh review rounds](../../reviews/code-reviews/2026-10-12-phase-b2-track2-step0.md).
-**Progress (2026-10-15):** Steps 0–12 completed both fresh independent review rounds and verified fixes. All twelve selected tasks T-045–T-056 are In Review, including fully implemented T-056 with required existing-job CI checks. [T-056 canonical code/security](../../reviews/code-reviews/2026-10-15-t056-integration.md) closes all nine integration finding groups at4044b79; exact-source local and hosted evidence passes. Step 13's [integrated record](../../reports/2026-10-15-phase-b2-track2-completion-readiness.md) accounts for all 58 opening findings,156 criteria (155 checked; maintainer SECURITY wording pending) and nine source-freshness markers. Its two fresh rounds and final PR-tip checks are in progress; no task is Done before maintainer-authorized merge.
+**Progress (2026-10-15):** Steps 0–13 completed both fresh independent review rounds and verified fixes. All twelve selected tasks T-045–T-056 are In Review, including fully implemented T-056 with required existing-job CI checks. [T-056 canonical code/security](../../reviews/code-reviews/2026-10-15-t056-integration.md) closes all nine integration finding groups at4044b79; exact-source local and hosted evidence passes. Step 13's [integrated record](../../reports/2026-10-15-phase-b2-track2-completion-readiness.md) accounts for all 58 opening findings,156 criteria (155 checked; maintainer SECURITY wording pending) and nine source-freshness markers. Both integrated rounds are complete with the one Low README-target finding fixed and verified; PR #49 records final publication-tip CI before maintainer review; no task is Done before maintainer-authorized merge.
 The implementation order is T-051 → T-045 → T-046 → T-048 → T-049 → T-050 → T-055 → T-052/T-053 → T-054 → T-047 → T-056 parser → T-056 integration → integrated verification/documentation/PR.
 Every step follows the two-round fresh-review/fix/commit loop; security-sensitive descriptions also receive distinct security review.
 New tasks stop at In Review for the maintainer. Optional-for-general-exit T-056 is fully selected and cannot close by a decision-only or carry-forward outcome.
@@ -156,7 +156,7 @@ There are 46 tasks:8 Done,19 Ready,12 In Review,0 In Progress and 7 Draft. Twelv
 
 | Scope | Tasks | Count | Current boundary |
 |-------|-------|------:|------------------|
-| B.2-2 documentation cascade | T-045–T-056 | 12 | In Review; final integrated rounds/CI and maintainer review/merge remain. |
+| B.2-2 documentation cascade | T-045–T-056 | 12 | In Review; both integrated rounds complete, final-tip CI recorded in PR #49; maintainer review/merge remain. |
 | B.2-3 correctness and robustness | T-038–T-044 | 7 | Unimplemented; T-038 Ready/HIGH is next. |
 | B.2-4 code quality and API design | T-057–T-068 | 12 | Unimplemented; individual dependency/decision gates apply. |
 | B.2-5 unsafe-audit and doc comments | T-069–T-072; T-064 supplies shared docs | 4 | Unimplemented; shared ownership adds no extra task. |
