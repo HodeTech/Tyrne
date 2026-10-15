@@ -90,3 +90,7 @@ Local recovery is verified; durable public publication, history migration, footp
 ### Governance R1 correction — 2026-10-16
 
 Both independent first-round reviewers requested one Medium clarification (GR1-C01 / INT-R1-01): define evidence hosting relative to the product-release signing/gates standard. The Proposed ADR and plan now define the approved evidence-only profile and ground its post-Acceptance standard pointer in T-056. No signature, product release or broadened remote-ref authorization is claimed. Independent committed-fix verification and a different fresh second round remain required before Acceptance.
+
+### Governance/recovery review boundary — 2026-10-16
+
+[Both fresh complementary rounds](../reviews/code-reviews/2026-10-16-pr49-evidence-governance.md) close the single Medium release-scope group at94fd86c; all six complete initial/fix reports and digests are preserved. Deliberate end-to-end reread confirms actual task dependencies, costs and ADR-0043 compatibility. Separate Acceptance and dependent implementation follow; no public archive, migration or new hosted result is yet claimed.
