@@ -51,6 +51,14 @@ when-to-use: When a trigger for any of the four review types fires — milestone
    - Body: one-paragraph summary of the verdict / adjustments.
    - Trailer: `Refs: ADR-0013` and any ADRs the review cites.
 
+## Evidence retention
+
+Follow [ADR-0044](../../../docs/decisions/0044-review-evidence-retention.md) and [documentation storage policy](../../../docs/standards/documentation-style.md#evidence-storage). Keep complete canonical Markdown reports, original verdicts/findings/read limits, actual source identities and compact archive metadata in Git. Put bulk execution streams, intermediate JSON, source exports and encoded scratch archives outside Git in a digest-verified durable archive with independently tested recovery; expiring Actions artifacts alone are insufficient.
+
+Before producing a source export, exclude previously retained raw archive/snapshot trees so evidence does not recursively retain itself. Preserve original evidence in its authoritative archive rather than embedding retained archives or entire source exports in new Git JSON. Never remove original verdicts or invent a historical run to obtain a smaller diff. Hash checks establish integrity, not a complete semantic read; retain each reviewer’s actual scope and limitations. The [recovery guide](../../../docs/guides/review-evidence.md) explains original SHA/source recovery.
+
+Stage intended artifacts and run the separate footprint command/fixtures in addition to corpus checks. The approved limits cover the index and complete HEAD history; later deletion does not erase an oversized historical blob. Future exceptions require exact-path reasons and reviewed fixtures, never broad review-directory exclusions. This storage discipline adds no substitute for any master-plan role or required independent review round.
+
 ## Acceptance criteria
 
 - [ ] Correct review type chosen for the trigger.

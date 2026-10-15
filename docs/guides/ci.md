@@ -189,6 +189,25 @@ Record-header fields, live headings/fields and companion declarations use the or
 
 To extend a check or grammar, add an isolated contract fixture first, update the family function/registry and this description, then run both fixture suites and the whole public corpus. A required CI step must execute the selected family, not merely report its availability. Distinguish checker false positives from real baseline defects; return genuine defects to their named owning tasks and review bounded repairs. Do not add broad exclusions or weaken adjacent required gates.
 
+## Repository footprint
+
+Accepted [ADR-0044](../decisions/0044-review-evidence-retention.md) adds the separate [footprint command](../../tools/check-repo-footprint.py) and [real temporary-Git fixtures](../../tools/test-repo-footprint.py) to the existing required lint job. Its checkout uses full history (`fetch-depth: 0`) while credentials remain unpersisted. Job names, required contexts/app bindings and CI permissions are unchanged. Source wiring is distinct from actual final-source hosted delivery, recorded after execution.
+
+After staging intended changes, run:
+
+```sh
+python3 tools/test-repo-footprint.py
+python3 tools/check-repo-footprint.py
+python3 tools/check-repo-footprint.py --json
+python3 tools/check-repo-footprint.py --root '<complete-git-worktree>' --json
+```
+
+Requires Python3.9+ stdlib and Git. Exit0 means success,1 means policy findings,2 means invalid/unverifiable input or usage. Findings carry a path, line1, code and index/original commit source; JSON is deterministic. Defaults are script-relative. The command is offline/read-only, suppresses replacement-object views and ambient alternate Git state, and rejects shallow/promisor repositories and legacy graft files before object traversal. Use a complete local clone; it does not fetch missing data itself.
+
+Limits apply inclusively to the index and every complete HEAD-history snapshot: each stored blob at most1MiB, total non-Markdown reports at most512KiB, each reports `*-evidence-catalog.md`/`.json` pair at most128KiB. Identical content at two paths counts twice toward tree aggregates. Gitlinks store external identities and are excluded from blob bytes; symlink target text is stored, not its worktree referent. Untracked files and unstaged worktree content are outside stored-index checks. An artifact committed then deleted still fails if any historical snapshot exceeds the limits. Reflogs/other branch histories are outside this HEAD policy; independent archive recovery and the approved one-time migration remain separate from these checks.
+
+The fixtures prove exact boundaries, aggregate/pair accounting, commit-then-delete rejection, staged/worktree separation, symlink/Gitlink handling, control-character filenames, deterministic CLI output, invalid/incomplete inputs and replacement/graft/ambient-state controls. They create disposable repositories, not alternate project branches or committed negative probes. Canonical Markdown and compact catalogs remain reviewable in Git; [archived evidence recovery](review-evidence.md) preserves original source and payloads. No current exception or bypass flag exists. Check results establish storage bounds, not review-verdict authenticity or source semantic correctness. The eight-family documentation command remains offline and Git-independent.
+
 ## Adding a new check
 
 1. Add a job to [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).

@@ -88,12 +88,18 @@ jobs:
           # CI only reads the repo; do not persist the token into local git
           # config (least-privilege; avoids credential reuse by later steps).
           persist-credentials: false
+          # Footprint policy covers historical blobs, including later deletions.
+          fetch-depth: 0
       - name: Documentation consistency fixtures (offline)
         run: |
           python3 tools/test-check-docs.py
           python3 tools/test-docs-metadata.py
       - name: Documentation corpus consistency (required)
         run: python3 tools/check-docs.py
+      - name: Repository footprint fixtures (offline temporary Git)
+        run: python3 tools/test-repo-footprint.py
+      - name: Repository footprint (required full history)
+        run: python3 tools/check-repo-footprint.py
       - name: Install pinned nightly with rustfmt + clippy
         run: |
           rustup toolchain install "$NIGHTLY_PIN" --component rustfmt --component clippy --no-self-update

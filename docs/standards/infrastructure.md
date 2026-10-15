@@ -70,6 +70,7 @@ These map directly to jobs that exist in [`.github/workflows/ci.yml`](../../.git
 
 - `cargo fmt --all -- --check` (`lint-and-host-test`).
 - Offline documentation consistency and both isolated Python3.9+ stdlib fixture suites (`python3 tools/check-docs.py`, `python3 tools/test-check-docs.py`, `python3 tools/test-docs-metadata.py`) are failing steps in the same `lint-and-host-test` job under Accepted ADR-0043. This adds no required status context or app-binding change; see [supported checks and limits](../guides/ci.md#documentation-consistency).
+- Separate offline stored-repository footprint and real temporary-Git fixtures (`python3 tools/check-repo-footprint.py`, `python3 tools/test-repo-footprint.py`) run as failing steps in that existing lint job under Accepted ADR-0044. Its checkout supplies full history so historical add-then-delete artifacts are checked; no context/app/permission change. See [limits and input contract](../guides/ci.md#repository-footprint).
 - Clippy with `-D warnings`: `host-clippy` (`clippy --all-targets -- -D warnings` over `default-members`) for the host crates; `kernel-clippy` (`clippy --target aarch64-unknown-none -p tyrne-bsp-qemu-virt -- -D warnings`) for the bare-metal BSP; and `cargo clippy -p tyrne-user -p tyrne-userland-hello --target aarch64-unknown-none -- -D warnings` for the bare-metal userland, after its image build in `kernel-build`. These are distinct target-aware commands; the BSP has no host test target.
 - `shellcheck tools/*.sh` at default severity (`lint-and-host-test`), with `shellcheck --version` printed in the log. Suppress only demonstrated false positives with a scoped directive and a reason.
 - Isolated expected-failure lint probes (`tools/test-ci-gates.sh --shell` / `--userland`) assert that the corresponding real commands reject a deliberate regression with the expected diagnostic. Their success confirms rejection, not a failure of the production gate.
@@ -240,6 +241,8 @@ The `supply-chain/` directory does not exist at HEAD — see [add-dependency](..
 - Self-hosted runners running code from untrusted PRs.
 
 ## References
+
+- [ADR-0044: Review evidence retention and delivery](../decisions/0044-review-evidence-retention.md).
 
 - [ADR-0040: Phase B.2 consolidation and Track B.2-1 execution policy](../decisions/0040-phase-b2-consolidation-bridge.md).
 - [ADR-0043: Documentation corpus consistency and planned ADR identities](../decisions/0043-documentation-corpus-consistency.md).
